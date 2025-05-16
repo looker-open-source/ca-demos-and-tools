@@ -1,0 +1,17 @@
+runtime: nodejs
+env: flex
+
+runtime_config:
+  operating_system: ubuntu22
+  runtime_version: 22
+
+entrypoint: node build/index.js
+
+automatic_scaling:
+  min_num_instances: 1
+
+env_variables:
+  NODE_ENV: production
+  GCP_PROJECT_NAME: cortado-golden-demo-v2
+  LOOKER_INSTANCE_URI: https://looker.cloud-bi-opm.com
+  LOOKER_EMBED_DOMAIN: https://cortado-golden-demo-v2.ue.r.appspot.com

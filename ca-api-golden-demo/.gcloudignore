@@ -1,0 +1,7 @@
+node_modules/
+client/node_modules/
+client/build/
+build/
+.env
+.git/
+.gitignore

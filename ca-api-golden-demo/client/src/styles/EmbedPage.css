@@ -1,0 +1,27 @@
+/* EmbedPage.css */
+
+.embed-page {
+  display: flex;
+  flex-direction: column;
+  height: 80vh;
+  font-family: Roboto, sans-serif;
+}
+
+.dashboard-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.dashboard-main {
+  flex: 7;
+  overflow-y: auto;
+}
+
+.dashboard-sidebar {
+  flex: 3;
+  background-color: #f6f8fa;
+  padding: 1rem;
+  border-left: 1px solid #ddd;
+  overflow-y: auto;
+}
