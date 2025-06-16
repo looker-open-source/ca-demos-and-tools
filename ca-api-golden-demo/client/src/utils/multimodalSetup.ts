@@ -84,13 +84,18 @@ export const setupMessage = (datasource: datasource) => {
   return {
     setup: {
       model: `projects/${process.env.REACT_APP_FIREBASE_PROJECT_ID}/locations/us-central1/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
-      input_audio_transcription: {},
-      output_audio_transcription: {},
+      inputAudioTranscription: {},
+      outputAudioTranscription: {},
       generationConfig: {
         responseModalities: "AUDIO",
         speechConfig: {
-          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Fenrir" } }, // choose from https://cloud.google.com/vertex-ai/generative-ai/docs/live-api#change_voice_and_language_settings
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Fenrir" } }, // choose from https://cloud.google.com/vertex-ai/generative-ai/docs/live-api#voice-settings
           languageCode: "en-US", // choose from https://ai.google.dev/api/generate-content#SpeechConfig
+        },
+      },
+      realtimeInputConfig: {
+        automaticActivityDetection: {
+          silenceDurationMs: 900, // modify this param to change minimum duration of non-speech before end-of-speech is committed https://cloud.google.com/vertex-ai/generative-ai/docs/model-reference/multimodal-live#automaticactivitydetection
         },
       },
       systemInstruction: {

@@ -105,6 +105,7 @@ export const appDatasourceReferences: AppConfig = {
       },
     },
   },
+
   thelook: {
     datasourceReferences: {
       bq: {
@@ -118,6 +119,7 @@ export const appDatasourceReferences: AppConfig = {
       },
     },
   },
+
   cymbalpets: {
     datasourceReferences: {
       looker: {
@@ -137,6 +139,7 @@ export const appDatasourceReferences: AppConfig = {
       },
     },
   },
+
   cymbalpets_branded: {
     datasourceReferences: {
       looker: {
@@ -156,13 +159,14 @@ export const appDatasourceReferences: AppConfig = {
       },
     },
   },
+
   cymbalpets_embed_business_pulse: {
     datasourceReferences: {
       looker: {
         explore_references: {
           looker_instance_uri: "stub", // dynamically set
           lookml_model: "cymbal_pets",
-          explore: "order_items", // business pulse uses purchases explore
+          explore: "order_items", // business pulse uses order_items explore
         },
         credentials: {
           oauth: {
@@ -175,6 +179,7 @@ export const appDatasourceReferences: AppConfig = {
       },
     },
   },
+
   cymbalpets_embed_supplier_metrics: {
     datasourceReferences: {
       looker: {

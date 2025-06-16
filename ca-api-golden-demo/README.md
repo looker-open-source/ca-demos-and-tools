@@ -62,8 +62,11 @@
      # update with your Looker URI
      REACT_APP_LOOKER_INSTANCE_URI=https://looker.abc.com
 
+     # update with your embed Looker Studio Report URI (access through hidden route /studio-embed [OPTIONAL])
+     REACT_APP_LOOKER_STUDIO_REPORT=https://looker.abc.com/embed/reporting/abc123
+
      # websocket url with port for development
-     REACT_APP_WS_MULTIMODAL_LIVE_URL=ws://localhost:8080/ws/multimodal
+     REACT_APP_WS_MULTIMODAL_LIVE_URL=ws://localhost:8081/ws/multimodal
      ```
 
    - `client/.env.production`:
@@ -79,6 +82,9 @@
 
      # update with your Looker URI
      REACT_APP_LOOKER_INSTANCE_URI=https://looker.abc.com
+
+     # update with your embed Looker Studio Report URI (access through hidden route /studio-embed [OPTIONAL])
+     REACT_APP_LOOKER_STUDIO_REPORT=https://looker.abc.com/embed/reporting/abc123
      ```
 
    - In the console sidebar → Authentication → Get Started → Sign-in method. Enable the Google provider
@@ -102,7 +108,7 @@
 1. Development (Local):
 
    - In the root directory: `npm run dev`. This will start both the backend and frontend development servers concurrently
-   - Your React app will be available at http://localhost:3000, and it will proxy API requests to the server at http://localhost:8080
+   - Your React app will be available at http://localhost:3000, and it will proxy API requests to the server at http://localhost:8081
 
    This should load up the application locally but you will get errors trying to run queries as you will need to set the env variables and GCP secrets
 

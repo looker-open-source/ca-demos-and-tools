@@ -5,6 +5,7 @@ import { auth } from "./utils/firebase";
 import AllowlistWrapper from "./AllowlistWrapper";
 import HomePage from "./HomePage";
 import ChatRouteWrapper from "./ChatRouteWrapper";
+import IframePage from ".//IframePage";
 import Multimodal from "Multimodal";
 import Resources from "./Resources";
 import LoginPage from "./LoginPage";
@@ -45,6 +46,14 @@ function App() {
                     element={
                       <Layout>
                         <HomePage />
+                      </Layout>
+                    }
+                  />
+                  <Route
+                    path="/studio-embed"
+                    element={
+                      <Layout variant="branded">
+                        <IframePage />
                       </Layout>
                     }
                   />

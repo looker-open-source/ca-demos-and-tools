@@ -46,13 +46,38 @@ const AllowlistWrapper: React.FC<AllowlistWrapperProps> = ({
     return <div>Loading...</div>;
   }
 
-  // TODO - parameterise email
   if (!allowed) {
     return (
       <div>
         <p style={{ color: "white", fontSize: "24px" }}>
-          Access Denied - Reach out to cloud-bi-opm-demos@google.com if you
-          require access
+          <strong>Access Denied</strong>
+          <br />
+          <br />
+          Direct access to this shared demo is limited due to concurrent session
+          limits with the Gemini Live API.
+          <br />
+          <br />
+          To run the demo, please deploy your own app in Argolis using the
+          developer kit. Deployment instructions can be found at{" "}
+          <a
+            href="http://go/ca-api-golden-demo-devkit"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#8ab4f8" }}
+          >
+            <strong>go/ca-api-golden-demo-devkit</strong>
+          </a>
+          .
+          <br />
+          <br />
+          For questions or issues with the deployment, contact{" "}
+          <a
+            href="mailto:cloud-bi-opm-demos@google.com"
+            style={{ color: "#8ab4f8" }}
+          >
+            <strong>cloud-bi-opm-demos@google.com</strong>
+          </a>
+          .
         </p>
       </div>
     );

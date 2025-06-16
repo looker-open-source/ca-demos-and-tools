@@ -68,6 +68,20 @@ function Layout({ children, variant = "default" }: LayoutProps) {
           <ul className="nav-list">
             {variant === "branded" ? (
               <>
+                {/* TODO unhide route when ready to publish */}
+                {/* <li className="nav-item dropdown branded">
+                  <span className="nav-link dropdown-toggle" role="button">
+                    Reports
+                  </span>
+                  <ul className="dropdown-menu">
+                    <li>
+                      <Link to="/studio-embed" className="dropdown-item">
+                        Business Pulse
+                      </Link>
+                    </li>
+                  </ul>
+                </li> */}
+
                 <li className="nav-item dropdown branded">
                   <span className="nav-link dropdown-toggle" role="button">
                     Dashboards
@@ -91,11 +105,26 @@ function Layout({ children, variant = "default" }: LayoutProps) {
                     </li>
                   </ul>
                 </li>
-                <li className="nav-item branded">
-                  <Link to="/chat/cymbalpets_branded" className="nav-link">
-                    Chat
-                  </Link>
+
+                <li className="nav-item dropdown branded">
+                  <span className="nav-link dropdown-toggle">Chat</span>
+                  <ul className="dropdown-menu">
+                    <li>
+                      <Link to="/chat/cymbalpets" className="dropdown-item">
+                        Classic
+                      </Link>
+                    </li>
+                    <li>
+                      <Link
+                        to="/chat/cymbalpets_branded"
+                        className="dropdown-item"
+                      >
+                        Branded
+                      </Link>
+                    </li>
+                  </ul>
                 </li>
+
                 <li className="nav-item dropdown branded">
                   <span className="nav-link dropdown-toggle">Multimodal</span>
                   <ul className="dropdown-menu">
@@ -139,20 +168,43 @@ function Layout({ children, variant = "default" }: LayoutProps) {
                   <span className="nav-link dropdown-toggle" role="button">
                     Cymbal Pets
                   </span>
+
                   <ul className="dropdown-menu">
-                    <li>
-                      <Link to="/chat/cymbalpets" className="dropdown-item">
-                        Classic
-                      </Link>
+                    <li className="dropdown-submenu">
+                      <span className="dropdown-item dropdown-toggle">
+                        Chat
+                      </span>
+                      <ul className="dropdown-menu">
+                        <li>
+                          <Link to="/chat/cymbalpets" className="dropdown-item">
+                            Classic
+                          </Link>
+                        </li>
+                        <li>
+                          <Link
+                            to="/chat/cymbalpets_branded"
+                            className="dropdown-item"
+                          >
+                            Branded
+                          </Link>
+                        </li>
+                      </ul>
                     </li>
-                    <li>
-                      <Link
-                        to="/chat/cymbalpets_branded"
-                        className="dropdown-item"
-                      >
-                        Branded
-                      </Link>
-                    </li>
+
+                    {/* TODO unhide route when ready to publish */}
+                    {/* <li className="dropdown-submenu">
+                      <span className="dropdown-item dropdown-toggle">
+                        Reports
+                      </span>
+                      <ul className="dropdown-menu">
+                        <li>
+                          <Link to="/studio-embed" className="dropdown-item">
+                            Business Pulse
+                          </Link>
+                        </li>
+                      </ul>
+                    </li> */}
+
                     <li className="dropdown-submenu">
                       <span className="dropdown-item dropdown-toggle">
                         Embed
@@ -202,6 +254,7 @@ function Layout({ children, variant = "default" }: LayoutProps) {
                     </li>
                   </ul>
                 </li>
+
                 <li className="nav-item">
                   <Link to="/resources" className="nav-link">
                     Resources

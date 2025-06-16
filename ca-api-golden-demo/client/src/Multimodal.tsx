@@ -43,16 +43,18 @@ const Multimodal: React.FC = () => {
   const [input, setInput] = useState<string>("");
   const [cortadoTempStatus, setCortadoTempStatus] = useState("");
   const [cortadoLoading, setCortadoLoading] = useState<boolean>(false);
-  const cortadoLoadingRef = useRef(cortadoLoading);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsMinimized, setLogsMinimized] = useState(false);
   const [clientStatus, setClientStatus] = useState<boolean>(false);
-  const clientRef = useRef<MultimodalLiveClient | null>(null);
   const [pythonAnalysisEnabled, setPythonAnalysisEnabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [systemInstruction, setSystemInstruction] = useState({});
   const [volume, setVolume] = useState(100);
   const [audioPlaying, setAudioPlaying] = useState(false);
+
+  const messagesRef = useRef<Message[]>([]);
+  const clientRef = useRef<MultimodalLiveClient | null>(null);
+  const cortadoLoadingRef = useRef(cortadoLoading);
 
   const { user } = useUser();
 
@@ -188,30 +190,31 @@ const Multimodal: React.FC = () => {
     ]);
   };
 
-  // This callback is used to update the question from the ask question tool
-  const updateChatQuestion = (question: any) => {
-    setMessages((prevMessages) => {
-      // If there are no messages or the last message is not a question, append a new one.
-      if (
-        prevMessages.length === 0 ||
-        prevMessages[prevMessages.length - 1].type !== "question" ||
-        prevMessages[prevMessages.length - 1].final
-      ) {
-        return [
-          ...prevMessages,
-          { type: "question", text: question, final: true },
-        ];
-      } else {
-        // Otherwise, update the last message with user's question
-        const updatedMessages = [...prevMessages];
-        updatedMessages[updatedMessages.length - 1] = {
-          ...updatedMessages[updatedMessages.length - 1],
-          text: question,
-          final: true,
-        };
-        return updatedMessages;
-      }
-    });
+  // This callback is used to handle:
+  // 1. text submissions from input, and
+  // 2. update the question from the ask question tool
+  const updateChatQuestion = (question: string, final: boolean) => {
+    const prevMessages = messagesRef.current;
+    // If there are no messages or the last message is not a question or not marked as final, append a new one.
+    if (
+      prevMessages.length === 0 ||
+      prevMessages[prevMessages.length - 1].type !== "question" ||
+      prevMessages[prevMessages.length - 1].final
+    ) {
+      setMessages([
+        ...prevMessages,
+        { type: "question", text: question, final },
+      ]);
+    } else {
+      // Otherwise, update the last message with user's question
+      const updatedMessages = [...prevMessages];
+      updatedMessages[updatedMessages.length - 1] = {
+        ...updatedMessages[updatedMessages.length - 1],
+        text: question,
+        final,
+      };
+      setMessages(updatedMessages);
+    }
   };
 
   // This callback is used to append the messages state with input audio transcriptions from user's microphone
@@ -346,6 +349,10 @@ const Multimodal: React.FC = () => {
     cortadoLoadingRef.current = cortadoLoading;
   }, [cortadoLoading]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   // Poll the client for audio status every 500ms.
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -378,7 +385,7 @@ const Multimodal: React.FC = () => {
     if (input.trim() && clientRef.current) {
       const msg = clientContentPayload(input);
       clientRef.current.send(msg);
-      updateChatQuestion(input.trim());
+      updateChatQuestion(input.trim(), false);
       setInput("");
     }
   };

@@ -4,13 +4,13 @@ import expressWs from "express-ws";
 import WebSocket from "ws";
 import { getAccessToken } from "./authHelper";
 import * as config from "./config";
-import * as dataqna from "./dataQna";
+import { askQuestion } from "./GeminiDataAnalytics";
 import logger from "./logger";
 
 const server = express();
 const wsServer = expressWs(server);
 const app = wsServer.app;
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8081;
 
 const decoder = new TextDecoder("utf-8");
 
@@ -235,7 +235,7 @@ const startServer = async () => {
             config.getMultimodalLookerDatasource(selectedExplore);
         }
 
-        await dataqna.askQuestion(req, res);
+        await askQuestion(req, res);
       } catch (error) {
         logger.error(error);
         res.status(500).json({ error: "An error occurred" });

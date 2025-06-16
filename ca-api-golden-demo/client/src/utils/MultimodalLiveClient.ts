@@ -8,7 +8,10 @@ import VolMeterWorklet from "./audio/vol-meter";
 
 export type messageLogger = (message: any) => void;
 export type setClientStatus = (statuts: boolean) => void;
-export type updateChatQuestionHandler = (question: string) => void;
+export type updateChatQuestionHandler = (
+  question: string,
+  final: boolean
+) => void;
 export type appendChatQuestionHandler = (question: string) => void;
 export type updateChatAnswerHandler = (
   transcript?: any,
@@ -351,7 +354,7 @@ export class MultimodalLiveClient {
   Datasource References: ${JSON.stringify(datasource)}`;
     console.log(logMessage);
     this.messageLogger(logMessage);
-    this.updateChatQuestion(question);
+    this.updateChatQuestion(question, true);
     this.setCortadoLoading(true);
     this.setError(null);
     this.setCortadoTempStatus("Analyzing question");
