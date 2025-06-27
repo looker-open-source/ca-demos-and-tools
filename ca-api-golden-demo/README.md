@@ -1,4 +1,16 @@
-# Development
+**This is not an officially supported Google product. This project is not eligible for the [Google Open Source Software Vulnerability Rewards Program](https://bughunters.google.com/open-source-security).**
+
+**This project is intended for demonstration purposes only. It is not intended for use in a production environment.**
+
+# Conversational Analytics API Golden Demo
+
+The Conversational Analytics API provides a natural language interface to query Looker and BigQuery data programmatically. This demo provides various examples to integrate the CA API into web applications: querying the Agent directly, alongside an embedded Looker dashboard, and even using the Gemini Live API for a multimodal conversation.
+
+This is the application that powered the [Data and Analytics Spotlight Keynote Demo](https://youtu.be/-Uda0ldaVbA?si=_GDgWm5tEo9MX9sX&t=1489) at Google NEXT.
+
+![homepage](images/homepage.png)
+
+## Development
 
 1. Set Node version
 
@@ -122,6 +134,8 @@
 
    - Run the `import-secrets.sh` script, e.g. `./secrets/import-secrets.sh PROJECT_ID ./secrets`
 
+   **If you just want to develop and run the app locally you can stop here. The next steps are only required for deployment.**
+
 1. Test a build:
 
    - In the root directory: `npm run build` This creates a production build of the React app in `client/build`
@@ -189,7 +203,7 @@
    gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/cloudbuild.builds.builder"
    ```
 
-# Project Structure
+## Project Structure
 
 ```
 dataqna-golden-demo/
@@ -238,7 +252,7 @@ dataqna-golden-demo/
 └── .gcloudignore # Files to ignore during deployment
 ```
 
-# Secrets
+## Secrets
 
 | pageId             | page                              | secret                                                               | source                                                          | description                                                      |
 | ------------------ | --------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
