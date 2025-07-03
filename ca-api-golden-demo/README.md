@@ -37,8 +37,8 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
    bigquery.googleapis.com \
    cloudaicompanion.googleapis.com \
    dataform.googleapis.com \
-   dataqna.googleapis.com \
    firebase.googleapis.com \
+   geminidataanalytics.googleapis.com \
    logging.googleapis.com \
    monitoring.googleapis.com \
    secretmanager.googleapis.com \
@@ -140,9 +140,9 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
 
    - In the root directory: `npm run build` This creates a production build of the React app in `client/build`
 
-1. Update `app.yaml`:
+1. Rename `app.yaml.example` to `app.yaml`:
 
-   - Update the variables in `app.yaml`:
+   - Update the variables:
 
      ```
      GCP_PROJECT_NAME: PROJECT_ID
@@ -172,6 +172,12 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
    # BigQuery User
    gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/bigquery.user"
 
+   # Cloud Build Service Account
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/cloudbuild.builds.builder"
+
+   # Gemini Data Analytics Data Agent Stateless User
+   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/geminidataanalytics.dataAgentStatelessUser"
+
    # Gemini for Google Cloud User
    gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/cloudaicompanion.user"
 
@@ -198,10 +204,28 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
 
    # Vertex AI User
    gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/aiplatform.user"
-
-   # Cloud Build Service Account
-   gcloud projects add-iam-policy-binding YOUR_PROJECT_ID --member="serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com" --role="roles/cloudbuild.builds.builder"
    ```
+
+## Customizations
+
+### Switching language for Multimodal
+
+To switch the Live API to a different language, you will need to make 3 updates:
+
+1. Modify the `languageCode` in the [multimodalSetup](/client/src/utils/multimodalSetup.ts#L107) to specify a language of your choice.
+
+1. Update the Gemini system instructions (`SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_LOOKER` and `SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_BQ`) and add the following line to the ADDITIONAL INSTRUCTIONS section, specifying your language of choice as recommended in the [Vertex AI documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/live-api/streamed-conversations#audio-response-settings).:
+
+```
+RESPOND IN [SPECIFY LANGUAGE HERE]. YOU MUST RESPOND UNMISTAKABLY IN [SPECIFY LANGUAGE HERE].
+```
+
+1. Update the final answer summarization prompt in
+   [MultimodalLiveClient](/client/src/utils/MultimodalLiveClient.ts#L453) to specify a languague:
+
+```
+`Use this response to answer the corresponding question. Give me the summary in [SPECIFY LANGUAGE HERE]. Here is the final answer: "${finalAnswer}"`
+```
 
 ## Project Structure
 

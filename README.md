@@ -1,41 +1,17 @@
-# ca-demos-and-tools
+# Conversational Analytics Demos and Tools
 
-## Getting started with Gerrit
+This repository houses a collection of demos and tools for the [Conversational Analytics API](https://cloud.google.com/gemini/docs/conversational-analytics-api/overview). The examples herein are designed to showcase the API's capabilities and provide practical integration patterns.
 
-First run `gcert` or `glogin`.
+## 🚀 Overview
 
-Next, run `git clone
-sso://looker-internal/looker-open-source/ca-demos-and-tools`.
+The Conversational Analytics API offers a natural language interface to programmatically query data from BigQuery, Looker, and Looker Studio. This allows for the seamless integration of powerful data conversation features into your applications.
 
-`cd ca-demos-and-tools` then run the following to install the commit hook that
-assigns a change id to each commit.
+## 📂 Projects
 
-```
-f=`git rev-parse --git-dir`/hooks/commit-msg ; mkdir -p $(dirname $f) ; curl -Lo $f https://gerrit-review.googlesource.com/tools/hooks/commit-msg ; chmod +x $f
-```
+### [Conversational Analytics API Golden Demo](/ca-api-golden-demo/README.md)
 
-Changes are handled through Gerrit. The easiest way to work is to first create a
-new branch. First make sure you are up to date with `git checkout main; git pull
---prune`. Then create the new branch with `git checkout -b my_feature_branch`.
+This project provides various examples of how to integrate the Conversational Analytics API into web applications. The demos include:
 
-Add and commit to that branch like normal. `git add FILE1 FILE2 ...`. `git
-commit -m "commit message"`.
-
-Now push that submit that change with `git push origin HEAD:refs/for/main`. You
-will get back the URL with the change.
-
-If tests don't pass or you need to update the change, checkout the branch again,
-then amend the commit and push it. `git checkout my_feature_branch`, make
-changes, `git add FILE1 FILE2 ...`. `git commit --amend`, `git push origin
-HEAD:refs/for/main`.
-
-When the change is submitted into main, checkout main locally and pull. `git
-checkout main; git pull`. Delete the local branch. `git branch -D
-my_feature_branch`.
-
-If you accidentally commit to your local main, reset it with `git checkout main`
-then `git reset --hard origin/main`. That will reset your main branch in a way
-that your changes are "lost". So use that command after your changes have been
-submitted into main. Alternately you can go back before the change was commited
-but keep the local copy of your changes with `git reset --soft HEAD~1`. Then
-you can create a new feature branch and commit your changes there.
+- Direct Agent Querying: Shows how to directly query the Conversational Analytics agent from a web interface.
+- Embedded Looker Dashboard Integration: Demonstrates how to use the API alongside an embedded Looker dashboard and share filter context.
+- Multimodal Conversation with Gemini Live API: Illustrates an advanced use case, combining the Conversational Analytics API with the [Gemini Live API](https://cloud.google.com/vertex-ai/generative-ai/docs/live-api) for a multimodal conversational experience.
