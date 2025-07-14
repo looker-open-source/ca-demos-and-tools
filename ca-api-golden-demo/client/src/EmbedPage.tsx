@@ -20,9 +20,13 @@ import { updateSystemInstructions } from "./utils/dataHelpers";
 
 import "./styles/EmbedPage.css";
 
+interface EmbedPageProps {
+  avatarUrl?: string;
+}
+
 const DEFAULT_DASHBOARD_ID = "business_pulse";
 
-const EmbedPage: React.FC = () => {
+const EmbedPage: React.FC<EmbedPageProps> = ({ avatarUrl }) => {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const [selectedDashboard, setSelectedDashboard] = useState<string>(
     dashboardId || DEFAULT_DASHBOARD_ID
@@ -83,6 +87,7 @@ const EmbedPage: React.FC = () => {
             variant="branded"
             dashboardId={selectedDashboard}
             systemInstructionOverride={systemInstruction}
+            avatarUrl={avatarUrl}
           />
         </aside>
       </div>

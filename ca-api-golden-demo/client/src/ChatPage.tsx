@@ -33,6 +33,7 @@ interface ChatPageProps {
   variant?: "default" | "branded";
   dashboardId?: string;
   systemInstructionOverride?: string;
+  avatarUrl?: string;
 }
 
 const LOCAL_STORAGE_KEY_PREFIX = "chatMessages-";
@@ -41,11 +42,15 @@ function ChatPage({
   variant = "default",
   dashboardId,
   systemInstructionOverride,
+  avatarUrl,
 }: ChatPageProps) {
   const params = useParams<{ pageId: string }>();
   const pageId = params.pageId;
   const datasetKey = dashboardId ? `${pageId}_${dashboardId}` : pageId;
   const storageKey = `${LOCAL_STORAGE_KEY_PREFIX}${pageId}`;
+
+  const agentAvatarSrc =
+    avatarUrl || (variant === "branded" ? "/cymbalpets.png" : "/gemini.png");
 
   const chatEndRef = useRef<HTMLDivElement>(null); // Ref for auto-scrolling
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -433,11 +438,7 @@ function ChatPage({
                   {/* Agent Avatar */}
                   {showAvatar && (
                     <img
-                      src={`${
-                        variant === "branded"
-                          ? "/cymbalpets.png"
-                          : "/gemini.png"
-                      }`}
+                      src={agentAvatarSrc}
                       alt="Agent Avatar"
                       className="agent-avatar"
                     />

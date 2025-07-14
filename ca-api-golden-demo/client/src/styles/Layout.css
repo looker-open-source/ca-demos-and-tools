@@ -16,6 +16,15 @@
 
 /* client/src/styles/Layout.css */
 
+/* default values for customVars  */
+:root {
+  --bodyBackground: #000000;
+  --userQuestionBackground: #a3fd8c;
+  --userQuestionText: #202124;
+  --newConversationButtonBackground: #1a7344;
+  --newConversationButtonColor: #ffffff;
+}
+
 body {
   font-family: "Google Sans", "Product Sans", sans-serif;
   background: #e9eef6;
@@ -184,11 +193,18 @@ main {
 /* cymbal pets branding  */
 
 body.branded {
-  background: #000000;
+  background: var(--bodyBackground);
 }
 
 .page-container.branded {
-  background: #000000;
+  background: var(--bodyBackground);
+}
+
+.logo--custom {
+  /* override the <img> with a background-image so we can swap it dynamically */
+  width: 145px;
+  height: 40px;
+  background: var(--custom-logo) center/contain no-repeat;
 }
 
 .logo.branded {
@@ -223,4 +239,53 @@ body.branded {
   font-size: 1.2rem;
   font-weight: 500;
   font-family: "IBM Plex Sans";
+}
+
+/* Gear button */
+.gear-button {
+  background: none;
+  border: none;
+  padding-left: 10px;
+  cursor: pointer;
+}
+
+.gear-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* Modal overlay for Customize Branding */
+.style-editor-modal {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.style-editor-modal label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9em;
+}
+
+.editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-label {
+  min-width: 120px;
+  font-weight: 500;
+}
+
+.page-title-input {
+  min-width: 200px;
 }

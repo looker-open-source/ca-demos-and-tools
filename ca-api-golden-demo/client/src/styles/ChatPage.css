@@ -348,15 +348,15 @@
 /* cymbal pets branding  */
 
 .new-conversation-button.branded {
-  background-color: #1a7344; /* match your brand color */
-  color: #ffffff;
+  background-color: var(--newConversationButtonBackground);
+  color: var(--newConversationButtonColor);
 }
 
 .new-conversation-button.branded:hover {
-  background-color: #145f37; /* darker hover */
+  background-color: var(--btnHoverBg);
 }
 
 .message.question .message-box.branded {
-  background-color: #a3fd8c;
-  color: #202124;
+  background-color: var(--userQuestionBackground);
+  color: var(--userQuestionText);
 }

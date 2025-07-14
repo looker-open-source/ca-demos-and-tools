@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import React from "react";
+import React, { useState } from "react";
 import { useParams } from "react-router-dom";
 import Layout from "./Layout";
 import ChatPage from "./ChatPage";
@@ -21,17 +21,34 @@ import EmbedPage from "./EmbedPage";
 const ChatRouteWrapper: React.FC = () => {
   const { pageId } = useParams<{ pageId: string }>();
 
+  // pull initial avatar from localStorage (fallback to default)
+  const defaultAvatar = "/gemini.png";
+  const [avatarUrl, setAvatarUrl] = useState(
+    localStorage.getItem("customAgentAvatar") || defaultAvatar
+  );
+
   const isBranded =
     pageId === "cymbalpets_branded" || pageId === "cymbalpets_embed";
 
   const content =
     pageId === "cymbalpets_embed" ? (
-      <EmbedPage />
+      <EmbedPage avatarUrl={avatarUrl} />
     ) : (
-      <ChatPage variant={isBranded ? "branded" : undefined} />
+      <ChatPage
+        variant={isBranded ? "branded" : undefined}
+        avatarUrl={avatarUrl}
+      />
     );
 
-  return <Layout variant={isBranded ? "branded" : undefined}>{content}</Layout>;
+  return (
+    // give Layout a prop it can call when the user uploads a new avatar
+    <Layout
+      variant={isBranded ? "branded" : undefined}
+      onCustomAvatarChange={(url) => setAvatarUrl(url)}
+    >
+      {content}
+    </Layout>
+  );
 };
 
 export default ChatRouteWrapper;
