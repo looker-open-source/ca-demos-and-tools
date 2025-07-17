@@ -74,9 +74,6 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
      # update with your Looker URI
      REACT_APP_LOOKER_INSTANCE_URI=https://looker.abc.com
 
-     # update with your embed Looker Studio Report URI (access through hidden route /studio-embed [OPTIONAL])
-     REACT_APP_LOOKER_STUDIO_REPORT=https://looker.abc.com/embed/reporting/abc123
-
      # websocket url with port for development
      REACT_APP_WS_MULTIMODAL_LIVE_URL=ws://localhost:8081/ws/multimodal
      ```
@@ -94,20 +91,17 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
 
      # update with your Looker URI
      REACT_APP_LOOKER_INSTANCE_URI=https://looker.abc.com
-
-     # update with your embed Looker Studio Report URI (access through hidden route /studio-embed [OPTIONAL])
-     REACT_APP_LOOKER_STUDIO_REPORT=https://looker.abc.com/embed/reporting/abc123
      ```
 
    - In the console sidebar → Authentication → Get Started → Sign-in method. Enable the Google provider
 
-   - Still under Authentication → Settings (top-right gear) → Authorized domains. localhost is there by default for local development, but you will need to Add the domain of the App Engine deploy URL. This will be `PROJECT_ID.REGION_ID.r.appspot.com`
+   - Still under Authentication → Settings (top-right gear) → Authorized domains. localhost is there by default for local development, but you will need to Add the domain of the App Engine deploy URL if plan on deploying the demo. This will be `PROJECT_ID.REGION_ID.r.appspot.com`. If you are unsure about the exact name you can update this later after deployment.
 
 1. Setup `.env` in root folder:
 
    - You will need to have API credentials from a Looker instance. We recommend using an [API-only service account](https://cloud.google.com/looker/docs/looker-core-user-management#creating_an_api-only_service_account) with `develop` permission as a minimum requirement
 
-   - For access to the LookML model, fork the [cymbal-pets-lookml](https://github.com/llooker/cymbal-pets-lookml) repo. Create a new LookML project on your instance and connect to Git
+   - For access to the LookML model, fork the [cymbal-pets-lookml](https://github.com/llooker/cymbal-pets-lookml-public) repo. Create a new LookML project on your instance and connect to Git
 
      ```
      GCP_PROJECT_NAME=xxx

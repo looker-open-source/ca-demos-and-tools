@@ -21,49 +21,6 @@ function Resources() {
       <h1>Resources</h1>
 
       <section className="resource-section">
-        <h2>Demo Contact / Support</h2>
-        <p>
-          For questions or issues with this demo, contact{" "}
-          <a href="mailto:cloud-bi-opm-demos@google.com">
-            cloud-bi-opm-demos@google.com
-          </a>
-          . If you want to customize and expand on this demo, you can deploy
-          this in your environment by following the steps here:{" "}
-          <a
-            href="http://go/ca-api-golden-demo-devkit"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            go/ca-api-golden-demo-devkit
-          </a>
-        </p>
-      </section>
-
-      <section className="resource-section">
-        <h2>API Overview</h2>
-        <p>
-          Learn more about the Conversational Analytics API:{" "}
-          <a
-            href="http://go/looker-conversational-analytics"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            go/looker-conversational-analytics
-          </a>
-        </p>
-        <p>
-          Conversational Analytics API FAQ:{" "}
-          <a
-            href="http://go/ca-api-faq"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            go/ca-api-faq
-          </a>
-        </p>
-      </section>
-
-      <section className="resource-section">
         <h2>Documentation</h2>
         <p>
           Explore the API (v2) documentation:{" "}
@@ -83,31 +40,6 @@ function Resources() {
             rel="noopener noreferrer"
           >
             https://cloud.google.com/gemini/docs/conversational-analytics-api/reference/rest
-          </a>
-        </p>
-      </section>
-
-      <section className="resource-section">
-        <h2>Questions / Comments</h2>
-        <p>
-          CA API chat channel:{" "}
-          <a
-            href="http://go/cortado-dogfood-chat"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            go/cortado-dogfood-chat
-          </a>
-        </p>
-
-        <p>
-          YAQS:{" "}
-          <a
-            href="http://go/ca-api-yaqs"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            go/ca-api-yaqs
           </a>
         </p>
       </section>

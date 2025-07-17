@@ -25,7 +25,7 @@ INPUT_DIR="$2"
 
 # Loop over each .txt file in the input directory
 shopt -s nullglob
-for filepath in "${INPUT_DIR}"/*.txt; do
+for filepath in "${INPUT_DIR}"/*.{txt,yaml}; do
   filename=$(basename "${filepath}")
   # Strip the extension to get the secret name
   secret_name="${filename%.*}"
@@ -48,4 +48,4 @@ for filepath in "${INPUT_DIR}"/*.txt; do
     --project="${DEST_PROJECT}"
 done
 
-echo "All .txt secrets imported into project ${DEST_PROJECT}."
+echo "All secrets imported into project ${DEST_PROJECT}."

@@ -17,7 +17,10 @@ import { Link, useNavigate } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useUser } from "./UserContext";
 import { auth } from "./utils/firebase";
-import { persistFileInLocalStorage } from "./utils/storage";
+import {
+  expandShortHex,
+  persistFileInLocalStorage,
+} from "./utils/customizeBranding";
 
 import "./styles/Layout.css";
 
@@ -70,9 +73,9 @@ function Layout({
     const raw = Object.fromEntries(
       CUSTOM_VARS.map((k) => [
         k,
-        getComputedStyle(document.documentElement)
-          .getPropertyValue(`--${k}`)
-          .trim(),
+        expandShortHex(
+          getComputedStyle(document.documentElement).getPropertyValue(`--${k}`)
+        ),
       ])
     ) as Record<string, string>;
     defaultColorsRef.current = raw;
@@ -186,20 +189,6 @@ function Layout({
           <ul className="nav-list">
             {variant === "branded" ? (
               <>
-                {/* TODO unhide route when ready to publish */}
-                {/* <li className="nav-item dropdown branded">
-                  <span className="nav-link dropdown-toggle" role="button">
-                    Reports
-                  </span>
-                  <ul className="dropdown-menu">
-                    <li>
-                      <Link to="/studio-embed" className="dropdown-item">
-                        Business Pulse
-                      </Link>
-                    </li>
-                  </ul>
-                </li> */}
-
                 <li className="nav-item dropdown branded">
                   <span className="nav-link dropdown-toggle" role="button">
                     Dashboards
@@ -308,20 +297,6 @@ function Layout({
                         </li>
                       </ul>
                     </li>
-
-                    {/* TODO unhide route when ready to publish */}
-                    {/* <li className="dropdown-submenu">
-                      <span className="dropdown-item dropdown-toggle">
-                        Reports
-                      </span>
-                      <ul className="dropdown-menu">
-                        <li>
-                          <Link to="/studio-embed" className="dropdown-item">
-                            Business Pulse
-                          </Link>
-                        </li>
-                      </ul>
-                    </li> */}
 
                     <li className="dropdown-submenu">
                       <span className="dropdown-item dropdown-toggle">
