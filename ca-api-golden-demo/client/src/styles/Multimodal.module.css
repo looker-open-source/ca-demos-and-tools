@@ -1,0 +1,475 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* client/src/styles/Multimodal.module.css */
+
+/* Overall container is flex container whose height is dictated by the right panel */
+/* Use a dark background overall and white text. Font = IBM Plex Sans */
+.chatPageContainer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: calc(80vh - 40px);
+  background-color: #2a2b2a; /* Chat window background */
+  border-radius: 20px;
+  color: #ffffff; /* All default text is white */
+  font-family: "IBM Plex Sans";
+}
+
+.innerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 16px 48px;
+  min-height: 40px;
+}
+
+.innerHeader h1 {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 300;
+}
+
+.newConversationContainer {
+  padding-bottom: 20px;
+}
+
+.newConversationButton {
+  background-color: #008a20;
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.95em;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  position: absolute;
+  top: -48px; /* Float button outside vertically */
+  right: 2px; /* Float button outside to right */
+  z-index: 10; /* Ensure it appears on top */
+}
+
+.newConversationButton:hover {
+  background-color: #174229;
+}
+
+/* The chat window: dark background, white text, etc. */
+.chatWindow {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 16px 56px 16px 96px;
+  display: flex;
+  flex-direction: column;
+  border-radius: 20px;
+}
+
+/* Left panel is absolutely positioned so its height is fixed (matches the container height) */
+.leftPanel {
+  flex: 1;
+  min-width: 0;
+  margin-right: 300px; /* space reserved for logs on the right */
+  transition: margin-right 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Right panel takes up remaining space */
+.rightPanel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 300px;
+  background-color: #253d30; /* logsContainer color */
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  overflow: hidden;
+  border-radius: 0 16px 16px 0; /* rounded right side corners */
+}
+
+/* When minimized, logs collapse to a narrow bar */
+.rightPanel.minimized {
+  width: 30px;
+}
+
+.rightPanelHeader {
+  height: 40px; /* fixed height */
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  padding: 4px 16px;
+}
+
+.rightPanelHeader.minimized {
+  padding: 4px 8px;
+}
+
+.minimizeIcon {
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 400;
+}
+
+/* Logs container occupies remaining space in right panel and scrolls internally */
+.logsContainer {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end; /* push content to the bottom */
+  padding: 12px;
+  font-family: "IBM Plex Mono", monospace;
+  color: #b4c6e0;
+}
+
+/* Log message styling */
+.logMessage {
+  font-size: 12px;
+  margin-bottom: 4px;
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  white-space: pre-wrap;
+}
+
+/* Style for the counter bubble similar to the Chrome console */
+.logCounter {
+  background-color: #b4c6e0;
+  color: #555;
+  border-radius: 50%;
+  padding: 2px 6px;
+  min-width: 20px;
+  text-align: center;
+  margin-left: 8px;
+  font-size: 10px;
+  font-family: "IBM Plex Mono", monospace;
+  display: inline-block;
+}
+
+/* message wrapper */
+.message {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Custom styling for message user question */
+.message.question .message-box {
+  background-color: #4e5551; /* question box */
+  color: #ffffff;
+  border-radius: 24px;
+  padding: 8px 16px;
+  width: 80%;
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* Custom styling for message agent response */
+.message.response .message-box {
+  background-color: transparent;
+  color: #ffffff; /* ensure agent text is white */
+  width: 80%;
+  font-size: 16px;
+  font-weight: 300;
+}
+
+.message-box {
+  padding: 5px 16px;
+}
+
+.message-box p {
+  margin: 0;
+  word-wrap: break-word; /* Prevent long words from overflowing */
+}
+
+.userAvatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 8px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.agentAvatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  margin-right: 16px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.text {
+  font-size: 16px;
+  font-weight: 300;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Overriding the background for code blocks, text color, using Roboto Mono */
+.code {
+  background-color: #3e3e3e;
+  color: #ffffff;
+  font-family: "Roboto Mono";
+  font-size: 12px;
+  padding: 10px;
+  white-space: pre-wrap;
+  margin-top: 5px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  border-radius: 4px;
+}
+
+/* custom scrollbar for code area */
+.code::-webkit-scrollbar {
+  width: 8px;
+  background-color: #6c736f; /* code scroll bar color */
+}
+
+.code::-webkit-scrollbar-thumb {
+  background-color: #888;
+}
+
+/* Container for bottom input row, etc. */
+.myChatContainer {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 50px;
+  font-family: "IBM Plex Sans";
+}
+
+/* The top row with the question input, mic, etc. */
+.topRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  margin-bottom: 8px;
+  padding-right: 16px;
+}
+
+.topForm {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  height: 100%;
+}
+
+/* The question input */
+.topInput {
+  flex: 1;
+  height: 100%;
+  border-radius: 28px;
+  padding: 0 16px;
+  padding-right: 50px;
+  font-size: 16px;
+  outline: none;
+  background-color: #636463;
+  color: #ffffff;
+  font-family: "IBM Plex Sans";
+  border: 1px solid #decccc;
+  box-shadow: 0px 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.topInput:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* Placeholder color */
+.topInput::placeholder {
+  color: #ffffff;
+  opacity: 0.7;
+  font-size: 14px;
+}
+
+/* Send button to the right of input */
+.sendButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  margin-left: -50px;
+}
+
+/* If button is disabled, fade out. */
+.sendButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.listening {
+  position: relative;
+}
+
+.listening::before {
+  content: "";
+  position: absolute;
+  top: calc(50%);
+  left: calc(50%);
+  width: 50%;
+  height: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.5);
+  animation: listening 1.5s infinite;
+}
+
+@keyframes listening {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(2);
+    opacity: 0;
+  }
+}
+
+/* Large mic container to fill top row height */
+.micContainer {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Microphone icon default */
+.micIcon {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+}
+
+.micIcon:active {
+  box-shadow: inset 0 0 0 16px #2a2b2a;
+  background-color: #2f59ca;
+}
+
+.micContainer:hover .micTooltip {
+  opacity: 1;
+}
+
+.stopCortadoContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.stopCortadoIcon {
+  width: 48px;
+  height: 48px;
+  /* cursor: pointer; */
+}
+
+.stopCortadoIcon:active {
+  box-shadow: inset 0 0 0 16px #2a2b2a;
+  background-color: #2f59ca;
+}
+
+.settingsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  margin-top: 8px;
+}
+
+.pythonSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+}
+
+/* Hide the native appearance and style manually */
+.customCheckbox {
+  -webkit-appearance: none; /* for Chrome/Safari */
+  -moz-appearance: none; /* for Firefox */
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #96b6a4;
+  background-color: #ffffff; /* White background when unchecked */
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.customCheckbox:checked::after {
+  content: "✓";
+  color: #96b6a4; /* Checkmark color */
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.tickboxLabel {
+  display: flex;
+  align-items: center;
+  font-size: 0.9rem;
+  cursor: default;
+}
+
+.tickboxLabel input[type="checkbox"] {
+  margin-right: 4px;
+}
+
+.statusAndVolume {
+  display: flex;
+  align-items: center;
+  gap: 16px; /* Adjust spacing between status and volume as needed */
+}
+
+.status {
+  font-weight: 400;
+  font-size: 0.9rem;
+  color: #c0e9d2;
+}
+
+.statusConnected {
+  color: #34a853;
+}
+
+.statusDisconnected {
+  color: #d93025;
+}
+
+/* Volume slider container */
+.volumeSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c0e9d2;
+}
+
+.volumeSection label {
+  font-size: 0.9rem;
+}
+
+.volumeSection input[type="range"] {
+  accent-color: #2f5bca;
+  width: 108px;
+}

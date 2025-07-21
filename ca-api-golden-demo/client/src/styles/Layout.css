@@ -1,0 +1,291 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* client/src/styles/Layout.css */
+
+/* default values for customVars  */
+:root {
+  --bodyBackground: #000000;
+  --userQuestionBackground: #a3fd8c;
+  --userQuestionText: #202124;
+  --newConversationButtonBackground: #1a7344;
+  --newConversationButtonColor: #ffffff;
+}
+
+body {
+  font-family: "Google Sans", "Product Sans", sans-serif;
+  background: #e9eef6;
+  padding-left: 30px;
+  padding-right: 30px;
+  padding-bottom: 30px;
+  margin: 0;
+}
+
+.page-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 95vh;
+  background: #e9eef6;
+}
+
+main {
+  flex-grow: 1;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.banner {
+  position: sticky;
+  top: 0;
+  z-index: 999;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #fff;
+  padding: 15px 30px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+
+.banner-left {
+  display: flex;
+  align-items: center;
+}
+
+.logo {
+  width: 40px;
+  height: auto;
+  margin-right: 15px;
+}
+
+.site-title {
+  color: #3c4043;
+  font-size: 1.6em;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.nav-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+}
+
+.nav-item {
+  margin-left: 25px;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: #5f6368;
+  font-size: 1.1em;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 5px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.nav-link:hover {
+  background-color: #e8f0fe;
+  color: #1a73e8;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  background: #fff;
+  list-style: none;
+  padding: 5px 0;
+  margin: 0;
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  white-space: nowrap;
+  min-width: max-content;
+}
+
+.nav-item.dropdown:hover > .dropdown-menu {
+  display: block;
+}
+
+.dropdown-item {
+  display: block;
+  text-decoration: none;
+  color: #5f6368;
+  font-size: 1.1em;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 5px;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  margin: 4px 8px;
+}
+
+.dropdown-item:hover {
+  background-color: #e8f0fe;
+  color: #1a73e8;
+}
+
+.dropdown-submenu {
+  position: relative;
+}
+
+.dropdown-submenu > .dropdown-menu {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 0px;
+  margin-top: 0px;
+}
+
+.dropdown-submenu:hover > .dropdown-menu {
+  display: block;
+}
+
+.banner-right {
+  display: flex;
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+}
+
+.welcome-text {
+  color: #3c4043;
+  font-size: 1em;
+  margin-right: 15px;
+}
+
+.sign-out-button {
+  background-color: #fff;
+  border: none;
+  color: #3c4043;
+  padding: 8px 16px;
+  border-radius: 5px;
+  font-size: 1em;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.sign-out-button:hover {
+  background-color: #e8e8e8;
+}
+
+/* cymbal pets branding  */
+
+body.branded {
+  background: var(--bodyBackground);
+}
+
+.page-container.branded {
+  background: var(--bodyBackground);
+}
+
+.logo--custom {
+  /* override the <img> with a background-image so we can swap it dynamically */
+  width: 145px;
+  height: 40px;
+  background: var(--custom-logo) center/contain no-repeat;
+}
+
+.logo.branded {
+  width: 145px;
+}
+
+.banner.branded {
+  margin-bottom: 0px;
+}
+
+.banner-nav.branded {
+  margin-left: auto;
+  padding-right: 20px;
+}
+
+.nav-item.dropdown.branded {
+  margin-left: 0px;
+}
+
+.nav-item.branded {
+  margin-left: 0px;
+}
+
+.branded-title-container {
+  padding: 10px;
+  margin: 10px 0;
+  color: #ffffff;
+}
+
+.branded-title-container h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 500;
+  font-family: "IBM Plex Sans";
+}
+
+/* Gear button */
+.gear-button {
+  background: none;
+  border: none;
+  padding-left: 10px;
+  cursor: pointer;
+}
+
+.gear-icon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+/* Modal overlay for Customize Branding */
+.style-editor-modal {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: white;
+  border: 1px solid #ccc;
+  padding: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.style-editor-modal label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9em;
+}
+
+.editor-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.editor-label {
+  min-width: 120px;
+  font-weight: 500;
+}
+
+.page-title-input {
+  min-width: 200px;
+}

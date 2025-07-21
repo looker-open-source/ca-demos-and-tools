@@ -1,0 +1,362 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* client/src/styles/ChatPage.css */
+
+.chat-page-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-radius: 20px;
+  background-color: #ffffff;
+  flex-grow: 1; /* Allow chat-page-container to take up available space */
+}
+
+.chat-window {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 16px;
+  border-radius: 20px;
+  background-color: #ffffff;
+  display: flex;
+  flex-direction: column;
+}
+
+.sub-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.sub-header h1 {
+  font-size: 1.6rem;
+  font-weight: 500;
+  margin: 0;
+  color: #202124;
+}
+
+.new-conversation-button {
+  background-color: #d93025;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.95em;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.new-conversation-button:hover {
+  background-color: #c72517;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 8px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.agent-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  margin-right: 8px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.message {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+}
+
+/* Question (user) bubble styling */
+.message.question .message-box {
+  background-color: #4285f4;
+  color: #fff;
+  border-radius: 16px 16px 16px 0;
+}
+
+/* Response (agent) bubble styling */
+.message.response .message-box {
+  background-color: transparent;
+  color: #202124; /* Dark gray text */
+  width: 80%; /* control width of vega chart here */
+}
+
+.message-box {
+  padding: 5px 16px;
+}
+
+.message-box p {
+  margin: 0;
+  word-wrap: break-word; /* Prevent long words from overflowing */
+}
+
+.exploreLink {
+  order: 2;
+  margin-left: 8px;
+  display: inline-block;
+}
+
+.exploreLink img.grayscale-filter {
+  filter: grayscale(100%);
+}
+
+.exploreLink img {
+  width: 32px;
+  height: 24px;
+  object-fit: contain;
+  display: block;
+}
+
+.code {
+  background-color: #f5f5f5;
+  padding: 10px;
+  white-space: pre-wrap;
+  font-family: "Courier New", Courier, monospace;
+  margin-top: 5px;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  margin-bottom: 16px;
+  padding-left: 75px;
+  padding-right: 100px;
+}
+
+.chart-container {
+  width: 100%;
+}
+
+.error-message {
+  color: #d93025;
+  margin-bottom: 16px;
+  font-size: 0.9em;
+}
+
+.suggestions-container {
+  position: relative;
+  background-color: #fff;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.suggestion-question {
+  margin-bottom: 10px;
+  align-items: center;
+  color: #3c4043;
+  font-size: 1.6em;
+  font-weight: 400;
+  padding: 0 16px;
+}
+
+.suggestion-chips-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 0 16px;
+}
+
+.suggestion-chip {
+  background-color: #e9eef6;
+  border: 1px solid #e9eef6;
+  color: #433c3c;
+  padding: 8px 16px;
+  border-radius: 0 20px 20px 20px;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  text-align: left;
+  transition: background-color 0.2s ease-in-out;
+  display: flex;
+  align-items: center;
+  width: auto;
+}
+
+.suggestion-chip:hover {
+  box-shadow: 0 1px 3px 0 rgba(60, 64, 67, 0.302),
+    0 4px 8px 3px rgba(60, 64, 67, 0.149);
+}
+
+.form-actions {
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-form {
+  position: relative;
+  padding: 16px;
+  background-color: #fff;
+  border-top: 1px solid #ccc;
+}
+
+.chat-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.chat-form input[type="text"] {
+  flex-grow: 1;
+  padding: 8px 40px 8px 16px;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  margin-bottom: 8px;
+  font-size: 1em;
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-form input[type="text"]:focus {
+  border-color: #4285f4;
+  box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.2);
+}
+
+.chat-form button {
+  background-color: transparent;
+  color: #4285f4;
+  border: none;
+  padding: 10px;
+  border-radius: 50%;
+  font-size: 1em;
+  cursor: pointer;
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-53%);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.chat-form button.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-grow: 1;
+}
+
+.input-text {
+  background-color: #e9eef6;
+}
+
+.options {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center; /* Vertically align the button and tickbox container */
+}
+
+.options-left {
+  margin-left: 15px;
+}
+
+.options-right {
+  margin-right: 15px;
+  margin-bottom: 10px;
+  display: flex;
+  gap: 15px;
+}
+
+.tickbox-container {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.tickmark-label-left {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 10px;
+}
+
+.tickmark-label-left .tick-label-text {
+  font-size: 14px;
+  font-family: Roboto;
+  color: #433c3c;
+}
+
+.tick-mark {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #ccc;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.tick-mark:hover {
+  border-color: rgba(0, 0, 0, 0.87);
+}
+
+.tick-mark.checked {
+  background-color: #4285f4;
+  border-color: #4285f4;
+}
+
+.tick-mark.checked:hover {
+  background-color: #3367d6;
+  border-color: #3367d6;
+}
+
+.checkmark {
+  color: white;
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* cymbal pets branding  */
+
+.new-conversation-button.branded {
+  background-color: var(--newConversationButtonBackground);
+  color: var(--newConversationButtonColor);
+}
+
+.new-conversation-button.branded:hover {
+  background-color: var(--btnHoverBg);
+}
+
+.message.question .message-box.branded {
+  background-color: var(--userQuestionBackground);
+  color: var(--userQuestionText);
+}

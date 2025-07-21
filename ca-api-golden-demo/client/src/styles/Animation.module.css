@@ -1,0 +1,188 @@
+/*
+ * Copyright 2025 Google LLC
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* client/src/styles/Animation.css */
+
+/* Animation for typewriter effect for character-by-character reveal */
+.text span {
+  opacity: 0;
+  animation: fadeIn 0.02s forwards;
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* fade in animation for temp status and summary headers */
+.fadeInAnimate {
+  -webkit-animation-duration: 1s;
+  animation-duration: 1s;
+  -webkit-animation-fill-mode: both;
+  animation-fill-mode: both;
+}
+
+.fadeInDelay {
+  -webkit-animation-delay: 0.5s;
+  -moz-animation-delay: 0.5s;
+  animation-delay: 0.5s;
+}
+
+@-webkit-keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fadeIn {
+  -webkit-animation-name: fadeIn;
+  animation-name: fadeIn;
+}
+
+/* System thinking for cortadoLoading */
+.dotPulse {
+  position: relative;
+  left: -9999px;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: #253d30;
+  color: #253d30;
+  box-shadow: 9999px 0 0 -5px #253d30;
+  animation: dotPulseAnimate 1.5s infinite linear;
+  animation-delay: 0.25s;
+}
+
+.dotPulse::before,
+.dotPulse::after {
+  content: "";
+  display: inline-block;
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background-color: #253d30;
+  color: #253d30;
+}
+
+.dotPulse::before {
+  box-shadow: 9984px 0 0 -5px #253d30;
+  animation: dotPulseBefore 1.5s infinite linear;
+  animation-delay: 0s;
+}
+
+.dotPulse::after {
+  box-shadow: 10014px 0 0 -5px #253d30;
+  animation: dotPulseAfter 1.5s infinite linear;
+  animation-delay: 0.5s;
+}
+
+@keyframes dotPulseBefore {
+  0% {
+    box-shadow: 9984px 0 0 -5px #253d30;
+  }
+  30% {
+    box-shadow: 9984px 0 0 2px #253d30;
+  }
+  60%,
+  100% {
+    box-shadow: 9984px 0 0 -5px #253d30;
+  }
+}
+
+@keyframes dotPulseAnimate {
+  0% {
+    box-shadow: 9999px 0 0 -5px #253d30;
+  }
+  30% {
+    box-shadow: 9999px 0 0 2px #253d30;
+  }
+  60%,
+  100% {
+    box-shadow: 9999px 0 0 -5px #253d30;
+  }
+}
+
+@keyframes dotPulseAfter {
+  0% {
+    box-shadow: 10014px 0 0 -5px #253d30;
+  }
+  30% {
+    box-shadow: 10014px 0 0 2px #253d30;
+  }
+  60%,
+  100% {
+    box-shadow: 10014px 0 0 -5px #253d30;
+  }
+}
+
+.collapsibleSection {
+  margin: 8px 0;
+}
+
+/* Hide the native arrow in Chrome, Safari, Opera */
+.collapsibleSection summary::-webkit-details-marker {
+  display: none;
+}
+/* Hide the native arrow in Firefox */
+.collapsibleSection summary::marker {
+  display: none;
+}
+
+.collapsibleSection summary {
+  cursor: pointer;
+  display: inline-flex; /* so the icon sits immediately after text */
+  align-items: center;
+}
+
+/* Use your expand icon by default */
+.collapsibleSection summary::after {
+  content: "";
+  display: inline-block;
+  width: 32px;
+  height: 24px;
+  margin-left: 8px; /* space between text and icon */
+  background: url("../../public/expand_button.png") no-repeat center center;
+  background-size: contain;
+  order: 1;
+}
+
+.collapsibleSection.defaultVariant summary::after {
+  filter: grayscale(100%);
+}
+
+/* Switch to collapse icon when open */
+.collapsibleSection[open] summary::after {
+  background-image: url("../../public/collapse_button.png");
+  order: 1;
+}
+
+.collapsibleSection.defaultVariant[open] summary::after {
+  filter: grayscale(100%);
+}

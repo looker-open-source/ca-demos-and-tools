@@ -1,0 +1,57 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@looker/embed-sdk": "^1.8.7",
+    "@tanstack/react-table": "^8.20.6",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@types/jest": "^27.5.2",
+    "@types/node": "^16.18.76",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "firebase": "^11.2.0",
+    "js-yaml": "^4.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^7.1.2",
+    "react-scripts": "5.0.1",
+    "reconnecting-websocket": "^4.4.0",
+    "recordrtc": "^5.6.2",
+    "sql-formatter": "^15.5.2",
+    "vega": "^5.33.0",
+    "vega-embed": "^6.23.0",
+    "vega-lite": "^5.23.0",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "GENERATE_SOURCEMAP=false react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version"
+    ]
+  },
+  "proxy": "http://localhost:8081",
+  "devDependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "@types/js-yaml": "^4.0.9",
+    "@types/recordrtc": "^5.6.14"
+  }
+}

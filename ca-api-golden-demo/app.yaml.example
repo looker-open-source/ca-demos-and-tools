@@ -1,0 +1,17 @@
+runtime: nodejs
+env: flex
+
+runtime_config:
+  operating_system: ubuntu22
+  runtime_version: 22
+
+entrypoint: node build/index.js
+
+automatic_scaling:
+  min_num_instances: 1
+
+env_variables:
+  NODE_ENV: production
+  GCP_PROJECT_NAME: update-this
+  LOOKER_INSTANCE_URI: update-this
+  LOOKER_EMBED_DOMAIN: update-this
