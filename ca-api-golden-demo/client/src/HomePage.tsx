@@ -30,8 +30,6 @@ function HomePage() {
       </header>
 
       <main className="content">
-        {/* First row: 3 cards */}
-
         <div className="data-card">
           <img src="cymbalpets.png" alt="Cymbal Pets" className="card-image" />
           <h2 className="card-title">Cymbal Pets</h2>
@@ -108,7 +106,22 @@ function HomePage() {
           </div>
         </div>
 
-        {/* Second row: 3 cards */}
+        <div className="data-card">
+          <img src="gemini.png" alt="Orchestration" className="card-image" />
+          <h2 className="card-title">Multi-Agent Orchestration</h2>
+          <p className="card-subtitle">Auto route to a CA agent</p>
+          <p className="card-description">
+            Let Gemini pick the right agent for each question and hand it off to
+            the CA API. One chat, one entry point. Your query is automatically
+            routed to the OpenAQ, The Look Events, or Cymbal Pets CA agent so
+            you never have to choose a source.
+          </p>
+          <div className="card-actions">
+            <Link to="/orchestrate" className="card-button">
+              Try it out
+            </Link>
+          </div>
+        </div>
 
         <div className="data-card">
           <img src="openaq.png" alt="OpenAQ Data" className="card-image" />

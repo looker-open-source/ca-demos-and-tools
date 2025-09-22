@@ -125,8 +125,8 @@ export const appDatasourceReferences: AppConfig = {
       bq: {
         table_references: [
           {
-            projectId: "gemini-looker-demo-dataset",
-            datasetId: "thelook_ecommerce",
+            projectId: "looker-private-demo",
+            datasetId: "thelook",
             tableId: "events",
           },
         ],
@@ -308,13 +308,6 @@ export async function getSystemInstruction(
   agentPageId: string
 ): Promise<string> {
   const secretKey = `SYSTEM_INSTRUCTION_${agentPageId.toUpperCase()}`;
-  return await getSecret(secretKey);
-}
-
-// Retrieves array of emails, e.g. ["abc@google.com","def@google.com", ...]
-// (This isn’t for security – just to limit access)
-export async function checkAllowedEmail(pageId: string) {
-  const secretKey = `ALLOWLIST_${pageId.toUpperCase()}`;
   return await getSecret(secretKey);
 }
 

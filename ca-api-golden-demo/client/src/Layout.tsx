@@ -262,6 +262,11 @@ function Layout({
             ) : (
               <>
                 <li className="nav-item">
+                  <Link to="/orchestrate" className="nav-link">
+                    Orchestrate
+                  </Link>
+                </li>
+                <li className="nav-item">
                   <Link to="/chat/openaq" className="nav-link">
                     OpenAQ
                   </Link>

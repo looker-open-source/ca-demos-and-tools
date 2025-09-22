@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { useParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Visualization from "./components/Visualization";
@@ -40,19 +39,12 @@ interface ChatPageProps {
 
 const LOCAL_STORAGE_KEY_PREFIX = "chatMessages-";
 
-function ChatPage({
-  variant = "default",
-  dashboardId,
-  systemInstructionOverride,
-  avatarUrl,
-}: ChatPageProps) {
-  const params = useParams<{ pageId: string }>();
-  const pageId = params.pageId;
-  const datasetKey = dashboardId ? `${pageId}_${dashboardId}` : pageId;
+function OrchestratePage({ variant = "default" }: ChatPageProps) {
+  const pageId = "orchestrate";
+  const datasetKey = pageId;
   const storageKey = `${LOCAL_STORAGE_KEY_PREFIX}${pageId}`;
 
-  const agentAvatarSrc =
-    avatarUrl || (variant === "branded" ? "/cymbalpets.png" : "/gemini.png");
+  const agentAvatarSrc = "/gemini.png";
 
   const chatEndRef = useRef<HTMLDivElement>(null); // Ref for auto-scrolling
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -70,7 +62,6 @@ function ChatPage({
   const [loading, setLoading] = useState<boolean>(false); // Awaiting results from api
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false); // Show suggestion chips if no message history
   const [pythonAnalysisEnabled, setPythonAnalysisEnabled] = useState(false); // enable or disable python analysis option
-  const [systemInstruction, setSystemInstruction] = useState(""); // system instructions for cortado per datasource
 
   const { user } = useUser();
 
@@ -129,16 +120,15 @@ function ChatPage({
       setMessages([...messages, newQuestion]); // contains all messages including errors
 
       try {
-        const response = await fetch(`/api/data?pageId=${datasetKey}`, {
+        const response = await fetch(`/api/orchestrate`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             messages: cleanMessagesToSend,
-            systemInstruction,
-            pythonAnalysisEnabled,
             email: user!.email,
+            pythonAnalysisEnabled,
           }),
           signal: controller.signal,
         });
@@ -230,36 +220,8 @@ function ChatPage({
         setLoading(false);
       }
     },
-    [user, datasetKey, systemInstruction, messages, pythonAnalysisEnabled]
+    [user, messages, pythonAnalysisEnabled]
   );
-
-  // Fetch the system instruction from the backend endpoint only if no override is provided
-  // Override used for cymbalpets_embed to send dashboard filters context
-  useEffect(() => {
-    if (pageId === "cymbalpets_embed") {
-      if (systemInstructionOverride !== undefined) {
-        setSystemInstruction(systemInstructionOverride);
-      }
-      // Early return to prevent the multiple API calls
-      return;
-    }
-
-    // custom system instructions for branded versions
-    const agentPageId = "cortado_" + pageId;
-    fetch(`/api/system-instructions?agentPageId=${agentPageId}`)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then((data) => {
-        setSystemInstruction(data.systemInstruction);
-      })
-      .catch((err) => {
-        console.error("Error fetching system instructions:", err);
-      });
-  }, [pageId, variant, systemInstructionOverride]);
 
   // Load messages from localStorage and render on mount and when storageKey changes (navigating between chat pages)
   useEffect(() => {
@@ -376,11 +338,7 @@ function ChatPage({
     await fetchData(question); // Fetch the response
   };
 
-  const headingText =
-    variant === "branded"
-      ? "Conversational Analytics"
-      : suggestions.find((q) => q.dataset === pageId)?.formattedName +
-        " Data Demo";
+  const headingText = "Orchestration Data Demo";
 
   return (
     <div className="chat-page-container">
@@ -391,9 +349,7 @@ function ChatPage({
             <button
               type="button"
               onClick={clearChat}
-              className={`new-conversation-button ${
-                variant === "branded" ? "branded" : ""
-              }`}
+              className={`new-conversation-button`}
             >
               + New Conversation
             </button>
@@ -422,11 +378,7 @@ function ChatPage({
                     />
                   )}
                   <div style={{ marginLeft: showAvatar ? 0 : "48px" }}></div>
-                  <div
-                    className={`message-box ${
-                      variant === "branded" ? "branded" : ""
-                    }`}
-                  >
+                  <div className={`message-box`}>
                     <p>{message.text}</p>
                   </div>
                 </>
@@ -692,4 +644,4 @@ function ChatPage({
   );
 }
 
-export default ChatPage;
+export default OrchestratePage;

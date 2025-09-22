@@ -19,6 +19,7 @@ import WebSocket from "ws";
 import { getAccessToken } from "./authHelper";
 import * as config from "./config";
 import { askQuestion } from "./GeminiDataAnalytics";
+import { orchestrateQuestion } from "./GeminiOrchestrator";
 import logger from "./logger";
 
 const server = express();
@@ -189,20 +190,38 @@ const startServer = async () => {
     }
   });
 
-  // route used as simple middleware to restrict access based on user.email
-  app.get("/api/allowlist", async (req: Request, res: Response) => {
-    const { pageId } = req.query;
-    if (!pageId || typeof pageId !== "string") {
-      return res.status(400).json({ error: "pageId is required" });
+  //  route for orchestration API call
+  app.post(
+    "/api/orchestrate",
+    express.json({ limit: "20mb" }),
+    async (req: Request, res: Response) => {
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("Content-Encoding", "none");
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Transfer-Encoding", "chunked");
+      res.setHeader("X-Accel-Buffering", "no");
+
+      try {
+        const { projectId, token } = await getAccessToken();
+
+        if (!req.body.messages) {
+          return res.status(400).json({ error: "Messages is required" });
+        }
+        if (!token) {
+          return res.status(400).json({ error: "Error getting token" });
+        }
+
+        req.body.projectId = projectId;
+        req.body.token = token;
+
+        await orchestrateQuestion(req, res);
+      } catch (err) {
+        logger.error("Error in /api/orchestrate:", err);
+        res.status(500).json({ error: "An error occurred" });
+      }
     }
-    try {
-      const allowlist = await config.checkAllowedEmail(pageId);
-      res.json({ allowlist });
-    } catch (err) {
-      logger.error("Error fetching allowlist:", err);
-      res.status(500).json({ error: "Failed to load allowlist" });
-    }
-  });
+  );
 
   //  route for cortado API call
   app.post(
