@@ -41,25 +41,24 @@ This project demonstrates how to interact with a Conversational Analytics API us
     ```bash
     cp conversational_analytics_api/.env_example conversational_analytics_api/.env
     ```
-    Edit `conversational_analytics_api/.env` and fill in the required values (e.g., API keys, project ID).
+    Edit `conversational_analytics_api/.env` and fill in the required values.
 
-6.  **Change constants in `agent.py`**
-    ```python
-    
-    # CONFIG
-    GEMINI_MODEL = "gemini-2.5-flash" # or any other model, flash models well suited for low latency use cases
-    VERTEX_AI_CODE_INTERPRETER_EXTENSION = The previously created Vertex AI Code Interpreter extension in the format of "projects/${project_number}/locations/us-central1/extensions/${extension_id}"
-    
+    ```bash
+    # Config for ADK
+    GOOGLE_CLOUD_PROJECT=""
+    GOOGLE_CLOUD_LOCATION="" #e.g. us-central1
+    GOOGLE_GENAI_USE_VERTEXAI="True"
 
-    #CA API CONFIG
-    LOOKER_CLIENT_ID = "" 
-    LOOKER_CLIENT_SECRET = ""
-    LOOKER_INSTANCE_URI = ""
-    LOOKML_MODEL = ""
-    LOOKER_EXPLORE = ""
-    CA_API_SYSTEM_INSTRUCTIONS = Example: "You are an expert sales, product, and operations analyst for our e-commerce store. Your primary function is to answer questions by querying the 'Order Items' Explore. Always be concise and data-driven. Never generate a chart."
-    CA_API_BILLING_PROJECT = "" # the billing project for the CA API.
-
+    # Config for Agent
+    GEMINI_MODEL = "gemini-2.5-flash"
+    VERTEX_AI_CODE_INTERPRETER_EXTENSION = 
+    LOOKER_CLIENT_ID = 
+    LOOKER_CLIENT_SECRET = 
+    LOOKER_INSTANCE_URI = 
+    LOOKML_MODEL = 
+    LOOKER_EXPLORE = 
+    CA_API_SYSTEM_INSTRUCTIONS = E.g: "You are an expert sales, product, and operations analyst for our e-commerce store. Your primary function is to answer questions by querying the 'Order Items' Explore. Always be concise and data-driven. Never generate a chart."
+    CA_API_BILLING_PROJECT =
     ```
 
 

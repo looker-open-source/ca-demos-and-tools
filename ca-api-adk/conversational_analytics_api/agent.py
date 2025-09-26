@@ -1,21 +1,27 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
 from google.cloud import geminidataanalytics
 from google.adk.agents import Agent
 from google.adk.code_executors import VertexAiCodeExecutor
 from google.adk.tools import agent_tool
 
+
 # CONFIG
-GEMINI_MODEL = "gemini-2.5-flash"
-VERTEX_AI_CODE_INTERPRETER_EXTENSION = ""
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+VERTEX_AI_CODE_INTERPRETER_EXTENSION = os.getenv("VERTEX_AI_CODE_INTERPRETER_EXTENSION")
 #
 
 #CA API CONFIG
-LOOKER_CLIENT_ID = ""
-LOOKER_CLIENT_SECRET = ""
-LOOKER_INSTANCE_URI = ""
-LOOKML_MODEL = ""
-LOOKER_EXPLORE = ""
-CA_API_SYSTEM_INSTRUCTIONS = "You are an expert sales, product, and operations analyst for our e-commerce store. Your primary function is to answer questions by querying the 'Order Items' Explore. Always be concise and data-driven. Never generate a chart."
-CA_API_BILLING_PROJECT = ""
+LOOKER_CLIENT_ID = os.getenv("LOOKER_CLIENT_ID")
+LOOKER_CLIENT_SECRET = os.getenv("LOOKER_CLIENT_SECRET")
+LOOKER_INSTANCE_URI = os.getenv("LOOKER_INSTANCE_URI")
+LOOKML_MODEL = os.getenv("LOOKML_MODEL")
+LOOKER_EXPLORE = os.getenv("LOOKER_EXPLORE")
+CA_API_SYSTEM_INSTRUCTIONS = os.getenv("CA_API_SYSTEM_INSTRUCTIONS")
+CA_API_BILLING_PROJECT = os.getenv("CA_API_BILLING_PROJECT")
+
 
 def get_insights(question: str):
     """Queries the Conversational Analytics API using a question as input.
@@ -32,24 +38,17 @@ def get_insights(question: str):
   """
 
     data_chat_client = geminidataanalytics.DataChatServiceClient()
-    lookml_model = LOOKML_MODEL
-    explore = LOOKER_EXPLORE
-
-    
-    looker_client_id = LOOKER_CLIENT_ID
-    looker_client_secret = LOOKER_CLIENT_SECRET
-    looker_instance_uri = LOOKER_INSTANCE_URI
 
     credentials = geminidataanalytics.Credentials(
         oauth=geminidataanalytics.OAuthCredentials(
             secret=geminidataanalytics.OAuthCredentials.SecretBased(
-                client_id=looker_client_id, client_secret=looker_client_secret
+                client_id=LOOKER_CLIENT_ID, client_secret=LOOKER_CLIENT_SECRET
             ),
         )
     )
 
     looker_explore_reference = geminidataanalytics.LookerExploreReference(
-        looker_instance_uri=looker_instance_uri, lookml_model=lookml_model, explore=explore
+        looker_instance_uri=LOOKER_INSTANCE_URI, lookml_model=LOOKML_MODEL, explore=LOOKER_EXPLORE
     )
 
     
@@ -76,8 +75,7 @@ def get_insights(question: str):
 
     billing_project = CA_API_BILLING_PROJECT
 
-    messages = [geminidataanalytics.Message()]
-    messages[0].user_message.text = question
+    messages = [geminidataanalytics.Message(user_message={"text": question})]
 
     request = geminidataanalytics.ChatRequest(
         inline_context=inline_context,
@@ -95,7 +93,7 @@ def get_insights(question: str):
     chart_insights = []
 
     for item in stream:
-        if item._pb.WhichOneof("kind") == "system_message":
+        if item.system_message:
             message_dict = geminidataanalytics.SystemMessage.to_dict(
                 item.system_message
             )
