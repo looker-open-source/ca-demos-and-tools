@@ -1,0 +1,3 @@
+google-adk
+google-cloud-geminidataanalytics
+google-cloud-aiplatform
