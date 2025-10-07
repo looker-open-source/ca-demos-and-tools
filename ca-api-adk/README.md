@@ -1,4 +1,4 @@
-# Conversational Analytics API Demo
+# Conversational Analytics API with ADK
 
 This project demonstrates how to interact with a Conversational Analytics API using a stateless chat approach. It includes the necessary setup steps to get you started.
 
