@@ -5,7 +5,7 @@ This project demonstrates how to interact with a Conversational Analytics API us
 ## Prerequisites
 
 1.  **Google Cloud Project:** You need a Google Cloud project with the Vertex AI API enabled and [Gemini Data Analytics API enabled](https://cloud.google.com/gemini/docs/conversational-analytics-api/enable-the-api)
-2.  **Vertex AI Code Interpreter Extension:** Ensure you have created and configured a Vertex AI Code Interpreter Extension within your Google Cloud project - follow this [Documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/extensions/create-extension)
+2.  **Vertex AI Code Interpreter Extension:** Ensure you have created and configured a Vertex AI Code Interpreter Extension within your Google Cloud project - follow this [Documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/extensions/code-interpreter)
 3.  **Python 3.7+:** Make sure you have a compatible Python version installed.
 4.  **Looker Instance:** An existing Looker instance with a LookML model and explore to query.
 5.  **Looker API Keys:** Follow [these steps](https://cloud.google.com/looker/docs/admin-panel-users-users#api_keys) to obtain Looker API keys
