@@ -29,6 +29,6 @@ This project provides an examples of how to use the Conversational Analytics API
 This project provides an example of how to use streaming with the Conversational Analytics API and ADK. The demo includes:
 
 - A root agent that uses a custom ADK Agent class, and connects to the CA API streaming responses back asynchronously.
-- Showcases examples of how to save various json partials from the CA API (like the viz response, or raw data result) to Agent session temp storage to be accessed by subsequent agents in the same invocation.
+- Showcases examples of how to save various JSON partials from the CA API (like the viz response, or raw data result) to Agent session temp storage to be accessed by subsequent agents in the same invocation.
 - Documentation on how to deploy this agent to Agent Engine or run locally
-- Examples of using this Agent in a multi agent system.
+- Examples of using this Agent in a multi-agent system.
