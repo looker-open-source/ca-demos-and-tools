@@ -148,7 +148,7 @@ This agent executes a pipeline of the above agents.
 
 ```python
 from google.adk.agents import SequentialAgent
-root_agent = SequentialAgent(
+sequential_agent = SequentialAgent(
     name="TopLevelAgent",
     description="Executes a pipeline of agents. The first being a data agent that can answer any question about data. The second being an agent that takes the data result from prior output and performs advanced analysis on it. And the third, a visualization agent that visualizes the raw data intiutively based on the structure and records returned.",
     sub_agents=[root_agent,code_executor_agent,visualization_agent]
