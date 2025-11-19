@@ -12,15 +12,14 @@ This agent leverages the Gemini Conversational Analytics API to answer questions
 
 ## Running the Agent Locally
 
-1.  **Create a virtual environment:**
+1.  **Install the dependencies:**
     ```bash
-    python3 -m venv .venv
-    source .venv/bin/activate
+    uv sync --frozen
     ```
 
-2.  **Install the dependencies:**
+2.  **Enter virtual environment:**
     ```bash
-    uv pip install -r requirements.txt
+    source .venv/bin/activate
     ```
 
 3.  **Set the environment variables:**
@@ -39,7 +38,7 @@ This agent leverages the Gemini Conversational Analytics API to answer questions
 
 4.  **Run the agent:**
     ```bash
-    adk run web
+    adk web
     ```
 
 ## Building and Deploying to Agent Engine
@@ -149,9 +148,9 @@ This agent executes a pipeline of the above agents.
 
 ```python
 from google.adk.agents import SequentialAgent
-root_agent = SequentialAgent(
+sequential_agent = SequentialAgent(
     name="TopLevelAgent",
     description="Executes a pipeline of agents. The first being a data agent that can answer any question about data. The second being an agent that takes the data result from prior output and performs advanced analysis on it. And the third, a visualization agent that visualizes the raw data intiutively based on the structure and records returned.",
-    sub_agents=[ca_agent,code_executor_agent,visualization_agent]
+    sub_agents=[root_agent,code_executor_agent,visualization_agent]
 )
 ```
