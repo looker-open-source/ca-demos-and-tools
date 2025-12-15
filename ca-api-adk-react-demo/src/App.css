@@ -36,3 +36,104 @@
     transform: rotate(360deg);
   }
 }
+
+/* TopBanner Styles */
+.top-banner {
+  background-color: white;
+  height: 49px;
+  border-bottom: 1px solid #DADCE0;
+  display: flex;
+  align-items: center;
+  /* Responsive padding matching px: { xs: 0, sm: 1 } */
+  padding-left: 0;
+  padding-right: 0;
+}
+
+@media (min-width: 600px) {
+  .top-banner {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
+.top-banner-content {
+  width: 100%;
+}
+
+.top-banner-logo {
+  width: 36px;
+  height: 36px;
+  margin-right: 4px; /* mr: 0.5 */
+  display: block;
+}
+
+/* We use !important here to ensure we override Material UI's default typography styles 
+   without needing a complex theme setup */
+.top-banner-title {
+  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-weight: 400 !important;
+  font-size: 18px !important;
+  line-height: 17px !important;
+  letter-spacing: -0.4px !important;
+  color: #5F6368 !important;
+}
+
+/* --- ThemeSwitcher Styles --- */
+
+.theme-switcher-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+/* Button with negative margin to sit closer to the icon */
+.theme-switcher-arrow-btn {
+  margin-left: -8px !important; /* Matches sx={{ ml: -1 }} */
+  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
+}
+
+/* Target the MUI Paper component (the dropdown box) */
+.theme-switcher-menu .MuiPaper-root {
+  overflow: visible !important;
+  filter: drop-shadow(0px 2px 8px rgba(0,0,0,0.1)) !important;
+  margin-top: 12px !important; /* mt: 1.5 */
+  border: 1px solid #e0e0e0 !important; /* grey.300 */
+}
+
+/* Menu Item Styles */
+.theme-switcher-menu-item {
+  padding: 8px 16px !important; /* px: 2, py: 1 */
+  font-size: 14px !important;
+  color: rgba(0, 0, 0, 0.87) !important; /* text.primary */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+}
+
+/* Selected State Override */
+.theme-switcher-menu-item.Mui-selected {
+  background-color: #f5f5f5 !important; /* grey.100 */
+}
+
+.theme-switcher-menu-item.Mui-selected:hover {
+  background-color: #eeeeee !important; /* grey.200 */
+}
+
+/* Flex container for the label and icon */
+.theme-switcher-item-content {
+  display: flex;
+  align-items: center;
+}
+
+/* The icon inside the menu (Sun, Moon, etc.) */
+.theme-switcher-option-icon {
+  min-width: 36px !important;
+  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
+}
+
+/* The checkmark icon */
+.theme-switcher-check {
+  min-width: auto !important;
+  color: #1976d2 !important; /* primary.main */
+  margin-left: 16px !important; /* ml: 2 */
+}
