@@ -137,3 +137,50 @@
   color: #1976d2 !important; /* primary.main */
   margin-left: 16px !important; /* ml: 2 */
 }
+
+/* Layout container */
+.app-layout {
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+/* Dashboard Content Container */
+.dashboard-container {
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 48px; /* py: 6 (6 * 8px) */
+  padding-bottom: 48px;
+  
+  /* Default padding (xs: 2) */
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* Responsive Padding for sm: 3 */
+@media (min-width: 600px) {
+  .dashboard-container {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+}
+
+/* Responsive Padding for lg: 4 */
+@media (min-width: 1200px) {
+  .dashboard-container {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
+/* Typography Styles */
+/* Using !important to ensure we override Material UI defaults if necessary */
+.dashboard-heading {
+  font-weight: 700 !important;
+  color: rgba(0, 0, 0, 0.87) !important; /* text.primary */
+  margin-bottom: 0.35em !important;
+}
+
+.dashboard-text {
+  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
+}
