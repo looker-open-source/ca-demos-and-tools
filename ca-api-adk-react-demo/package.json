@@ -2,7 +2,8 @@
   "name": "ca-api-adk-react-demo",
   "version": "0.1.0",
   "private": true,
-  "proxy": "http://localhost:8000",
+  "type": "module",
+ 
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -22,16 +23,20 @@
     "react-dom": "^19.2.1",
     "react-json-view": "^1.21.3",
     "react-router-dom": "^7.10.1",
-    "react-scripts": "5.0.1",
     "styled-components": "^6.1.19",
-    "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
+
+    "start:dev": "vite --mode dev",     
+    "start:remote": "vite --mode remote",
+    "start": "pnpm run start:dev",         
+
+    "build:dev": "vite build --mode dev",
+    "build:remote": "vite build --mode remote",
+    "build": "pnpm run build:remote",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "echo 'Eject is not used with Vite'"
   },
   "eslintConfig": {
     "extends": [
@@ -52,6 +57,8 @@
     ]
   },
   "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.9.3",
     "vite": "^7.2.7"
   }
 }

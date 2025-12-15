@@ -4,9 +4,9 @@
  * This file centralizes all API configuration.
  * It automatically selects the correct URL based on the environment/build mode.
  */
-
 // 1. Read the base URL from the environment variables
-const BASE_URL = '';
+// Ensure this is the only way you are accessing it
+const BASE_URL = import.meta.env.VITE_ADK_API_BASE_URL;
 
 console.log(`API Service Initialized using Base URL: ${BASE_URL}`);
 
@@ -44,51 +44,22 @@ export const apiClient = {
      */
     get: async (endpoint: any): Promise<any> => {
         try {
-            const response = await fetch(`${BASE_URL}${"/list-apps"}`, {
+            // The browser sees: http://localhost:5173/api/list-apps
+            // Vite forwards: http://localhost:8000/list-apps
+            const response = await fetch(`/api${endpoint}`, { 
                 method: 'GET',
                 headers: getHeaders(),
             });
 
-            if (!response.ok) {
-                handleError(response.status);
-            }
-
-            const data = await response.json();
-            console.log("--api adk res--", data);
-            return data;
+            // ... rest of the logic
         } catch (error) {
             console.error(`GET ${endpoint} failed:`, error);
             throw error;
         }
     },
-
-    /**
-     * Generic POST request
-     * Usage: await apiClient.post('/users', { name: 'Alice' });
-     */
-    //   post: async <T>(endpoint: string, body: any): Promise<T> => {
-    //     try {
-    //       const response = await fetch(`${BASE_URL}${endpoint}`, {
-    //         method: 'POST',
-    //         headers: getHeaders(),
-    //         body: JSON.stringify(body),
-    //       });
-
-    //       if (!response.ok) {
-    //         handleError(response.status);
-    //       }
-
-    //       return await response.json();
-    //     } catch (error) {
-    //       console.error(`POST ${endpoint} failed:`, error);
-    //       throw error;
-    //     }
-    //   },
-
-    // Expose the calculated URL if you need it for things like Images or Audio src
-    baseUrl: BASE_URL
+    // ...
+    baseUrl: BASE_URL // You can keep this exposed for non-proxy uses like images
 };
-
 function async<T>(endpoint: any, string: any) {
     throw new Error("Function not implemented.");
 }
