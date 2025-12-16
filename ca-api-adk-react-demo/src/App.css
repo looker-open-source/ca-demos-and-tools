@@ -314,28 +314,26 @@
 .side-panel-new-session-button {
   width: 100%;
   padding: 0.75rem 1rem;
+  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
   margin-bottom: 1rem;
-  background-color: #0B57D0; /* Google Blue */
+  background-color: #0B57D0;
   color: white;
   border: none;
   border-radius: 1.5rem;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: .9rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   transition: background-color 0.2s;
-}
-
-.side-panel-new-session-button:hover {
-  background-color: #1565c0;
+  font-weight: 500;
 }
 
 .side-panel-history-header {
   font-size: .9rem;
   font-weight: 600;
   padding: 1rem 0.2rem 0rem 0.2rem;
-  color: var(--text-secondary); /* Dynamic */
+  color: #444746;
   text-align: left;
 }
 
@@ -360,20 +358,22 @@
   align-items: flex-start;
   padding: 0.75rem 1rem;
   cursor: pointer;
-  border-radius: 1.5rem;
+  border-radius: 2.5rem;
   margin-bottom: 0.25rem;
   margin-right: 1rem;
   margin-left: 1rem;
   transition: background-color 0.2s, color 0.2s;
   text-align: left;
-  color: var(--text-primary); /* Dynamic */
+  color: var(--text-primary);
 }
 
 .side-panel-session-item:hover {
   background-color: var(--side-panel-hover);
+  color: #444746;
+  font-weight: 400;
+  font-family: roboto;
 }
 
-/* Active State */
 .side-panel-session-item.active {
   background-color: var(--side-panel-active-bg);
   color: var(--side-panel-active-text);
@@ -382,6 +382,7 @@
 .side-panel-session-title {
   font-size: 0.875rem;
   font-weight: 500;
+  width:95%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -395,7 +396,6 @@
   padding: .3rem;
 }
 
-/* Ensure timestamp is visible in active state */
 .side-panel-session-item.active .side-panel-session-timestamp {
   color: var(--side-panel-active-text); 
   opacity: 0.8;
@@ -410,36 +410,30 @@
   border-radius: 50%;
   color: #444746;
   transition: all 0.2s ease;
-  position: absolute; /* Use absolute to pin it precisely */
+  position: absolute;
   right: 12px;
-  top: 8px; /* Adjust this to move it higher or lower */
+  top: 8px; 
   line-height: 0;
   z-index: 2;
 }
 
-/* Show dots only when hovering the session item */
 .side-panel-session-item:hover .side-panel-action-dots,
 .side-panel-action-dots.visible {
   display: flex;
 }
 
-/* Pink circular background on hover over the dots specifically */
 .side-panel-action-dots:hover {
-  background-color: rgba(233, 30, 99, 0.15); /* Soft pink background */
-  color: #e91e63; /* Pink icon color */
+  background-color: #d387a3db;
+  color: var( --text-secondary);
 }
 
-/* --- The Popup Toolbar Menu --- */
-
-
 .side-panel-toolbar-menu {
-  /* Remove 'left: 90%' or 'top: 10px' from here */
+  position: fixed; /* CHANGE from absolute TO fixed */
   background: #f0f4f9;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-  width: 160px;
+  width: 14rem;
   padding: 8px 0;
-  /* Add pointer-events to ensure it's clickable */
   pointer-events: auto;
 }
 
@@ -448,19 +442,34 @@
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  font-size: 0.9rem;
-  color: #1f1f1f;
+  font-size:16px;
+  font-family: roboto;
+  font-weight: 400;
+  color: #202124;
   transition: background 0.2s;
   cursor: pointer;
   text-align: left;
 }
 
-.menu-item:hover {
-  background-color: #e1e5ea;
+.menu-icon{
+  font-size: 24px;
+  font-weight: 400;
+  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  color:#444746;
 }
 
-.menu-item svg {
-  color: #444746;
+.menu-item:hover {
+  background-color: #C2E7FF;
+  color: #004A77 !important;
+}
+
+.menu-item:hover .menu-icon {
+  color: #004A77 !important
+}
+
+.menu-icon svg {
+  color: inherit;
+  fill: currentColor;
 }
 
 .menu-divider {
@@ -469,8 +478,64 @@
   margin: 6px 0;
 }
 
-.menu-item.delete:hover {
-  background-color: #fce8e6; /* Light red hover for delete */
+.agent-selector-wrapper {
+  display: flex;
+  padding:.6rem 0.2rem 1.4rem .2rem;
+  border-bottom: 1px solid #DADCE0;
+  margin-bottom: 1rem;
+  align-items: center;
+  cursor: pointer;
+  font-family: 'Google Sans', Arial, sans-serif;
+  font-size: 0.875rem;
+  color: #70757a;
+}
+
+.agent-label {
+  margin-right: 4px;
+}
+
+.agent-name-underlined {
+  color: #444746;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-weight: 400;
+}
+
+.agent-arrow-icon {
+  color: #70757a;
+  margin-left: 2px;
+}
+
+.custom-dropdown-menu {
+  background: #f0f4f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  min-width: 180px;
+  padding: 8px 0;
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+.dropdown-item {
+  padding: 12px 20px;
+  color: #1f1f1f;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+  background-color: #C2E7FF;
+  color:#004A77 !important;
+}
+
+.side-panel-dropdown-toolbar-menu {
+  background: #f0f4f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  width: 180px;
+  padding: 8px 0;
+  position: absolute; top: 7rem; left: 9rem; z-index: 99999 ;
+  width:16%;
 }
 
 /* =========================================
