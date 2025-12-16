@@ -4,6 +4,7 @@ import { ComponentsProvider } from '@looker/components-providers';
 import { apiClient } from './services/clientService';
 import { Box, Typography } from '@mui/material';
 import TopBanner from './components/TopBanner';
+import { SidePanel } from './components/SidePanel';
 
 function App() {
   useEffect(() => {
@@ -21,26 +22,11 @@ function App() {
   return (
     <ComponentsProvider>
       <div className="App">
-        {/* <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <p>
-            Edit <code>src/App.tsx</code> and save to reload.
-          </p>
-          <a
-            className="App-link"
-            href="https://reactjs.org"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Learn React
-          </a>
-        </header> */}
-        <Box className="app-layout">
-          <TopBanner />
-          
-          {/* Replaced layout context Box styles */}
-          <Box className="dashboard-container">
-            <Typography 
+        <Box className="app-layout">  
+          <Box >
+            <TopBanner />
+            <SidePanel /> 
+            {/* <Typography 
               variant="h4" 
               component="h1" 
               className="dashboard-heading"
@@ -52,12 +38,13 @@ function App() {
               variant="body1" 
               className="dashboard-text"
             >
-              The top banner component sits above your main navigation or content. 
+              The top banner component sits above your main navigation or content.
               It is fully responsive, uses Material UI components, and is dismissible.
-            </Typography>
+              The SidePanel component is now embedded to the left of this content.
+            </Typography> */}
           </Box>
         </Box>
-
+        
       </div>
     </ComponentsProvider>
   );
