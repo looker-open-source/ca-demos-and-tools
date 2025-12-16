@@ -1,54 +1,123 @@
+/* =========================================
+   1. CSS VARIABLES (THEMING ENGINE)
+   ========================================= */
+
+/* Default (Light Mode) */
+:root {
+  /* Main Surfaces */
+  --bg-default: #f9fafb;
+  --bg-paper: #ffffff;
+  --text-primary: rgba(0, 0, 0, 0.87);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --border-color: #DADCE0;
+
+  /* Menu Specifics (Light) */
+  --menu-bg: #ffffff;
+  --menu-text: rgba(0, 0, 0, 0.87);
+  --menu-selected-bg: #E8F0FE; /* Google Light Blue */
+  --menu-selected-text: #1967d2; /* Blue text */
+
+  /* Side Panel Specifics (Light) */
+  --side-panel-bg: #f9fafb;
+  --side-panel-hover: #f0f0f0;
+  --side-panel-active-bg: #C2E7FF; /* Light Blue */
+  --side-panel-active-text: #004A77; /* Dark Blue */
+  --side-panel-timestamp: #999999;
+  
+  /* Dropdown Arrow (Dark/Black for Light Mode) */
+  --dropdown-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path fill="%23333333" d="M7 10l5 5 5-5z"/></svg>');
+}
+
+/* Dark Mode Overrides (Triggered by data-theme="dark") */
+[data-theme='dark'] {
+  /* Main Surfaces - GM3 Dark Grey */
+  --bg-default: #131314;
+  --bg-paper: #131314; /* Banner matches background */
+  --text-primary: #E3E3E3;
+  --text-secondary: #C4C7C5;
+  --border-color: #444746; /* Darker border */
+
+  /* Menu Specifics (Dark) */
+  --menu-bg: #2F2F2F; /* Dark Grey Surface for Dropdowns */
+  --menu-text: #E3E3E3;
+  --menu-selected-bg: #A8C7FA; /* Light Pastel Blue */
+  --menu-selected-text: #041E49; /* Dark Blue/Black text for contrast */
+
+  /* Side Panel Specifics (Dark) */
+  --side-panel-bg: #131314;
+  --side-panel-hover: rgba(255, 255, 255, 0.08); /* Subtle white hover */
+  --side-panel-active-bg: #A8C7FA; 
+  --side-panel-active-text: #041E49; 
+  --side-panel-timestamp: #C4C7C5;
+
+  /* Dropdown Arrow (White for Dark Mode) */
+  --dropdown-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path fill="%23E3E3E3" d="M7 10l5 5 5-5z"/></svg>');
+}
+
+/* =========================================
+   2. GLOBAL LAYOUT
+   ========================================= */
+
 .App {
   text-align: center;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
-
-.App-header {
-  background-color: #282c34;
+.app-layout {
   min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  background-color: var(--bg-default);
+  transition: background-color 0.3s ease;
 }
 
-.App-link {
-  color: #61dafb;
+/* Dashboard Content Container */
+.dashboard-container {
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 48px;
+  padding-bottom: 48px;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+/* Responsive Padding */
+@media (min-width: 600px) {
+  .dashboard-container {
+    padding-left: 24px;
+    padding-right: 24px;
   }
-  to {
-    transform: rotate(360deg);
+}
+@media (min-width: 1200px) {
+  .dashboard-container {
+    padding-left: 32px;
+    padding-right: 32px;
   }
 }
 
-/* TopBanner Styles */
+.dashboard-heading {
+  font-weight: 700 !important;
+  color: var(--text-primary) !important;
+  margin-bottom: 0.35em !important;
+}
+
+.dashboard-text {
+  color: var(--text-secondary) !important;
+}
+
+/* =========================================
+   3. TOP BANNER (HEADER)
+   ========================================= */
+
 .top-banner {
-  background-color: white;
+  background-color: var(--bg-paper);
   height: 49px;
-  border-bottom: 1px solid #DADCE0;
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
-  /* Responsive padding matching px: { xs: 0, sm: 1 } */
   padding-left: 0;
   padding-right: 0;
 }
 
+/* Responsive padding matching dashboard */
 @media (min-width: 600px) {
   .top-banner {
     padding-left: 8px;
@@ -63,22 +132,58 @@
 .top-banner-logo {
   width: 36px;
   height: 36px;
-  margin-right: 4px; /* mr: 0.5 */
+  margin-right: 4px;
   display: block;
 }
 
-/* We use !important here to ensure we override Material UI's default typography styles 
-   without needing a complex theme setup */
 .top-banner-title {
   font-family: "Google Sans", Roboto, Arial, sans-serif !important;
   font-weight: 400 !important;
   font-size: 18px !important;
   line-height: 17px !important;
   letter-spacing: -0.4px !important;
-  color: #5F6368 !important;
+  color: var(--text-secondary) !important;
 }
 
-/* --- ThemeSwitcher Styles --- */
+/* =========================================
+   4. CASE BAR (SECONDARY HEADER)
+   ========================================= */
+
+.case-bar {
+  background-color: var(--bg-paper);
+  border-bottom: 1px solid var(--border-color);
+  height: 40px;
+  display: flex;
+  align-items: stretch; /* Ensures vertical divider stretches */
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* The Vertical Divider Line (Left Sidebar Placeholder) */
+.case-bar > .MuiBox-root {
+  border-right: 1px solid var(--border-color) !important;
+}
+
+.case-bar-content {
+  width: 100%;
+}
+
+.case-bar-text {
+  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  color: var(--text-primary) !important;
+}
+
+.case-bar-icon-btn {
+  margin-left: 4px !important;
+  color: var(--text-secondary) !important;
+  padding: 4px !important;
+}
+
+/* =========================================
+   5. THEME SWITCHER MENU
+   ========================================= */
 
 .theme-switcher-icon {
   width: 24px;
@@ -86,114 +191,85 @@
   display: block;
 }
 
-/* Button with negative margin to sit closer to the icon */
 .theme-switcher-arrow-btn {
-  margin-left: -8px !important; /* Matches sx={{ ml: -1 }} */
-  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
+  margin-left: -8px !important;
+  color: var(--text-secondary) !important;
 }
 
-/* Target the MUI Paper component (the dropdown box) */
+/* Target the Dropdown Paper */
 .theme-switcher-menu .MuiPaper-root {
+  background-color: var(--menu-bg) !important;
+  color: var(--menu-text) !important;
+  border: 1px solid var(--border-color) !important;
   overflow: visible !important;
   filter: drop-shadow(0px 2px 8px rgba(0,0,0,0.1)) !important;
-  margin-top: 12px !important; /* mt: 1.5 */
-  border: 1px solid #e0e0e0 !important; /* grey.300 */
+  margin-top: 12px !important;
 }
 
-/* Menu Item Styles */
+/* Standard Menu Item */
 .theme-switcher-menu-item {
-  padding: 8px 16px !important; /* px: 2, py: 1 */
+  padding: 8px 16px !important;
   font-size: 14px !important;
-  color: rgba(0, 0, 0, 0.87) !important; /* text.primary */
+  color: var(--menu-text) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important;
 }
 
-/* Selected State Override */
-.theme-switcher-menu-item.Mui-selected {
-  background-color: #f5f5f5 !important; /* grey.100 */
-}
-
-.theme-switcher-menu-item.Mui-selected:hover {
-  background-color: #eeeeee !important; /* grey.200 */
-}
-
-/* Flex container for the label and icon */
 .theme-switcher-item-content {
   display: flex;
   align-items: center;
 }
 
-/* The icon inside the menu (Sun, Moon, etc.) */
-.theme-switcher-option-icon {
+/* Icons inside Menu */
+.theme-switcher-menu-item .MuiListItemIcon-root {
   min-width: 36px !important;
-  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
+  color: var(--menu-text) !important;
+  opacity: 0.7;
 }
 
-/* The checkmark icon */
+/* --- SELECTED STATE --- */
+
+.theme-switcher-menu-item.Mui-selected {
+  background-color: var(--menu-selected-bg) !important;
+}
+
+.theme-switcher-menu-item.Mui-selected:hover {
+  filter: brightness(0.95);
+}
+
+/* Force text and icons inside the SELECTED item to change color */
+.theme-switcher-menu-item.Mui-selected .MuiTypography-root,
+.theme-switcher-menu-item.Mui-selected .MuiListItemIcon-root {
+  color: var(--menu-selected-text) !important;
+  opacity: 1;
+}
+
+/* Checkmark Icon */
 .theme-switcher-check {
   min-width: auto !important;
-  color: #1976d2 !important; /* primary.main */
-  margin-left: 16px !important; /* ml: 2 */
+  color: var(--menu-selected-text) !important;
+  margin-left: 16px !important;
 }
 
-/* Layout container */
-.app-layout {
-  min-height: 100vh;
-  background-color: #f9fafb;
-}
-
-/* Dashboard Content Container */
-.dashboard-container {
-  max-width: 1280px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-top: 48px; /* py: 6 (6 * 8px) */
-  padding-bottom: 48px;
-  
-  /* Default padding (xs: 2) */
-  padding-left: 16px;
-  padding-right: 16px;
-}
-
-/* Responsive Padding for sm: 3 */
-@media (min-width: 600px) {
-  .dashboard-container {
-    padding-left: 24px;
-    padding-right: 24px;
-  }
-}
-
-/* Responsive Padding for lg: 4 */
-@media (min-width: 1200px) {
-  .dashboard-container {
-    padding-left: 32px;
-    padding-right: 32px;
-  }
-}
-
-/* Typography Styles */
-/* Using !important to ensure we override Material UI defaults if necessary */
-.dashboard-heading {
-  font-weight: 700 !important;
-  color: rgba(0, 0, 0, 0.87) !important; /* text.primary */
-  margin-bottom: 0.35em !important;
-}
-
-.dashboard-text {
-  color: rgba(0, 0, 0, 0.6) !important; /* text.secondary */
-}
+/* =========================================
+   6. SIDE PANEL STYLES (UPDATED FOR DARK MODE)
+   ========================================= */
 
 .side-panel-container {
-  width: 18.75rem;
+  width: 20rem;
   height: 100vh;
   padding: 1rem 0;
-  background-color: var(--color-background-default, #f8f9fa);
-  border-right: 1px solid var(--color-border-subtle, #e0e0e0);
+  overflow: visible !important;
+
+  
+  /* Dynamic Variables */
+  background-color: var(--side-panel-bg);
+  border-right: 1px solid var(--border-color);
+  
   display: flex;
   flex-direction: column;
-  font-family: Arial, sans-serif;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
 }
 
 .side-panel-header-section {
@@ -207,29 +283,39 @@
 }
 
 .side-panel-dropdown-selector {
-  border: 1px solid var(--color-border-default, #ccc);
+  border: 1px solid var(--border-color);
   border-radius: 0.5rem;
-  background-color: var(--color-background-default, white);
+  
+  /* Dynamic Colors */
+  background-color: var(--bg-paper); 
+  color: var(--text-primary);
+  
   height: 2.5rem;
   padding: 0 0.75rem;
   font-size: 0.875rem;
-  color: var(--color-text-default, #333);
   cursor: pointer;
   margin-bottom: 0.5rem;
   appearance: none; 
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path fill="currentColor" d="M7 10l5 5 5-5z"/></svg>');
+  
+  /* Dynamic Arrow */
+  background-image: var(--dropdown-arrow);
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 1.5rem;
+}
+
+.side-panel-dropdown-selector:focus {
+  outline: 2px solid #1976d2;
+  border-color: transparent;
 }
 
 .side-panel-new-session-button {
   width: 100%;
   padding: 0.75rem 1rem;
   margin-bottom: 1rem;
-  background-color: var(--color-primary-default, #0B57D0);
+  background-color: #0B57D0; /* Google Blue */
   color: white;
   border: none;
   border-radius: 1.5rem;
@@ -242,14 +328,14 @@
 }
 
 .side-panel-new-session-button:hover {
-  background-color: var(--color-primary-hover, #1565c0);
+  background-color: #1565c0;
 }
 
 .side-panel-history-header {
   font-size: .9rem;
   font-weight: 600;
-  padding:1rem 0.2rem 0rem 0.2rem;
-  color: var(--color-text-subtle, #444746);
+  padding: 1rem 0.2rem 0rem 0.2rem;
+  color: var(--text-secondary); /* Dynamic */
   text-align: left;
 }
 
@@ -259,26 +345,38 @@
   padding-bottom: 1rem;
 }
 
+/* Scrollbar Styling for Dark Mode */
+.side-panel-session-list-container::-webkit-scrollbar {
+  width: 8px;
+}
+.side-panel-session-list-container::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+
 .side-panel-session-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
   padding: 0.75rem 1rem;
   cursor: pointer;
-  border-radius: 0.25rem;
+  border-radius: 1.5rem;
   margin-bottom: 0.25rem;
   margin-right: 1rem;
   margin-left: 1rem;
   transition: background-color 0.2s, color 0.2s;
   text-align: left;
+  color: var(--text-primary); /* Dynamic */
 }
 
 .side-panel-session-item:hover {
-  background-color: var(--color-background-hover, #f0f0f0);
-  border-radius: 2.5rem;
+  background-color: var(--side-panel-hover);
 }
 
+/* Active State */
 .side-panel-session-item.active {
-  background-color: var(--color-primary-subtle, #C2E7FF);
-  color: var(--color-primary-dark, #004A77);
-  border-radius: 2.5rem;
+  background-color: var(--side-panel-active-bg);
+  color: var(--side-panel-active-text);
 }
 
 .side-panel-session-title {
@@ -287,16 +385,122 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding:.3rem;
+  padding: .3rem;
 }
 
 .side-panel-session-timestamp {
-  font-size: 0.75rem; /* 12px */
+  font-size: 0.75rem; 
   font-weight: 400;
-  color: var(--color-text-timestamp, #999);
-  padding:.3rem;
+  color: var(--side-panel-timestamp);
+  padding: .3rem;
 }
 
+/* Ensure timestamp is visible in active state */
 .side-panel-session-item.active .side-panel-session-timestamp {
-  color: var(--color-primary-dark, #1976d2); 
+  color: var(--side-panel-active-text); 
+  opacity: 0.8;
+}
+
+.side-panel-action-dots {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 50%;
+  color: #444746;
+  transition: all 0.2s ease;
+  position: absolute; /* Use absolute to pin it precisely */
+  right: 12px;
+  top: 8px; /* Adjust this to move it higher or lower */
+  line-height: 0;
+  z-index: 2;
+}
+
+/* Show dots only when hovering the session item */
+.side-panel-session-item:hover .side-panel-action-dots,
+.side-panel-action-dots.visible {
+  display: flex;
+}
+
+/* Pink circular background on hover over the dots specifically */
+.side-panel-action-dots:hover {
+  background-color: rgba(233, 30, 99, 0.15); /* Soft pink background */
+  color: #e91e63; /* Pink icon color */
+}
+
+/* --- The Popup Toolbar Menu --- */
+
+
+.side-panel-toolbar-menu {
+  /* Remove 'left: 90%' or 'top: 10px' from here */
+  background: #f0f4f9;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  width: 160px;
+  padding: 8px 0;
+  /* Add pointer-events to ensure it's clickable */
+  pointer-events: auto;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  color: #1f1f1f;
+  transition: background 0.2s;
+  cursor: pointer;
+  text-align: left;
+}
+
+.menu-item:hover {
+  background-color: #e1e5ea;
+}
+
+.menu-item svg {
+  color: #444746;
+}
+
+.menu-divider {
+  height: 1px;
+  background-color: #d3d7dc;
+  margin: 6px 0;
+}
+
+.menu-item.delete:hover {
+  background-color: #fce8e6; /* Light red hover for delete */
+}
+
+/* =========================================
+   7. LEGACY / UTILS
+   ========================================= */
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+@keyframes App-logo-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+.App-link {
+  color: #61dafb;
 }

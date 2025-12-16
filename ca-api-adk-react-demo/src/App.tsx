@@ -1,12 +1,18 @@
-import React, { useEffect } from 'react';
-import './App.css';
+// src/App.tsx
+import React, { useEffect, useMemo } from 'react';
 import { ComponentsProvider } from '@looker/components-providers';
 import { apiClient } from './services/clientService';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import TopBanner from './components/TopBanner';
 import { SidePanel } from './components/SidePanel';
+import { AppThemeProvider, useAppTheme } from './context/ThemeContext'; // Import Provider & Hook
+import './App.css';
 
-function App() {
+// 1. Create a child component that handles the UI and MUI Theme
+const AppContent = () => {
+  const { themeMode } = useAppTheme(); // Consuming the context
+
+  // Data Fetching
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -15,39 +21,51 @@ function App() {
         console.error("Failed to fetch initial data:", error);
       }
     };
-
     fetchData();
   }, []);
 
+  // MUI Theme setup
+  const muiTheme = useMemo(() => createTheme({
+    palette: {
+      mode: themeMode === 'dark' ? 'dark' : 'light',
+      primary: { main: '#1976d2' },
+    },
+    typography: {
+      fontFamily: '"Google Sans", Roboto, Arial, sans-serif',
+    }
+  }), [themeMode]);
+
   return (
-    <ComponentsProvider>
-      <div className="App">
-        <Box className="app-layout">  
-          <Box >
+    <ThemeProvider theme={muiTheme}>
+      <CssBaseline />
+      <ComponentsProvider>
+        {/* The data-theme attribute now comes from Context */}
+        <div className="App" data-theme={themeMode}>
+          <Box className="app-layout">
             <TopBanner />
-            <SidePanel /> 
-            {/* <Typography 
-              variant="h4" 
-              component="h1" 
-              className="dashboard-heading"
-            >
-              Dashboard
-            </Typography>
-            
-            <Typography 
-              variant="body1" 
-              className="dashboard-text"
-            >
-              The top banner component sits above your main navigation or content.
-              It is fully responsive, uses Material UI components, and is dismissible.
-              The SidePanel component is now embedded to the left of this content.
-            </Typography> */}
+            <Box>
+              <Typography variant="body1" className="dashboard-text">
+                This app is now using React Context API!
+                <br/>
+                Current Theme: <strong>{themeMode}</strong>
+              </Typography>
+            </Box>
+
           </Box>
-        </Box>
-        
-      </div>
-    </ComponentsProvider>
+        </div>
+      </ComponentsProvider>
+    </ThemeProvider>
+  );
+};
+
+// 2. Main App Component wraps everything in the Provider
+function App() {
+  return (
+    <AppThemeProvider>
+      <AppContent />
+    </AppThemeProvider>
   );
 }
 
 export default App;
+
