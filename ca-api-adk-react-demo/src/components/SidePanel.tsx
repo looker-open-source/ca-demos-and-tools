@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Add as AddIcon, ArrowDropDown as ArrowDropDownIcon } from '@mui/icons-material';
+import { createPortal } from 'react-dom';
+import { 
+  Add as AddIcon, 
+  MoreVert as MoreVertIcon,
+  PushPinOutlined as PinIcon,
+  EditOutlined as RenameIcon,
+  FileDownloadOutlined as DownloadIcon,
+  DeleteOutline as DeleteIcon
+} from '@mui/icons-material';
 
 // --- Types ---
 interface Session {
@@ -13,7 +21,6 @@ interface AgentOption {
   name: string;
 }
 
-// --- Dummy Data (Included in the component) ---
 const DUMMY_SESSIONS: Session[] = [
   { id: '1', title: 'Cases Eng Default Pool ...', timestamp: '2 minutes ago' },
   { id: '2', title: 'Initial Agent greeting', timestamp: '1 hour ago' },
@@ -26,38 +33,42 @@ const DUMMY_AGENTS: AgentOption[] = [
   { id: 'data_analysis', name: 'Agent data_analysis' },
 ];
 
-// --- Component Implementation ---
-// NOTE: Since the logic is internal, we don't need props for data/handlers here.
 export const SidePanel: React.FC = () => {
-  // Internal State Management
   const [sessionHistory] = useState<Session[]>(DUMMY_SESSIONS);
   const [agentOptions] = useState<AgentOption[]>(DUMMY_AGENTS);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(DUMMY_SESSIONS[0]?.id || null);
   const [selectedAgentId, setSelectedAgentId] = useState(DUMMY_AGENTS[0]?.id || '');
+  
+  // State for the portal menu
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
 
   const handleAgentChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newAgentId = event.target.value;
-    setSelectedAgentId(newAgentId);
-    console.log(`Agent selected: ${newAgentId}`);
+    setSelectedAgentId(event.target.value);
   };
 
-  const handleNewSession = () => {
-    // Logic to create a new session and set it as active
-    console.log('New Session initiated!');
-    setActiveSessionId(null); // Clear active session state
+  const toggleMenu = (e: React.MouseEvent<HTMLButtonElement>, id: string) => {
+    e.stopPropagation();
+    
+    if (menuOpenId === id) {
+      setMenuOpenId(null);
+    } else {
+      // Calculate screen position of the button to place the portal menu
+      const rect = e.currentTarget.getBoundingClientRect();
+      setMenuPos({
+        top: rect.top,
+        left: rect.right + 10 // Position 10px to the right of the dots
+      });
+      setMenuOpenId(id);
+    }
   };
 
-  const handleSessionClick = (sessionId: string) => {
-    setActiveSessionId(sessionId);
-    console.log(`Session clicked: ${sessionId}`);
-  };
+  // Close menu if user clicks elsewhere
+  const closeMenu = () => setMenuOpenId(null);
 
   return (
-    <div className="side-panel-container">
-      
+    <div className="side-panel-container" onClick={closeMenu}>
       <div className="side-panel-header-section">
-        
-        {/* Agent Dropdown Section */}
         <div className="side-panel-agent-dropdown">
           <select 
             className="side-panel-dropdown-selector" 
@@ -65,43 +76,67 @@ export const SidePanel: React.FC = () => {
             value={selectedAgentId}
           >
             {agentOptions.map(agent => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
             ))}
           </select>
         </div>
 
-        {/* New Session Button */}
-        <button 
-          className="side-panel-new-session-button" 
-          onClick={handleNewSession}
-        >
+        <button className="side-panel-new-session-button" onClick={() => console.log('New Session Started')}>
           <AddIcon style={{ fontSize: '1.25rem' }} />
           New Session
         </button>
 
-        {/* Session History Header */}
-        <h3 className="side-panel-history-header">
-          Session History
-        </h3>
-
+        <h3 className="side-panel-history-header">Session History</h3>
       </div>
 
-      {/* Session History List (Scrollable Area) */}
       <div className="side-panel-session-list-container">
         {sessionHistory.map((session) => {
           const isActive = session.id === activeSessionId;
-          const itemClassName = `side-panel-session-item ${isActive ? 'active' : ''}`;
+          const isMenuOpen = menuOpenId === session.id;
 
           return (
             <div
               key={session.id}
-              className={itemClassName}
-              onClick={() => handleSessionClick(session.id)}
+              className={`side-panel-session-item ${isActive ? 'active' : ''}`}
+              onClick={() => {
+                setActiveSessionId(session.id);
+                closeMenu();
+              }}
             >
-              <div className="side-panel-session-title">{session.title}</div>
-              <div className="side-panel-session-timestamp">{session.timestamp}</div>
+              <div className="side-panel-content-wrapper">
+                <div className="side-panel-text-content">
+                  <div className="side-panel-session-title">{session.title}</div>
+                  <div className="side-panel-session-timestamp">{session.timestamp}</div>
+                </div>
+
+                <button 
+                  className={`side-panel-action-dots ${isMenuOpen ? 'visible' : ''}`}
+                  onClick={(e) => toggleMenu(e, session.id)}
+                >
+                  <MoreVertIcon fontSize="small" />
+                </button>
+              </div>
+
+              {/* RENDER PORTAL MENU: Teleports the menu to the end of the body tag */}
+              {isMenuOpen && createPortal(
+                <div 
+                  className="side-panel-toolbar-menu"
+                  style={{ 
+                    position: 'fixed', // Fixed to stay above everything
+                    top: `${menuPos.top}px`,
+                    left: `${menuPos.left}px`,
+                    zIndex: 99999 
+                  }}
+                  onClick={(e) => e.stopPropagation()} // Click inside menu won't close it
+                >
+                  <div className="menu-item" onClick={closeMenu}><PinIcon fontSize="small" /> Pin</div>
+                  <div className="menu-item" onClick={closeMenu}><RenameIcon fontSize="small" /> Rename</div>
+                  <div className="menu-item" onClick={closeMenu}><DownloadIcon fontSize="small" /> Download</div>
+                  <div className="menu-divider"></div>
+                  <div className="menu-item delete" onClick={closeMenu}><DeleteIcon fontSize="small" /> Delete</div>
+                </div>,
+                document.body
+              )}
             </div>
           );
         })}
