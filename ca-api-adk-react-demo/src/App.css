@@ -532,11 +532,136 @@
   background: #f0f4f9;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  width: 180px;
   padding: 8px 0;
   position: absolute; top: 7rem; left: 9rem; z-index: 99999 ;
-  width:16%;
+  width:18%;
 }
+
+.agent-name-underlined.placeholder {
+  color: #9aa0a6; 
+}
+
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 200000;
+}
+
+.dialog-container {
+  background:#e9eef6;
+  padding: 24px;
+  border-radius: 28px; /* GM3 style */
+  width: 30rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.dialog-title {
+  font-size: 22px;
+  margin-bottom: 16px;
+  color: #1f1f1f;
+  font-weight: 400;
+}
+
+.dialog-content {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dialog-button {
+  background: transparent;
+  border: none;
+  font-size:14px;
+  padding: 10px 16px;
+  font-weight: 400;
+  cursor: pointer;
+  border-radius: 20px;
+}
+
+.dialog-button.confirm {
+  color: #0b57d0; /* Error red for delete */
+}
+
+.dialog-button.cancel {
+  color: #0b57d0;
+}
+
+/* Toast Notification Style */
+.side-panel-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  background-color: #1f1f1f;
+  color: #ffffff;
+  padding: 12px 24px;
+  border-radius: 4px;
+  font-family: "Google Sans", Roboto, sans-serif;
+  font-size: 14px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+  z-index: 1000000;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Actions Wrapper for Icon Placement */
+.side-panel-actions-wrapper {
+  position: absolute;
+  right: 12px;
+  top: 12px; /* Aligns with the 3-dots position */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+}
+
+/* Pinned Icon Style (the one shown in the list) */
+.pinned-indicator-icon {
+  color: #004a77 !important; 
+  font-size: 18px !important;
+  transform: rotate(45deg); /* Standard tilted pin look */
+}
+/* Ensure dots are still visible on hover even if pinned icon exists */
+.side-panel-session-item:hover .pinned-indicator-icon {
+  display: none;
+}
+
+/* Reset for the dots button */
+.side-panel-action-dots {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #444746;
+  cursor: pointer;
+}
+
+
+.side-panel-session-item:hover .side-panel-action-dots,
+.side-panel-action-dots.visible {
+  display: flex;
+}
+
+
+
+
+
+/* Hide pin when dots are visible/hovered so they don't overlap */
 
 /* =========================================
    7. LEGACY / UTILS
