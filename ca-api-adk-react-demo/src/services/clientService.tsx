@@ -102,5 +102,31 @@ export const apiClient = {
         }
     },
 
+    
+
     baseUrl: BASE_URL
+};
+
+export const chatService = {
+    /**
+     * Sends a message to the bot via the /run_sse endpoint.
+     * Encapsulates the specific payload structure required by the backend.
+     * * @param text The message text from the user
+     * @param sessionId The current session ID
+     */
+    sendUserMessage: async (text: string, sessionId: string) => {
+        const payload = {
+            appName: "deployment",
+            userId: "user",
+            sessionId: sessionId,
+            newMessage: {
+                role: "user",
+                parts: [{ text: text }]
+            },
+            streaming: false,
+            stateDelta: null
+        };
+
+        return await apiClient.post('/run_sse', payload);
+    }
 };

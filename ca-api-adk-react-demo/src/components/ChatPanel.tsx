@@ -1,12 +1,14 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
-  Box, Typography, IconButton, Tooltip, Card, 
+  Box, Typography, IconButton, Tooltip, 
   TextField, InputAdornment, Stack, Chip, Grid
 } from '@mui/material';
 import {
   InfoOutlined, AttachFile, Mic, MoreVert, InsertDriveFile
 } from '@mui/icons-material';
-import '../App.css'; // Ensure CSS is imported
+// Import the specific service we created
+import { chatService } from '../services/clientService'; 
+import '../App.css';
 
 // --- Types ---
 export interface Message {
@@ -15,11 +17,7 @@ export interface Message {
 }
 
 interface ChatPanelProps {
-  messages: Message[];
-  userInput: string;
-  selectedFiles: any[];
-  onUserInputChange: (val: string) => void;
-  onSendMessage: () => void;
+  // We removed internal state props since this component is now "smart"
   onToggleRightPanel?: () => void;
 }
 
@@ -32,30 +30,93 @@ const SUGGESTIONS = [
 ];
 
 const tabIconSrc = "/Tab.png";
+const SESSION_ID = "a2b693fd-58b9-4b15-99af-f29c1187e33d"; // Constant ID
 
-const ChatPanel: React.FC<ChatPanelProps> = ({
-  messages,
-  userInput,
-  selectedFiles,
-  onUserInputChange,
-  onSendMessage,
-  onToggleRightPanel
-}) => {
+const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll logic
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  // --- Internal State ---
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [userInput, setUserInput] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
+  const [isSending, setIsSending] = useState(false);
+
+  // --- Handlers ---
+
+  const handleSendMessage = async () => {
+    // 1. Validation
+    if (!userInput.trim() && selectedFiles.length === 0) return;
+    if (isSending) return;
+
+    const currentText = userInput;
+
+    // 2. Optimistic Update (Show User Message Immediately)
+    const newUserMsg: Message = { role: 'user', text: currentText };
+    setMessages((prev) => [...prev, newUserMsg]);
+    
+    // 3. Reset Inputs & Set Loading
+    setUserInput('');
+    setSelectedFiles([]);
+    setIsSending(true);
+
+    try {
+      const response = await chatService.sendUserMessage(currentText, SESSION_ID);
+      
+      console.log("API Response:", response);
+
+      // 5. Handle Response
+      let botText = "Received empty response";
+      
+      // Adapt this check to match your exact API response structure
+      if (response?.parts?.[0]?.text) {
+        botText = response.parts[0].text;
+      } else if (typeof response === 'string') {
+        botText = response;
+      }
+
+      setMessages((prev) => [...prev, { role: 'bot', text: botText }]);
+
+    } catch (error) {
+      console.error("API Error:", error);
+      setMessages((prev) => [...prev, { role: 'bot', text: "Error: Could not reach agent." }]);
+    } finally {
+      setIsSending(false);
     }
-  }, [messages]);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (event.target.files && event.target.files.length > 0) {
+      const newFiles = Array.from(event.target.files).map(file => ({
+        file,
+        name: file.name
+      }));
+      setSelectedFiles((prev) => [...prev, ...newFiles]);
+    }
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Helper to click suggestion card
+  const handleSuggestionClick = (text: string) => {
+    setUserInput(text);
+    // Optional: handleSendMessage(); // Uncomment to send immediately on click
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      onSendMessage();
+      handleSendMessage();
     }
   };
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isSending]);
 
   return (
     <div className="chat-panel-container">
@@ -73,8 +134,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           </Stack>
           
           <Tooltip title="Toggle Inspector">
-            <IconButton onClick={onToggleRightPanel} sx={{ p: 0 }}>
-               <img src={tabIconSrc} alt="Tab" style={{ width: 24, height: 24 }} />
+            <IconButton onClick={onToggleRightPanel} className="inspector-tab-btn" disableRipple>
+               <img src={tabIconSrc} alt="Tab" className="inspector-toggle-icon" />
             </IconButton>
           </Tooltip>
         </Stack>
@@ -99,7 +160,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                   <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
                     <div 
                       className="suggestion-card" 
-                      onClick={() => onUserInputChange(text)}
+                      onClick={() => handleSuggestionClick(text)}
                     >
                       <span className="suggestion-text">{text}</span>
                     </div>
@@ -110,7 +171,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             </div>
           </div>
         ) : (
-          // --- MESSAGES ---
           <div className="welcome-content-wrapper" style={{ marginTop: '1rem' }}>
             {messages.map((msg, i) => (
               <div 
@@ -119,10 +179,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
                 style={{ textAlign: msg.role === 'user' ? 'right' : 'left' }}
               >
                 <div className={`message-card ${msg.role}`}>
-                  <Typography variant="body1">{msg.text}</Typography>
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                    {msg.text}
+                  </Typography>
                 </div>
               </div>
             ))}
+            
+            {isSending && (
+               <div className="message-row" style={{ textAlign: 'left' }}>
+                 <Typography variant="caption" sx={{ ml: 2, color: 'var(--text-secondary)' }}>
+                   Thinking...
+                 </Typography>
+               </div>
+            )}
           </div>
         )}
       </div>
@@ -134,7 +204,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
           {selectedFiles.length > 0 && (
             <Stack direction="row" spacing={1} mb={1}>
               {selectedFiles.map((f, i) => (
-                <Chip key={i} label={f.file.name} icon={<InsertDriveFile />} />
+                <Chip key={i} label={f.name} onDelete={() => handleRemoveFile(i)} icon={<InsertDriveFile />} />
               ))}
             </Stack>
           )}
@@ -143,14 +213,26 @@ const ChatPanel: React.FC<ChatPanelProps> = ({
             fullWidth
             placeholder="Type a message..."
             value={userInput}
-            onChange={(e) => onUserInputChange(e.target.value)}
+            onChange={(e) => setUserInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="chat-input-field" // Applied styling class
+            disabled={isSending}
+            className="chat-input-field" 
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
                   <Stack direction="row">
-                    <Tooltip title="Upload"><IconButton><AttachFile /></IconButton></Tooltip>
+                    <input
+                      type="file"
+                      multiple
+                      hidden
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                    />
+                    <Tooltip title="Upload">
+                        <IconButton onClick={() => fileInputRef.current?.click()}>
+                            <AttachFile />
+                        </IconButton>
+                    </Tooltip>
                     <Tooltip title="Mic"><IconButton><Mic /></IconButton></Tooltip>
                     <IconButton><MoreVert /></IconButton>
                   </Stack>
