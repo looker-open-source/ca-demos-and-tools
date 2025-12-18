@@ -2,9 +2,9 @@
    1. CSS VARIABLES (THEMING ENGINE)
    ========================================= */
 
-/* Default (Light Mode) */
+/* --- Default (Light Mode) --- */
 :root {
-  /* Main Surfaces */
+  /* Surfaces */
   --bg-default: #f9fafb;
   --bg-paper: #ffffff;
   --text-primary: rgba(0, 0, 0, 0.87);
@@ -20,37 +20,57 @@
   /* Side Panel Specifics (Light) */
   --side-panel-bg: #f9fafb;
   --side-panel-hover: #f0f0f0;
-  --side-panel-active-bg: #C2E7FF; /* Light Blue */
-  --side-panel-active-text: #004A77; /* Dark Blue */
+  --side-panel-active-bg: #C2E7FF;
+  --side-panel-active-text: #004A77;
   --side-panel-timestamp: #999999;
   
-  /* Dropdown Arrow (Dark/Black for Light Mode) */
+  /* Right Panel / Inspector */
+  --right-panel-bg: #ffffff;
+  --right-panel-border: #DADCE0;
+  --code-tag: #800000;
+  --code-attr: #ff0000;
+  --code-text: #000000;
+
+  /* Icon Filter: Normal */
+  --icon-filter: none;
+
+  /* Dropdown Arrow (Black) */
   --dropdown-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path fill="%23333333" d="M7 10l5 5 5-5z"/></svg>');
 }
 
-/* Dark Mode Overrides (Triggered by data-theme="dark") */
+/* --- Dark Mode Overrides --- */
 [data-theme='dark'] {
-  /* Main Surfaces - GM3 Dark Grey */
+  /* Surfaces */
   --bg-default: #131314;
-  --bg-paper: #131314; /* Banner matches background */
+  --bg-paper: #131314;
   --text-primary: #E3E3E3;
   --text-secondary: #C4C7C5;
-  --border-color: #444746; /* Darker border */
+  --border-color: #444746;
 
   /* Menu Specifics (Dark) */
-  --menu-bg: #2F2F2F; /* Dark Grey Surface for Dropdowns */
+  --menu-bg: #2F2F2F;
   --menu-text: #E3E3E3;
-  --menu-selected-bg: #A8C7FA; /* Light Pastel Blue */
-  --menu-selected-text: #041E49; /* Dark Blue/Black text for contrast */
+  --menu-selected-bg: #A8C7FA; /* Pastel Blue */
+  --menu-selected-text: #041E49; /* Dark Text */
 
   /* Side Panel Specifics (Dark) */
   --side-panel-bg: #131314;
-  --side-panel-hover: rgba(255, 255, 255, 0.08); /* Subtle white hover */
+  --side-panel-hover: rgba(255, 255, 255, 0.08);
   --side-panel-active-bg: #A8C7FA; 
   --side-panel-active-text: #041E49; 
   --side-panel-timestamp: #C4C7C5;
 
-  /* Dropdown Arrow (White for Dark Mode) */
+  /* Right Panel / Inspector (Dark) */
+  --right-panel-bg: #1e1e1e;
+  --right-panel-border: #444746;
+  --code-tag: #569cd6;
+  --code-attr: #9cdcfe;
+  --code-text: #d4d4d4;
+
+  /* Icon Filter: Invert black icons to white */
+  --icon-filter: brightness(0) invert(1);
+
+  /* Dropdown Arrow (White) */
   --dropdown-arrow: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path fill="%23E3E3E3" d="M7 10l5 5 5-5z"/></svg>');
 }
 
@@ -117,7 +137,6 @@
   padding-right: 0;
 }
 
-/* Responsive padding matching dashboard */
 @media (min-width: 600px) {
   .top-banner {
     padding-left: 8px;
@@ -154,12 +173,11 @@
   border-bottom: 1px solid var(--border-color);
   height: 40px;
   display: flex;
-  align-items: stretch; /* Ensures vertical divider stretches */
+  align-items: stretch;
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
 
-/* The Vertical Divider Line (Left Sidebar Placeholder) */
 .case-bar > .MuiBox-root {
   border-right: 1px solid var(--border-color) !important;
 }
@@ -189,6 +207,8 @@
   width: 24px;
   height: 24px;
   display: block;
+  filter: var(--icon-filter);
+  transition: filter 0.3s ease;
 }
 
 .theme-switcher-arrow-btn {
@@ -196,7 +216,7 @@
   color: var(--text-secondary) !important;
 }
 
-/* Target the Dropdown Paper */
+/* Dropdown Paper */
 .theme-switcher-menu .MuiPaper-root {
   background-color: var(--menu-bg) !important;
   color: var(--menu-text) !important;
@@ -206,7 +226,7 @@
   margin-top: 12px !important;
 }
 
-/* Standard Menu Item */
+/* Menu Item */
 .theme-switcher-menu-item {
   padding: 8px 16px !important;
   font-size: 14px !important;
@@ -238,7 +258,7 @@
   filter: brightness(0.95);
 }
 
-/* Force text and icons inside the SELECTED item to change color */
+/* Selected Text & Icons */
 .theme-switcher-menu-item.Mui-selected .MuiTypography-root,
 .theme-switcher-menu-item.Mui-selected .MuiListItemIcon-root {
   color: var(--menu-selected-text) !important;
@@ -253,7 +273,7 @@
 }
 
 /* =========================================
-   6. SIDE PANEL STYLES (UPDATED FOR DARK MODE)
+   6. SIDE PANEL STYLES
    ========================================= */
 
 .side-panel-container {
@@ -261,9 +281,7 @@
   height: 100vh;
   padding: 1rem 0;
   overflow: visible !important;
-
   
-  /* Dynamic Variables */
   background-color: var(--side-panel-bg);
   border-right: 1px solid var(--border-color);
   
@@ -285,11 +303,8 @@
 .side-panel-dropdown-selector {
   border: 1px solid var(--border-color);
   border-radius: 0.5rem;
-  
-  /* Dynamic Colors */
   background-color: var(--bg-paper); 
   color: var(--text-primary);
-  
   height: 2.5rem;
   padding: 0 0.75rem;
   font-size: 0.875rem;
@@ -299,7 +314,6 @@
   -webkit-appearance: none;
   -moz-appearance: none;
   
-  /* Dynamic Arrow */
   background-image: var(--dropdown-arrow);
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
@@ -329,11 +343,16 @@
   font-weight: 500;
 }
 
+[data-theme='dark'] .side-panel-new-session-button {
+  color: #062E6F; 
+  background-color: #A8C7FA;
+}
+
 .side-panel-history-header {
   font-size: .9rem;
   font-weight: 600;
   padding: 1rem 0.2rem 0rem 0.2rem;
-  color: #444746;
+  color: var(--text-secondary);
   text-align: left;
 }
 
@@ -343,7 +362,7 @@
   padding-bottom: 1rem;
 }
 
-/* Scrollbar Styling for Dark Mode */
+/* Scrollbar Styling */
 .side-panel-session-list-container::-webkit-scrollbar {
   width: 8px;
 }
@@ -369,9 +388,7 @@
 
 .side-panel-session-item:hover {
   background-color: var(--side-panel-hover);
-  color: #444746;
-  font-weight: 400;
-  font-family: roboto;
+  color: var(--text-primary);
 }
 
 .side-panel-session-item.active {
@@ -382,7 +399,7 @@
 .side-panel-session-title {
   font-size: 0.875rem;
   font-weight: 500;
-  width:95%;
+  width: 95%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -401,6 +418,7 @@
   opacity: 0.8;
 }
 
+/* --- Action Dots & Menus (Side Panel) --- */
 .side-panel-action-dots {
   display: none;
   background: transparent;
@@ -408,7 +426,7 @@
   cursor: pointer;
   padding: 6px;
   border-radius: 50%;
-  color: #444746;
+  color: var(--text-secondary);
   transition: all 0.2s ease;
   position: absolute;
   right: 12px;
@@ -423,18 +441,19 @@
 }
 
 .side-panel-action-dots:hover {
-  background-color: #d387a3db;
-  color: var( --text-secondary);
+  background-color: rgba(0,0,0,0.1);
+  color: var(--text-primary);
 }
 
 .side-panel-toolbar-menu {
-  position: fixed; /* CHANGE from absolute TO fixed */
-  background: #f0f4f9;
+  position: fixed;
+  background: var(--menu-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   width: 14rem;
   padding: 8px 0;
   pointer-events: auto;
+  border: 1px solid var(--border-color);
 }
 
 .menu-item {
@@ -442,29 +461,29 @@
   align-items: center;
   gap: 12px;
   padding: 10px 16px;
-  font-size:16px;
+  font-size: 16px;
   font-family: roboto;
   font-weight: 400;
-  color: #202124;
+  color: var(--menu-text);
   transition: background 0.2s;
   cursor: pointer;
   text-align: left;
 }
 
-.menu-icon{
+.menu-icon {
   font-size: 24px;
   font-weight: 400;
   font-family: "Google Sans", Roboto, Arial, sans-serif !important;
-  color:#444746;
+  color: var(--text-secondary);
 }
 
 .menu-item:hover {
-  background-color: #C2E7FF;
-  color: #004A77 !important;
+  background-color: var(--menu-selected-bg);
+  color: var(--menu-selected-text) !important;
 }
 
 .menu-item:hover .menu-icon {
-  color: #004A77 !important
+  color: var(--menu-selected-text) !important;
 }
 
 .menu-icon svg {
@@ -474,20 +493,20 @@
 
 .menu-divider {
   height: 1px;
-  background-color: #d3d7dc;
+  background-color: var(--border-color);
   margin: 6px 0;
 }
 
 .agent-selector-wrapper {
   display: flex;
-  padding:.6rem 0.2rem 1.4rem .2rem;
-  border-bottom: 1px solid #DADCE0;
+  padding: 0.6rem 0.2rem 1.4rem 0.2rem;
+  border-bottom: 1px solid var(--border-color);
   margin-bottom: 1rem;
   align-items: center;
   cursor: pointer;
   font-family: 'Google Sans', Arial, sans-serif;
   font-size: 0.875rem;
-  color: #70757a;
+  color: var(--text-secondary);
 }
 
 .agent-label {
@@ -495,29 +514,29 @@
 }
 
 .agent-name-underlined {
-  color: #444746;
+  color: var(--text-primary);
   text-decoration: underline;
   text-underline-offset: 3px;
   font-weight: 400;
 }
 
 .agent-arrow-icon {
-  color: #70757a;
+  color: var(--text-secondary);
   margin-left: 2px;
 }
 
 .custom-dropdown-menu {
-  background: #f0f4f9;
+  background: var(--menu-bg);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   min-width: 180px;
   padding: 8px 0;
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid var(--border-color);
 }
 
 .dropdown-item {
   padding: 12px 20px;
-  color: #1f1f1f;
+  color: var(--text-primary);
   font-size: 0.95rem;
   cursor: pointer;
   transition: background 0.2s;
@@ -535,6 +554,8 @@
   padding: 8px 0;
   position: absolute; top: 7rem; left: 9rem; z-index: 99999 ;
   width:18%;
+  background-color: var(--menu-selected-bg); /* Updated */
+  color: var(--menu-selected-text) !important; /* Updated */
 }
 
 .agent-name-underlined.placeholder {
@@ -664,7 +685,227 @@
 /* Hide pin when dots are visible/hovered so they don't overlap */
 
 /* =========================================
-   7. LEGACY / UTILS
+   7. INSPECTOR TAB BUTTON
+   ========================================= */
+
+.inspector-tab-btn {
+  /* Dimensions: 32px width / 40px height */
+  width: 2rem !important; 
+  height: 2.5rem !important; 
+  
+  /* Radius: 40px (2.5rem) on Left corners only */
+  border-radius: 2.5rem 0 0 2.5rem !important; 
+  
+  /* Background Color: Neutral 50 (#757575) */
+  background-color: #757575 !important;
+  
+  /* Padding: 8px (0.5rem) Top/Bottom/Left */
+  padding: 0.5rem 0 0.5rem 0.5rem !important; 
+  
+  /* Remove default border/outline */
+  border: none !important;
+  
+  /* Positioning: -16px (-1rem) to negate parent padding */
+  margin-right: -1rem !important; 
+}
+
+/* Hover state */
+.inspector-tab-btn:hover {
+  background-color: #616161 !important; 
+}
+
+/* Icon Image Styling inside the Tab */
+.inspector-toggle-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  /* Always white icon on dark tab button */
+  filter: brightness(0) invert(1); 
+  opacity: 1; 
+}
+
+/* =========================================
+   8. CHAT PANEL & WELCOME SCREEN (THEME AWARE)
+   ========================================= */
+
+/* --- Layout Containers --- */
+.chat-panel-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  /* Dynamic Background: Light Grey (#f9fafb) or Dark Grey (#131314) */
+  background-color: var(--bg-default); 
+  position: relative;
+}
+
+.chat-content-area {
+  flex-grow: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+/* --- Header / Case Bar --- */
+.chat-header-bar {
+  height: 2.5rem;
+  border-bottom: 1px solid var(--border-color);
+  /* Dynamic Background: White or Dark Surface */
+  background-color: var(--bg-paper); 
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  flex-shrink: 0;
+}
+
+/* --- Welcome Zero State --- */
+.welcome-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  flex-grow: 1;
+  padding-bottom: 4rem; 
+}
+
+.welcome-content-wrapper {
+  max-width: 900px;
+  width: 100%;
+  padding: 0 2rem; 
+}
+
+.welcome-text-hi {
+  font-family: "Google Sans", sans-serif;
+  font-weight: 400;
+  font-size: 3rem; 
+  color: #4285F4; 
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
+}
+
+[data-theme='dark'] .welcome-text-hi {
+  color: #8AB4F8; 
+}
+
+.welcome-text-subtitle {
+  font-family: "Google Sans", sans-serif;
+  font-weight: 400;
+  font-size: 3rem;
+  color: #3C4043; 
+  line-height: 1.2;
+  margin-bottom: 2.5rem; 
+}
+
+[data-theme='light'] .welcome-text-subtitle {
+  color: #3C4043;
+}
+
+[data-theme='dark'] .welcome-text-subtitle {
+  color: #F2F2F2;
+}
+
+/* --- Suggestion Cards --- */
+.suggestion-card {
+  height: 100%;
+  padding: 1.5rem; 
+  border-radius: 12px; 
+  /* Dynamic Card Background & Border */
+  background-color: var(--bg-paper);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  display: flex;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.suggestion-card:hover {
+  background-color: var(--side-panel-hover); 
+  border-color: #4285F4; 
+}
+
+.suggestion-text {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.message-row {
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+.message-card {
+  display: inline-block;
+  padding: 1rem 1.25rem;
+  border-radius: 18px; 
+  max-width: 80%;
+  word-wrap: break-word;
+}
+
+.message-card.user {
+  background-color: #E3F2FD; 
+  color: #0B57D0;
+  border-top-right-radius: 4px; 
+}
+
+/* Dark Mode User Bubble Overrides */
+[data-theme='dark'] .message-card.user {
+  background-color: #004A77; /* Dark Blue Background */
+  color: #C2E7FF; /* Light Blue Text */
+}
+
+.message-card.bot {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-top-left-radius: 4px;
+}
+
+.chat-input-container {
+  padding: 1.5rem; 
+  background-color: transparent;
+}
+
+.chat-input-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.chat-input-field .MuiOutlinedInput-root {
+  border-radius: 30px !important; 
+  background-color: var(--bg-paper) !important; 
+  color: var(--text-primary) !important; 
+  box-shadow: 0px 2px 6px rgba(0, 0, 0, 0.05); 
+  padding-left: 24px !important;
+}
+
+[data-theme='dark'] .chat-input-field .MuiOutlinedInput-root {
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.3); 
+}
+
+.chat-input-field .MuiOutlinedInput-notchedOutline {
+  border: 1px solid transparent !important; 
+  transition: border-color 0.2s;
+}
+
+.chat-input-field:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--border-color) !important;
+}
+
+.chat-input-field .Mui-focused .MuiOutlinedInput-notchedOutline {
+  border-color: #1976d2 !important; 
+  border-width: 1px !important;
+}
+
+.chat-input-field .MuiIconButton-root {
+  color: var(--text-secondary) !important;
+}
+
+/* =========================================
+   9. LEGACY / UTILS
    ========================================= */
 
 .App-logo {
