@@ -17,6 +17,14 @@ const AppContent = () => {
   const [userInput, setUserInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
 
+  // --- URL Path Normalization ---
+  useEffect(() => {
+    // Ensures the starting point is always /dev-ui/
+    if (window.location.pathname === '/' || window.location.pathname === '') {
+      window.history.replaceState(null, '', '/dev-ui/');
+    }
+  }, []);
+
   // --- Data Fetching ---
   useEffect(() => {
     const fetchData = async () => {
@@ -30,61 +38,37 @@ const AppContent = () => {
   }, []);
 
   // --- Handlers ---
-
   const handleSendMessage = () => {
     if (!userInput.trim() && selectedFiles.length === 0) return;
-
-    // 1. Add User Message
-    const newUserMsg: Message = {
-      role: 'user',
-      text: userInput,
-    };
-
+    const newUserMsg: Message = { role: 'user', text: userInput };
     setMessages((prev) => [...prev, newUserMsg]);
-    
-    // 2. Reset Inputs
     setUserInput('');
     setSelectedFiles([]);
-
-    // 3. Simulate Bot Response
     setTimeout(() => {
       setMessages((prev) => [
         ...prev,
-        {
-          role: 'bot',
-          text: "I received your message! This is a simulated response."
-        }
+        { role: 'bot', text: "I received your message! This is a simulated response." }
       ]);
     }, 1000);
   };
 
-  const handleUserInputChange = (val: string) => {
-    setUserInput(val);
-  };
+  const handleUserInputChange = (val: string) => { setUserInput(val); };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
-      const newFiles = Array.from(event.target.files).map(file => ({
-        file,
-        name: file.name
-      }));
+      const newFiles = Array.from(event.target.files).map(file => ({ file, name: file.name }));
       setSelectedFiles((prev) => [...prev, ...newFiles]);
     }
   };
 
-  const handleRemoveFile = (index: number) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
-  };
+  const handleRemoveFile = (index: number) => { setSelectedFiles((prev) => prev.filter((_, i) => i !== index)); };
 
-  // --- Theme Setup ---
   const muiTheme = useMemo(() => createTheme({
     palette: {
       mode: themeMode === 'dark' ? 'dark' : 'light',
       primary: { main: '#1976d2' },
     },
-    typography: {
-      fontFamily: '"Google Sans", Roboto, Arial, sans-serif',
-    }
+    typography: { fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }
   }), [themeMode]);
 
   return (
@@ -92,18 +76,10 @@ const AppContent = () => {
       <CssBaseline />
       <ComponentsProvider>
         <div className="App" data-theme={themeMode}>
-          
           <Box className="app-layout" sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
-
-            {/* 1. Top Banner (Logo Header) */}
             <TopBanner />
-            
-
-            {/* 2. Main Workspace */}
             <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
               <SidePanel />
-
-              {/* Chat Panel (Fills the screen) */}
               <Box sx={{ flexGrow: 1, height: '100%', overflow: 'hidden', position: 'relative' }}>
                 <ChatPanel
                   messages={messages}
@@ -111,13 +87,10 @@ const AppContent = () => {
                   selectedFiles={selectedFiles}
                   onUserInputChange={handleUserInputChange}
                   onSendMessage={handleSendMessage}
-                  // Optional handlers (pass dummy functions if not used yet)
                   onToggleRightPanel={() => console.log('Toggle Right Panel')}
                 />
               </Box>
-
             </Box>
-
           </Box>
         </div>
       </ComponentsProvider>
