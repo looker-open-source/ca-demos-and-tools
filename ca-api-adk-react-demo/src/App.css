@@ -552,7 +552,7 @@
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   padding: 8px 0;
-  position: absolute; top: 7rem; left: 9rem; z-index: 99999 ;
+  position: absolute; top: 6rem; left: 3.7rem; z-index: 99999 ;
   width:18%;
   background-color: var(--menu-selected-bg); /* Updated */
   color: var(--menu-selected-text) !important; /* Updated */

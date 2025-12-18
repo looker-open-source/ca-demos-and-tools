@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '../services/clientService';
 import { DialogBox } from './DialogBox';
@@ -30,19 +30,39 @@ export const SidePanel: React.FC = () => {
   const [sessionHistory, setSessionHistory] = useState<Session[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  
-  // Single-Pin State: Stores only one ID
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
 
+  // UI State
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
-  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0, openUp: false });
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
 
-  // Sorting Logic: Pinned always at top, then by timestamp
+  // Helper to close all menus
+  const closeAllMenus = useCallback(() => {
+    setMenuOpenId(null);
+    setAgentMenuOpen(false);
+  }, []);
+
+  // 1. Global Click and Scroll Listeners
+  useEffect(() => {
+    const handleGlobalEvents = () => closeAllMenus();
+
+    // Close on scroll anywhere in the window
+    window.addEventListener('scroll', handleGlobalEvents, true);
+    // Close on click anywhere
+    window.addEventListener('click', handleGlobalEvents);
+
+    return () => {
+      window.removeEventListener('scroll', handleGlobalEvents, true);
+      window.removeEventListener('click', handleGlobalEvents);
+    };
+  }, [closeAllMenus]);
+
+  // Sorting Logic
   const sortHistory = (history: Session[], pinnedIds: string[]) => {
     return [...history].sort((a, b) => {
       const aPinned = pinnedIds.includes(a.id);
@@ -61,19 +81,46 @@ export const SidePanel: React.FC = () => {
   const togglePin = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     const isCurrentlyPinned = pinnedSessionIds.includes(sessionId);
-    
-    let newPinned: string[] = [];
-    
-    if (isCurrentlyPinned) {
-      newPinned = []; // Unpin
-      showToast("Session unpinned");
-    } else {
-      newPinned = [sessionId]; // Pin this one, reset all others
-      showToast("Session pinned");
-    }
-    
+    const newPinned = isCurrentlyPinned ? [] : [sessionId];
     setPinnedSessionIds(newPinned);
     setSessionHistory(prev => sortHistory(prev, newPinned));
+    closeAllMenus();
+    showToast(isCurrentlyPinned ? "Session unpinned" : "Session pinned");
+  };
+
+  // 2. Smart Positioning for Session Toolbar
+  const handleToolbarClick = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (menuOpenId === id) {
+      closeAllMenus();
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuHeight = 170; // Estimated height of your toolbar menu
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const shouldOpenUp = spaceBelow < menuHeight;
+
+    setMenuPos({
+      top: shouldOpenUp ? rect.top - menuHeight : rect.top,
+      left: rect.right + 10,
+      openUp: shouldOpenUp
+    });
+    setMenuOpenId(id);
+    setAgentMenuOpen(false);
+  };
+
+  // 3. Smart Positioning for Agent Dropdown
+  const handleAgentDropdownClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (agentMenuOpen) {
+      closeAllMenus();
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    setMenuPos({ top: rect.bottom + 5, left: rect.left, openUp: false });
+    setAgentMenuOpen(true);
     setMenuOpenId(null);
   };
 
@@ -95,7 +142,7 @@ export const SidePanel: React.FC = () => {
     try {
       await apiClient.delete(`/apps/${selectedAgentId}/users/user/sessions/${sessionToDelete}`);
       setIsDeleteDialogOpen(false);
-      setMenuOpenId(null);
+      closeAllMenus();
       const newLatestId = await refreshAndSortHistory(selectedAgentId);
       if (newLatestId) {
         await apiClient.get(`/apps/${selectedAgentId}/users/user/sessions/${newLatestId}`);
@@ -119,7 +166,7 @@ export const SidePanel: React.FC = () => {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      setMenuOpenId(null);
+      closeAllMenus();
     } catch (err) { console.error("Download failed", err); }
   };
 
@@ -148,7 +195,7 @@ export const SidePanel: React.FC = () => {
 
   const handleAgentSelect = (agentId: string) => {
     setSelectedAgentId(agentId);
-    setAgentMenuOpen(false);
+    closeAllMenus();
     runFullSessionFlow(agentId);
   };
 
@@ -169,15 +216,9 @@ export const SidePanel: React.FC = () => {
   };
 
   return (
-    <div className="side-panel-container" onClick={() => {setMenuOpenId(null); setAgentMenuOpen(false);}}>
+    <div className="side-panel-container">
       <div className="side-panel-header-section">
-        <div className="agent-selector-wrapper" onClick={(e) => {
-          e.stopPropagation();
-          const rect = e.currentTarget.getBoundingClientRect();
-          setMenuPos({ top: rect.bottom + 5, left: rect.left });
-          setAgentMenuOpen(!agentMenuOpen);
-          setMenuOpenId(null);
-        }}>
+        <div className="agent-selector-wrapper" onClick={handleAgentDropdownClick}>
           <span className="agent-label">Agent</span>
           <span className={`agent-name-underlined ${!selectedAgentId ? 'placeholder' : ''}`}>
             {agents.find(a => a.id === selectedAgentId)?.name || "select agent"}
@@ -185,7 +226,14 @@ export const SidePanel: React.FC = () => {
           <ArrowDropDownIcon className="agent-arrow-icon" />
           
           {agentMenuOpen && createPortal(
-            <div className="side-panel-dropdown-toolbar-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999 }}>
+            <div 
+              className="side-panel-dropdown-toolbar-menu" 
+              style={{ 
+                position: 'fixed',  
+                zIndex: 99999 
+              }}
+              onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            >
               {agents.map(agent => (
                 <div key={agent.id} className="dropdown-item" onClick={() => handleAgentSelect(agent.id)}>
                   {agent.name}
@@ -219,17 +267,10 @@ export const SidePanel: React.FC = () => {
                 </div>
 
                 <div className="side-panel-actions-wrapper">
-                  {/* Pinned Icon in List */}
-                  {isPinned && <UnpinIcon className="pinned-indicator-icon" fontSize="small" />}
-                  
+                  {isPinned && <UnpinIcon className="pinned-indicator-icon" fontSize="small" style={{ color: '#004a77' }} />}
                   <button 
                     className={`side-panel-action-dots ${menuOpenId === session.id ? 'visible' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setMenuPos({ top: rect.top, left: rect.right + 10 });
-                      setMenuOpenId(menuOpenId === session.id ? null : session.id);
-                    }}
+                    onClick={(e) => handleToolbarClick(e, session.id)}
                   >
                     <MoreVertIcon fontSize="small" />
                   </button>
@@ -237,22 +278,27 @@ export const SidePanel: React.FC = () => {
               </div>
 
               {menuOpenId === session.id && createPortal(
-                <div className="side-panel-toolbar-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999 }}>
+                <div 
+                  className="side-panel-toolbar-menu" 
+                  style={{ 
+                    position: 'fixed', 
+                    top: menuPos.top, 
+                    left: menuPos.left, 
+                    zIndex: 99999,
+                    transform: menuPos.openUp ? 'translateY(-10%)' : 'none' 
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <div className="menu-item" onClick={(e) => togglePin(e, session.id)}>
-                    {isPinned ? (
-                      <UnpinIcon className="menu-icon" style={{ color: '#004a77' }} /> 
-                    ) : (
-                      <PinIcon className="menu-icon" />
-                    )}
+                    {isPinned ? <UnpinIcon className="menu-icon" style={{ color: '#004a77' }} /> : <PinIcon className="menu-icon" />}
                     {isPinned ? 'Unpin' : 'Pin'}
                   </div>
                   <div className="menu-item"><RenameIcon className="menu-icon" /> Rename</div>
-                  <div className="menu-item" onClick={(e) => { e.stopPropagation(); handleDownload(session.id); }}>
+                  <div className="menu-item" onClick={(e) => handleDownload(session.id)}>
                     <DownloadIcon className="menu-icon" /> Download
                   </div>
                   <div className="menu-divider"></div>
                   <div className="menu-item delete" onClick={(e) => {
-                    e.stopPropagation();
                     setSessionToDelete(session.id);
                     setIsDeleteDialogOpen(true);
                   }}>
@@ -274,11 +320,8 @@ export const SidePanel: React.FC = () => {
         onCancel={() => { setIsDeleteDialogOpen(false); setSessionToDelete(null); }}
       />
 
-      {/* Toast Message */}
       {toast.visible && createPortal(
-        <div className="side-panel-toast">
-          {toast.message}
-        </div>,
+        <div className="side-panel-toast">{toast.message}</div>,
         document.body
       )}
     </div>
