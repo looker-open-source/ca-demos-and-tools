@@ -16,7 +16,6 @@ import React, { useState, useEffect } from "react";
 import { Routes, Route, Navigate, BrowserRouter } from "react-router-dom";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { auth } from "./utils/firebase";
-import AllowlistWrapper from "./AllowlistWrapper";
 import HomePage from "./HomePage";
 import ChatRouteWrapper from "./ChatRouteWrapper";
 import Multimodal from "Multimodal";
@@ -24,6 +23,7 @@ import Resources from "./Resources";
 import LoginPage from "./LoginPage";
 import Layout from "./Layout";
 import { UserProvider } from "./UserContext";
+import OrchestratePage from "./OrchestratePage";
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -70,9 +70,15 @@ function App() {
                     path="/chat/multimodal"
                     element={
                       <Layout variant="branded">
-                        <AllowlistWrapper pageId="cortado_multimodal">
-                          <Multimodal />
-                        </AllowlistWrapper>
+                        <Multimodal />
+                      </Layout>
+                    }
+                  />
+                  <Route
+                    path="/orchestrate"
+                    element={
+                      <Layout>
+                        <OrchestratePage />
                       </Layout>
                     }
                   />

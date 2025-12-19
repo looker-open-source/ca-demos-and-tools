@@ -59,7 +59,7 @@ export async function askQuestion(req: Request, res: Response) {
     pythonAnalysisEnabled,
   });
 
-  const url = `https://geminidataanalytics.googleapis.com/v1alpha/projects/${projectId}/locations/global:chat`;
+  const url = `https://geminidataanalytics.googleapis.com/v1beta/projects/${projectId}/locations/global:chat`;
 
   const headers = {
     Authorization: `Bearer ${token}`,

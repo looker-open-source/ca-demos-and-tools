@@ -97,7 +97,7 @@ export const setupMessage = (datasource: datasource) => {
   }
   return {
     setup: {
-      model: `projects/${process.env.REACT_APP_FIREBASE_PROJECT_ID}/locations/us-central1/publishers/google/models/gemini-2.0-flash-live-preview-04-09`,
+      model: `projects/${process.env.REACT_APP_FIREBASE_PROJECT_ID}/locations/us-central1/publishers/google/models/gemini-live-2.5-flash-preview-native-audio`,
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       generationConfig: {

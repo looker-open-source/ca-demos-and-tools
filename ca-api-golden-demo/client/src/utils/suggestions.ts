@@ -38,6 +38,16 @@ export const suggestions: Suggestion[] = [
     ],
   },
   {
+    dataset: "orchestrate",
+    formattedName: "Orchestrate",
+    questions: [
+      "What data do you have access to?",
+      "How do traffic sources compare by day for the last 30 days?",
+      "Which pet stores sold the most during this time?",
+      "What was the air quality like in the midwest in 2022?",
+    ],
+  },
+  {
     dataset: "cymbalpets",
     formattedName: "Cymbal Pets",
     questions: [

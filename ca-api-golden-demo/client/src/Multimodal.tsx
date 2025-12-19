@@ -14,6 +14,8 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useLocation } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import Visualization from "./components/Visualization";
 import Table, { parseCsv } from "./components/Table";
 import TypewriterText from "./components/TypewriterText";
@@ -194,7 +196,7 @@ const Multimodal: React.FC = () => {
     if (transformedData!.vegaConfig) {
       setCortadoTempStatus("");
     }
-    if (transformedData!.ignoreMessage || transformedData!.questionReceived) {
+    if (transformedData!.ignoreMessage) {
       return;
     }
     // Append to the messages state incrementally
@@ -539,6 +541,11 @@ const Multimodal: React.FC = () => {
                       {(message.data.generatedSQL ||
                         message.data.generatedLookerQuery) && (
                         <details
+                          style={{
+                            marginTop: message.data.generatedLookerQuery
+                              ? 24
+                              : 0,
+                          }}
                           className={animations.collapsibleSection}
                           open={false}
                         >
@@ -587,6 +594,14 @@ const Multimodal: React.FC = () => {
 
                       {/* Advanced Python Analysis fields start */}
 
+                      {message.data.analysisProgressPlannerReasoning && (
+                        <div className="text">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.data.analysisProgressPlannerReasoning}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+
                       {message.data.analysisQuestion && (
                         <TypewriterText
                           text={message.data.analysisQuestion}
@@ -597,7 +612,9 @@ const Multimodal: React.FC = () => {
 
                       {message.data.analysisProgressText && (
                         <div className="text">
-                          <p>{message.data.analysisProgressText}</p>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                            {message.data.analysisProgressText}
+                          </ReactMarkdown>
                         </div>
                       )}
 

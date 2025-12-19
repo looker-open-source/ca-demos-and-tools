@@ -38,7 +38,9 @@ interface LookerQuery {
 
 function areAllValuesEmpty(obj: any) {
   return Object.values(obj).every((value) => {
-    return value === "" || value === null || value === false;
+    return (
+      value === "" || value === null || value === false || value === undefined
+    );
   });
 }
 
@@ -58,6 +60,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
 
   // Advanced Python Analysis only fields
   let analysisQuestion = "";
+  let analysisProgressPlannerReasoning = "";
+  let analysisProgressExecutionOutput = "";
   let analysisProgressCsv = null;
   let analysisProgressVegaChart = null;
   let analysisProgressText = null;
@@ -90,8 +94,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
           if (systemMessage.data.generatedSql) {
             generatedSQL = format(systemMessage.data.generatedSql);
           }
-          if (systemMessage.data.generatedLookerQuery) {
-            generatedLookerQuery = systemMessage.data.generatedLookerQuery;
+          if (systemMessage.data.query && systemMessage.data.query.looker) {
+            generatedLookerQuery = systemMessage.data.query.looker;
           }
           if (systemMessage.data.result && systemMessage.data.result.data) {
             data = systemMessage.data.result.data;
@@ -107,6 +111,10 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
             analysisQuestion = `Writing a query for the question '${systemMessage.analysis.query.question}'`;
           }
           if (systemMessage.analysis.progressEvent) {
+            analysisProgressPlannerReasoning =
+              systemMessage.analysis.progressEvent.plannerReasoning;
+            analysisProgressExecutionOutput =
+              systemMessage.analysis.progressEvent.executionOutput;
             analysisProgressCsv =
               systemMessage.analysis.progressEvent.resultCsvData;
             analysisProgressVegaChart =
@@ -147,8 +155,9 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
     }
 
     if (
-      // Purposefully not including: questionReceived, schemaResultDatasources, chartQueryInstructions.
-      // These are all temporary status that are not rendered permanently
+      // Purposefully not including: questionReceived, schemaResultDatasources, chartQueryInstructions, and analysisExecutionOutput
+      // questionReceived, schemaResultDatasources, chartQueryInstructions are all temporary status that are not rendered permanently
+      // analysisExecutionOutput duplicates analysisProgressCsv in markdown
       areAllValuesEmpty({
         derivedQuestion,
         generatedSQL,
@@ -156,6 +165,7 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
         data,
         name,
         analysisQuestion,
+        analysisProgressPlannerReasoning,
         analysisProgressCsv,
         analysisProgressVegaChart,
         analysisProgressText,
@@ -177,6 +187,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
       data,
       name,
       analysisQuestion,
+      analysisProgressPlannerReasoning,
+      analysisProgressExecutionOutput,
       analysisProgressCsv,
       analysisProgressVegaChart,
       analysisProgressText,

@@ -122,8 +122,6 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
 
    - Keeping the system instructions separated in secrets will allow you to quickly update agent instructions without requiring a full app deployment every time when tweaking the prompts
 
-   - In the `secrets/` folder, update the `ALLOWLIST_CORTADO_MULTIMODAL.txt` with a list of emails you wish to restrict access to the multimodal page (The Vertex Live API is currently limited to 3 concurrent sessions which can cause issues if too many users are accessing the page at the same time). If this is not required, comment out the `checkAllowlist` function and just replace with `setAllowed(true)` in [AllowlistWraper](/client/src/AllowlistWrapper.tsx)
-
    - Update `LOOKER_CLIENT_ID.txt` and `LOOKER_CLIENT_SECRET.txt` with Looker API credentials
 
    - Run the `import-secrets.sh` script, e.g. `./secrets/import-secrets.sh PROJECT_ID ./secrets`
@@ -206,7 +204,7 @@ This is the application that powered the [Data and Analytics Spotlight Keynote D
 
 To switch the Live API to a different language, you will need to make 3 updates:
 
-1. Modify the `languageCode` in the [multimodalSetup](/client/src/utils/multimodalSetup.ts#L107) to specify a language of your choice.
+1. Modify the `languageCode` in the [multimodalSetup](./client/src/utils/multimodalSetup.ts#L107) to specify a language of your choice.
 
 1. Update the Gemini system instructions (`SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_LOOKER` and `SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_BQ`) and add the following line to the ADDITIONAL INSTRUCTIONS section, specifying your language of choice as recommended in the [Vertex AI documentation](https://cloud.google.com/vertex-ai/generative-ai/docs/live-api/streamed-conversations#audio-response-settings).:
 
@@ -215,7 +213,7 @@ RESPOND IN [SPECIFY LANGUAGE HERE]. YOU MUST RESPOND UNMISTAKABLY IN [SPECIFY LA
 ```
 
 1. Update the final answer summarization prompt in
-   [MultimodalLiveClient](/client/src/utils/MultimodalLiveClient.ts#L453) to specify a languague:
+   [MultimodalLiveClient](./client/src/utils/MultimodalLiveClient.ts#L453) to specify a languague:
 
 ```
 `Use this response to answer the corresponding question. Give me the summary in [SPECIFY LANGUAGE HERE]. Here is the final answer: "${finalAnswer}"`
@@ -224,7 +222,7 @@ RESPOND IN [SPECIFY LANGUAGE HERE]. YOU MUST RESPOND UNMISTAKABLY IN [SPECIFY LA
 ## Project Structure
 
 ```
-dataqna-golden-demo/
+ca-api-golden-demo/
 ├── server/ # Backend code (Node.js)
 │ └── authHelper.ts # GCP access token
 │ └── index.ts # Backend entry point
@@ -246,7 +244,6 @@ dataqna-golden-demo/
 │ │ │ └── MultimodalLiveClient.ts # multimoodal class
 │ │ │ └── multimodalSetup.ts # config and helper functions for multimodal
 │ │ │ └── suggestions.ts # example prompts for each dataset
-│ │ ├── AllowlistWrapper.tsx # To control access to multimodal page via secret
 │ │ ├── App.tsx # Main React component with routes
 │ │ ├── ChatPage.tsx # Chat Page component
 │ │ ├── ChatRouteWrapper.tsx # Wrapper to apply branding variant
@@ -275,7 +272,7 @@ dataqna-golden-demo/
 | pageId             | page                              | secret                                                               | source                                                          | description                                                      |
 | ------------------ | --------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------------- |
 | openaq             | chat/openaq                       | SYSTEM_INSTRUCTION_CORTADO_OPENAQ                                    | bigquery-public-data.openaq.global_air_quality                  | YAML - standard open aq BQ data                                  |
-| thelook            | chat/thelook                      | SYSTEM_INSTRUCTION_CORTADO_THELOOK                                   | gemini-looker-demo-dataset.thelook_ecommerce.events             | YAML - standard the look BQ data                                 |
+| thelook            | chat/thelook                      | SYSTEM_INSTRUCTION_CORTADO_THELOOK                                   | looker-private-demo.thelook.events                              | YAML - standard the look BQ data                                 |
 | cymbalpets         | chat/cymbalpets                   | SYSTEM_INSTRUCTION_CORTADO_CYMBALPETS                                | https://looker.abc.com/explore/cymbal_pets/order_items          | YAML - standard cymbal pets LookML data                          |
 | cymbalpets_branded | chat/cymbalpets_branded           | SYSTEM_INSTRUCTION_CORTADO_CYMBALPETS_BRANDED                        | https://looker.abc.com/explore/cymbal_pets/order_items          | YAML - branded cymbal pets LookML data                           |
 | cymbalpets_embed   | chat/cymbalpets_embed             | SYSTEM_INSTRUCTION_CORTADO_CYMBALPETS_BRANDED_EMBED_BUSINESS_PULSE   | https://looker.abc.com/dashboards/cymbal_pets::business_pulse   | YAML - branded cymbal pets LookML data per dashboard             |
@@ -284,4 +281,3 @@ dataqna-golden-demo/
 | multimodal         | chat/multimodal?datasource=looker | SYSTEM_INSTRUCTION_CORTADO_CYMBALPETS_MULTIMODAL_LOOKER              | both order_items and purchases explore                          | YAML - multimodal cymbal pets Looker data (Dynamically filtered) |
 | multimodal         | chat/multimodal?datasource=bq     | SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_BQ                  | all tables in this dataset -> looker-private-demo.cymbal_pets   | TEXT - gemini multimodal live cymbal pets agent                  |
 | multimodal         | chat/multimodal?datasource=looker | SYSTEM_INSTRUCTION_GEMINI_MULTIMODAL_CYMBAL_PETS_LOOKER              | both order_items and purchases explore                          | TEXT - gemini multimodal live cymbal pets agent                  |
-| multimodal         | chat/multimodal                   | ALLOWLIST_CORTADO_MULTIMODAL                                         | allowlist for multimodal access                                 | Restrict access to multimodal page                               |
