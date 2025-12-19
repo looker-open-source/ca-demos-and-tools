@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '../services/clientService';
 import { DialogBox } from './DialogBox';
@@ -6,7 +6,6 @@ import {
   Add as AddIcon, 
   MoreVert as MoreVertIcon,
   PushPinOutlined as PinIcon, 
-  PushPin as UnpinIcon, 
   EditOutlined as RenameIcon,
   FileDownloadOutlined as DownloadIcon, 
   DeleteOutline as DeleteIcon,
@@ -33,7 +32,6 @@ export const SidePanel: React.FC = () => {
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
 
-  // UI State
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, openUp: false });
@@ -41,20 +39,85 @@ export const SidePanel: React.FC = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
   const [isAgentWarningOpen, setIsAgentWarningOpen] = useState(false);
+  const [isUnpinHovered, setIsUnpinHovered] = useState<string | null>(null);
 
-  // --- URL Synchronization Logic ---
+  const isInitialized = useRef(false);
+
+  const sortHistory = useCallback((history: Session[], pinnedIds: string[]) => {
+    return [...history].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id);
+      const bPinned = pinnedIds.includes(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return b.lastUpdateTime - a.lastUpdateTime;
+    });
+  }, []);
+
+  // --- Centralized API Call Handler ---
+  const fetchSessionDetails = useCallback(async (agentId: string, sessionId: string) => {
+    try {
+      // These are the detail calls
+      await apiClient.get(`/apps/${agentId}/users/user/sessions/${sessionId}`);
+      await apiClient.get(`/debug/trace/session/${sessionId}`);
+    } catch (err) {
+      console.error("Failed to load session details", err);
+    }
+  }, []);
+
+  // --- FIXED: Session Click Handler ---
+  const handleSessionClick = (sessionId: string) => {
+    // CRITICAL: Prevent duplicate calls if clicking the already active session
+    if (!selectedAgentId || sessionId === activeSessionId) return;
+    
+    setActiveSessionId(sessionId);
+    fetchSessionDetails(selectedAgentId, sessionId);
+  };
+
+  // --- 1. INITIALIZATION & DEEP LINKING ---
+  useEffect(() => {
+    if (isInitialized.current) return;
+    isInitialized.current = true;
+
+    const initializeApp = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlApp = params.get('app');
+      const urlSession = params.get('session');
+
+      try {
+        const response = await apiClient.get('/list-apps');
+        if (Array.isArray(response)) {
+          setAgents(response.map(name => ({ id: name, name: name })));
+
+          if (urlApp && response.includes(urlApp)) {
+            setSelectedAgentId(urlApp);
+            const history: Session[] = await apiClient.get(`/apps/${urlApp}/users/user/sessions`);
+            const sorted = sortHistory(history, pinnedSessionIds);
+            setSessionHistory(sorted);
+
+            if (urlSession && history.find(s => s.id === urlSession)) {
+              setActiveSessionId(urlSession);
+              fetchSessionDetails(urlApp, urlSession);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Initialization Flow Failed", err);
+      }
+    };
+
+    initializeApp();
+  }, [sortHistory, pinnedSessionIds, fetchSessionDetails]);
+
+  // --- 2. URL SYNCHRONIZATION (Passive) ---
   useEffect(() => {
     const params = new URLSearchParams();
     if (selectedAgentId) params.set('app', selectedAgentId);
     if (activeSessionId) params.set('session', activeSessionId);
-    
-    // Maintain userId=user as requested
     if (selectedAgentId || activeSessionId) params.set('userId', 'user');
 
     const queryString = params.toString();
     const newPath = queryString ? `/dev-ui/?${queryString}` : '/dev-ui/';
 
-    // Update URL without page refresh
     if (window.location.pathname + window.location.search !== newPath) {
       window.history.pushState(null, '', newPath);
     }
@@ -75,21 +138,6 @@ export const SidePanel: React.FC = () => {
     };
   }, [closeAllMenus]);
 
-  const sortHistory = (history: Session[], pinnedIds: string[]) => {
-    return [...history].sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id);
-      const bPinned = pinnedIds.includes(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-      return b.lastUpdateTime - a.lastUpdateTime;
-    });
-  };
-
-  const showToast = (message: string) => {
-    setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 3000);
-  };
-
   const togglePin = (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
     const isCurrentlyPinned = pinnedSessionIds.includes(sessionId);
@@ -97,7 +145,8 @@ export const SidePanel: React.FC = () => {
     setPinnedSessionIds(newPinned);
     setSessionHistory(prev => sortHistory(prev, newPinned));
     closeAllMenus();
-    showToast(isCurrentlyPinned ? "Session unpinned" : "Session pinned");
+    setToast({ message: isCurrentlyPinned ? "Session unpinned" : "Session pinned", visible: true });
+    setTimeout(() => setToast({ message: '', visible: false }), 3000);
   };
 
   const handleToolbarClick = (e: React.MouseEvent, id: string) => {
@@ -118,24 +167,23 @@ export const SidePanel: React.FC = () => {
 
   const handleAgentDropdownClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (agentMenuOpen) { closeAllMenus(); return; }
     const rect = e.currentTarget.getBoundingClientRect();
     setMenuPos({ top: rect.bottom + 5, left: rect.left, openUp: false });
     setAgentMenuOpen(true);
     setMenuOpenId(null);
   };
 
-  const refreshAndSortHistory = async (agentId: string) => {
+  const refreshAndSortHistory = async (agentId: string, shouldFetchDetails = true) => {
     try {
       const history: Session[] = await apiClient.get(`/apps/${agentId}/users/user/sessions`);
       const sorted = sortHistory(history, pinnedSessionIds);
       setSessionHistory(sorted);
-      if (sorted.length > 0) {
-        setActiveSessionId(sorted[0].id);
-        return sorted[0].id;
+      if (sorted.length > 0 && shouldFetchDetails) {
+        const firstId = sorted[0].id;
+        setActiveSessionId(firstId);
+        fetchSessionDetails(agentId, firstId);
       }
-    } catch (err) { console.error("Refresh history failed", err); }
-    return null;
+    } catch (err) { console.error("Refresh failed", err); }
   };
 
   const handleDeleteConfirm = async () => {
@@ -144,15 +192,8 @@ export const SidePanel: React.FC = () => {
       await apiClient.delete(`/apps/${selectedAgentId}/users/user/sessions/${sessionToDelete}`);
       setIsDeleteDialogOpen(false);
       closeAllMenus();
-      const newLatestId = await refreshAndSortHistory(selectedAgentId);
-      if (newLatestId) {
-        await apiClient.get(`/apps/${selectedAgentId}/users/user/sessions/${newLatestId}`);
-        await apiClient.get(`/debug/trace/session/${newLatestId}`);
-      } else {
-        setSessionHistory([]);
-        setActiveSessionId(null);
-      }
-    } catch (err) { console.error("Delete flow failed", err); }
+      await refreshAndSortHistory(selectedAgentId, true);
+    } catch (err) { console.error("Delete failed", err); }
   };
 
   const handleDownload = async (sessionId: string) => {
@@ -171,27 +212,14 @@ export const SidePanel: React.FC = () => {
     } catch (err) { console.error("Download failed", err); }
   };
 
-  useEffect(() => {
-    const fetchAgents = async () => {
-      try {
-        const response = await apiClient.get('/list-apps');
-        if (Array.isArray(response)) {
-          setAgents(response.map(name => ({ id: name, name: name })));
-        }
-      } catch (err) { console.error("Agents fetch failed", err); }
-    };
-    fetchAgents();
-  }, []);
-
   const runFullSessionFlow = async (agentId: string) => {
     try {
       const sessionData = await apiClient.post(`/apps/${agentId}/users/user/sessions`);
       const newId = sessionData.id;
-      await apiClient.get(`/apps/${agentId}/users/user/sessions/${newId}`);
-      await apiClient.get(`/debug/trace/session/${newId}`);
-      await refreshAndSortHistory(agentId);
       setActiveSessionId(newId);
-    } catch (err) { console.error("Session Flow Failed", err); }
+      await fetchSessionDetails(agentId, newId);
+      await refreshAndSortHistory(agentId, false);
+    } catch (err) { console.error("Flow failed", err); }
   };
 
   const handleAgentSelect = (agentId: string) => {
@@ -200,22 +228,10 @@ export const SidePanel: React.FC = () => {
     runFullSessionFlow(agentId);
   };
 
-  const handleNewSessionClick = () => {
-    if (selectedAgentId) runFullSessionFlow(selectedAgentId);
-    else setIsAgentWarningOpen(true);
-  };
-
   const formatSessionTime = (epoch: number) => {
     const date = new Date(epoch * 1000);
     return date.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
-
-  const getSessionDisplayName = (sessionId: string | null): string => {
-    if (!sessionId) return "";
-    const session = sessionHistory.find((s) => s.id === sessionId);
-    return session?.id || "";
-  };
-  const [isUnpinHovered, setIsUnpinHovered] = useState<string | null>(null);
 
   return (
     <div className="side-panel-container">
@@ -234,7 +250,7 @@ export const SidePanel: React.FC = () => {
             </div>, document.body
           )}
         </div>
-        <button className="side-panel-new-session-button" onClick={handleNewSessionClick}>
+        <button className="side-panel-new-session-button" onClick={() => selectedAgentId ? runFullSessionFlow(selectedAgentId) : setIsAgentWarningOpen(true)}>
           <AddIcon style={{ fontSize: '1.25rem' }} /> New Session
         </button>
         <h3 className="side-panel-history-header">Session History</h3>
@@ -243,14 +259,18 @@ export const SidePanel: React.FC = () => {
         {sessionHistory.map((session) => {
           const isPinned = pinnedSessionIds.includes(session.id);
           return (
-            <div key={session.id} className={`side-panel-session-item ${session.id === activeSessionId ? 'active' : ''}`} onClick={() => setActiveSessionId(session.id)}>
+            <div 
+              key={session.id} 
+              className={`side-panel-session-item ${session.id === activeSessionId ? 'active' : ''}`} 
+              onClick={() => handleSessionClick(session.id)}
+            >
               <div className="side-panel-content-wrapper">
                 <div className="side-panel-text-content">
                   <div className="side-panel-session-title">Session: {session.id.substring(0, 8)}...</div>
                   <div className="side-panel-session-timestamp">{formatSessionTime(session.lastUpdateTime)}</div>
                 </div>
                 <div className="side-panel-actions-wrapper">
-                  {isPinned && <PinIcon className="menu-icon"  style={{ color: '#004a77' }} />}
+                  {isPinned && <PinIcon className="menu-icon" style={{ color: '#004a77' }} />}
                   <button className={`side-panel-action-dots ${menuOpenId === session.id ? 'visible' : ''}`} onClick={(e) => handleToolbarClick(e, session.id)}>
                     <MoreVertIcon fontSize="small" />
                   </button>
@@ -258,28 +278,16 @@ export const SidePanel: React.FC = () => {
               </div>
               {menuOpenId === session.id && createPortal(
                 <div className="side-panel-toolbar-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999, transform: menuPos.openUp ? 'translateY(-10%)' : 'none' }} onClick={(e) => e.stopPropagation()}>
-                  <div
-                    className="menu-item"
-                    onClick={(e) => togglePin(e, session.id)}
-                    onMouseEnter={() => setIsUnpinHovered(session.id)}
-                    onMouseLeave={() => setIsUnpinHovered(null)}
-                  >
+                  <div className="menu-item" onClick={(e) => togglePin(e, session.id)} onMouseEnter={() => setIsUnpinHovered(session.id)} onMouseLeave={() => setIsUnpinHovered(null)}>
                     {isPinned ? (
-                      <img
-                        src={isUnpinHovered === session.id ? "/icons/keep-off-active.svg" : "/icons/keep-off-default.svg"}
-                        alt="Unpin"
-                        className="menu-icon"
-                        style={{ width: '24px', height: '24px', objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <PinIcon className="menu-icon" />
-                    )}
+                      <img src={isUnpinHovered === session.id ? "/icons/keep-off-active.svg" : "/icons/keep-off-default.svg"} alt="Unpin" className="menu-icon" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                    ) : ( <PinIcon className="menu-icon" /> )}
                     {isPinned ? 'Unpin' : 'Pin'}
                   </div>
                   <div className="menu-item"><RenameIcon className="menu-icon" /> Rename</div>
                   <div className="menu-item" onClick={(e) => handleDownload(session.id)}><DownloadIcon className="menu-icon" /> Download</div>
                   <div className="menu-divider"></div>
-                  <div className="menu-item delete" onClick={(e) => { setSessionToDelete(session.id); setIsDeleteDialogOpen(true); }}>
+                  <div className="menu-item delete" onClick={() => { setSessionToDelete(session.id); setIsDeleteDialogOpen(true); }}>
                     <DeleteIcon className="menu-icon" /> Delete
                   </div>
                 </div>, document.body
@@ -288,10 +296,9 @@ export const SidePanel: React.FC = () => {
           );
         })}
       </div>
-      <DialogBox isOpen={isDeleteDialogOpen} title="Delete saved session?" content={`This action will delete saved session “${getSessionDisplayName(sessionToDelete || '')}”. Are you sure you want to continue ?`} confirmLabel="Continue" onConfirm={handleDeleteConfirm} onCancel={() => { setIsDeleteDialogOpen(false); setSessionToDelete(null); }} />
+      <DialogBox isOpen={isDeleteDialogOpen} title="Delete saved session?" content="This action will delete saved session" confirmLabel="Continue" onConfirm={handleDeleteConfirm} onCancel={() => setIsDeleteDialogOpen(false)} />
+      <DialogBox isOpen={isAgentWarningOpen} title="No Agent Selected" content="Please select an agent from the dropdown before starting a new session." confirmLabel="Ok" cancelLabel="" onConfirm={() => setIsAgentWarningOpen(false)} onCancel={() => setIsAgentWarningOpen(false)} />
       {toast.visible && createPortal(<div className="side-panel-toast">{toast.message}</div>, document.body)}
-
-      <DialogBox isOpen={isAgentWarningOpen} title="No Agent Selected" content="Please select an agent from the dropdown before starting a new session." confirmLabel="Ok"cancelLabel="" onConfirm={() => setIsAgentWarningOpen(false)} onCancel={() => setIsAgentWarningOpen(false)}/>
     </div>
   );
 };
