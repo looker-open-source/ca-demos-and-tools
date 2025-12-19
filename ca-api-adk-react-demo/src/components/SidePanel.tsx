@@ -214,6 +214,7 @@ export const SidePanel: React.FC = () => {
     const session = sessionHistory.find((s) => s.id === sessionId);
     return session?.id || "";
   };
+  const [isUnpinHovered, setIsUnpinHovered] = useState<string | null>(null);
 
   return (
     <div className="side-panel-container">
@@ -248,7 +249,7 @@ export const SidePanel: React.FC = () => {
                   <div className="side-panel-session-timestamp">{formatSessionTime(session.lastUpdateTime)}</div>
                 </div>
                 <div className="side-panel-actions-wrapper">
-                  {isPinned && <UnpinIcon className="pinned-indicator-icon" fontSize="small" style={{ color: '#004a77' }} />}
+                  {isPinned && <PinIcon className="menu-icon"  style={{ color: '#004a77' }} />}
                   <button className={`side-panel-action-dots ${menuOpenId === session.id ? 'visible' : ''}`} onClick={(e) => handleToolbarClick(e, session.id)}>
                     <MoreVertIcon fontSize="small" />
                   </button>
@@ -256,8 +257,23 @@ export const SidePanel: React.FC = () => {
               </div>
               {menuOpenId === session.id && createPortal(
                 <div className="side-panel-toolbar-menu" style={{ position: 'fixed', top: menuPos.top, left: menuPos.left, zIndex: 99999, transform: menuPos.openUp ? 'translateY(-10%)' : 'none' }} onClick={(e) => e.stopPropagation()}>
-                  <div className="menu-item" onClick={(e) => togglePin(e, session.id)}>
-                    {isPinned ? <UnpinIcon className="menu-icon" style={{ color: '#004a77' }} /> : <PinIcon className="menu-icon" />} {isPinned ? 'Unpin' : 'Pin'}
+                  <div
+                    className="menu-item"
+                    onClick={(e) => togglePin(e, session.id)}
+                    onMouseEnter={() => setIsUnpinHovered(session.id)}
+                    onMouseLeave={() => setIsUnpinHovered(null)}
+                  >
+                    {isPinned ? (
+                      <img
+                        src={isUnpinHovered === session.id ? "/icons/keep-off-active.svg" : "/icons/keep-off-default.svg"}
+                        alt="Unpin"
+                        className="menu-icon"
+                        style={{ width: '24px', height: '24px', objectFit: 'contain' }}
+                      />
+                    ) : (
+                      <PinIcon className="menu-icon" />
+                    )}
+                    {isPinned ? 'Unpin' : 'Pin'}
                   </div>
                   <div className="menu-item"><RenameIcon className="menu-icon" /> Rename</div>
                   <div className="menu-item" onClick={(e) => handleDownload(session.id)}><DownloadIcon className="menu-icon" /> Download</div>
