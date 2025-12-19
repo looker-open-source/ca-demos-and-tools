@@ -40,6 +40,7 @@ export const SidePanel: React.FC = () => {
 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<string | null>(null);
+  const [isAgentWarningOpen, setIsAgentWarningOpen] = useState(false);
 
   // --- URL Synchronization Logic ---
   useEffect(() => {
@@ -201,7 +202,7 @@ export const SidePanel: React.FC = () => {
 
   const handleNewSessionClick = () => {
     if (selectedAgentId) runFullSessionFlow(selectedAgentId);
-    else alert("Please select an agent first");
+    else setIsAgentWarningOpen(true);
   };
 
   const formatSessionTime = (epoch: number) => {
@@ -289,6 +290,8 @@ export const SidePanel: React.FC = () => {
       </div>
       <DialogBox isOpen={isDeleteDialogOpen} title="Delete saved session?" content={`This action will delete saved session “${getSessionDisplayName(sessionToDelete || '')}”. Are you sure you want to continue ?`} confirmLabel="Continue" onConfirm={handleDeleteConfirm} onCancel={() => { setIsDeleteDialogOpen(false); setSessionToDelete(null); }} />
       {toast.visible && createPortal(<div className="side-panel-toast">{toast.message}</div>, document.body)}
+
+      <DialogBox isOpen={isAgentWarningOpen} title="No Agent Selected" content="Please select an agent from the dropdown before starting a new session." confirmLabel="Ok"cancelLabel="" onConfirm={() => setIsAgentWarningOpen(false)} onCancel={() => setIsAgentWarningOpen(false)}/>
     </div>
   );
 };
