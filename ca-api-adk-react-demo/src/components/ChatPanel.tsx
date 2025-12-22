@@ -6,7 +6,7 @@ import {
 import {
   InfoOutlined, AttachFile, Mic, MoreVert, InsertDriveFile
 } from '@mui/icons-material';
-// Import the specific service we created
+import { useSession } from '../context/SessionContext';
 import { chatService } from '../services/clientService'; 
 import '../App.css';
 
@@ -17,7 +17,6 @@ export interface Message {
 }
 
 interface ChatPanelProps {
-  // We removed internal state props since this component is now "smart"
   onToggleRightPanel?: () => void;
 }
 
@@ -30,11 +29,11 @@ const SUGGESTIONS = [
 ];
 
 const tabIconSrc = "/Tab.png";
-const SESSION_ID = "a2b693fd-58b9-4b15-99af-f29c1187e33d"; // Constant ID
 
 const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { activeSessionId } = useSession();
 
   // --- Internal State ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -45,30 +44,31 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   // --- Handlers ---
 
   const handleSendMessage = async () => {
-    // 1. Validation
     if (!userInput.trim() && selectedFiles.length === 0) return;
     if (isSending) return;
+    if (!activeSessionId) {
+        console.error("Cannot send message: No active session selected.");
+        alert("Please select or create a session from the side panel first.");
+        return;
+    }
 
     const currentText = userInput;
 
-    // 2. Optimistic Update (Show User Message Immediately)
     const newUserMsg: Message = { role: 'user', text: currentText };
     setMessages((prev) => [...prev, newUserMsg]);
     
-    // 3. Reset Inputs & Set Loading
     setUserInput('');
     setSelectedFiles([]);
     setIsSending(true);
 
     try {
-      const response = await chatService.sendUserMessage(currentText, SESSION_ID);
+      const response = await chatService.sendUserMessage(currentText, activeSessionId);
       
       console.log("API Response:", response);
 
       // 5. Handle Response
       let botText = "Received empty response";
       
-      // Adapt this check to match your exact API response structure
       if (response?.parts?.[0]?.text) {
         botText = response.parts[0].text;
       } else if (typeof response === 'string') {
@@ -99,10 +99,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
-  // Helper to click suggestion card
   const handleSuggestionClick = (text: string) => {
     setUserInput(text);
-    // Optional: handleSendMessage(); // Uncomment to send immediately on click
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -117,6 +115,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isSending]);
+  useEffect(() => {
+    if (activeSessionId) {
+        setMessages([]); 
+    }
+  }, [activeSessionId]);
 
   return (
     <div className="chat-panel-container">
@@ -126,7 +129,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
         <Stack direction="row" alignItems="center" justifyContent="space-between" width="100%">
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="subtitle2" sx={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-              Cases Eng Default Pool
+              {activeSessionId ? `Session: ${activeSessionId.substring(0,8)}...` : 'No Active Session'}
             </Typography>
             <IconButton size="small" sx={{ color: 'var(--text-secondary)' }}>
               <InfoOutlined fontSize="small" />
@@ -145,7 +148,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       <div className="chat-content-area" ref={scrollRef}>
         
         {messages.length === 0 ? (
-          // --- ZERO STATE (Welcome) ---
           <div className="welcome-container">
             <div className="welcome-content-wrapper">
               
@@ -154,7 +156,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
                 <h1 className="welcome-text-subtitle">What can I help you with today?</h1>
               </div>
 
-              {/* Grid V2 Syntax (Material UI v6) */}
               <Grid container spacing={2}>
                 {SUGGESTIONS.map((text, idx) => (
                   <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
@@ -211,11 +212,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
 
           <TextField
             fullWidth
-            placeholder="Type a message..."
+            placeholder={activeSessionId ? "Type a message..." : "Select a session to start chatting"}
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isSending}
+            disabled={isSending || !activeSessionId} // Disable input if no session
             className="chat-input-field" 
             InputProps={{
               endAdornment: (
@@ -229,11 +230,11 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
                       onChange={handleFileSelect}
                     />
                     <Tooltip title="Upload">
-                        <IconButton onClick={() => fileInputRef.current?.click()}>
+                        <IconButton onClick={() => fileInputRef.current?.click()} disabled={!activeSessionId}>
                             <AttachFile />
                         </IconButton>
                     </Tooltip>
-                    <Tooltip title="Mic"><IconButton><Mic /></IconButton></Tooltip>
+                    <Tooltip title="Mic"><IconButton disabled={!activeSessionId}><Mic /></IconButton></Tooltip>
                     <IconButton><MoreVert /></IconButton>
                   </Stack>
                 </InputAdornment>

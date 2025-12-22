@@ -7,6 +7,7 @@ import './App.css';
 
 import ChatPanel from './components/ChatPanel';
 import { SidePanel } from './components/SidePanel';
+import { SessionProvider } from './context/SessionContext';
 
 const AppContent = () => {
   const { themeMode } = useAppTheme();
@@ -47,7 +48,9 @@ const AppContent = () => {
 function App() {
   return (
     <AppThemeProvider>
-      <AppContent />
+      <SessionProvider>
+         <AppContent />
+      </SessionProvider>
     </AppThemeProvider>
   );
 }

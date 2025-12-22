@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { apiClient } from '../services/clientService';
 import { DialogBox } from './DialogBox';
+import { useSession } from '../context/SessionContext'; // <--- 1. Import the Context Hook
 import { 
   Add as AddIcon, 
   MoreVert as MoreVertIcon,
@@ -25,10 +26,15 @@ interface AgentOption {
 }
 
 export const SidePanel: React.FC = () => {
+  const { 
+    activeSessionId, 
+    setActiveSessionId, 
+    selectedAgentId, 
+    setSelectedAgentId 
+  } = useSession();
+
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [sessionHistory, setSessionHistory] = useState<Session[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [pinnedSessionIds, setPinnedSessionIds] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
 
@@ -106,7 +112,7 @@ export const SidePanel: React.FC = () => {
     };
 
     initializeApp();
-  }, [sortHistory, pinnedSessionIds, fetchSessionDetails]);
+  }, [sortHistory, pinnedSessionIds, fetchSessionDetails, setSelectedAgentId, setActiveSessionId]);
 
   // --- 2. URL SYNCHRONIZATION (Passive) ---
   useEffect(() => {

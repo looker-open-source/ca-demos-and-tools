@@ -716,12 +716,8 @@
 
 /* Icon Image Styling inside the Tab */
 .inspector-toggle-icon {
-  width: 100%;
-  height: 100%;
   display: block;
   object-fit: contain;
-  /* Always white icon on dark tab button */
-  filter: brightness(0) invert(1); 
   opacity: 1; 
 }
 
