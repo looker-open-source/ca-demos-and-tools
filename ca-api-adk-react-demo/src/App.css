@@ -1013,7 +1013,7 @@
 
 .right-panel-content {
     flex-grow: 1;
-    display: flex;
+    /* display: flex; */
     justify-content: center;
     align-items: center;
     padding: 24px;

@@ -7,6 +7,8 @@ interface SessionContextType {
   setSelectedAgentId: (id: string | null) => void;
   renameSession: (sessionId: string, newName: string) => void;
   getSessionName: (sessionId: string, defaultName: string) => string;
+  traceRefreshTrigger: number; 
+  notifyMessageSent: () => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -15,7 +17,8 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   
-  // 1. Initialize from LocalStorage to persist names on reload
+  const [traceRefreshTrigger, setTraceRefreshTrigger] = useState(0);
+
   const [sessionNames, setSessionNames] = useState<Record<string, string>>(() => {
     try {
       const saved = localStorage.getItem('session_renames');
@@ -29,7 +32,6 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
   const renameSession = (sessionId: string, newName: string) => {
     setSessionNames((prev) => {
       const updated = { ...prev, [sessionId]: newName };
-      // 2. Save to LocalStorage whenever a name changes
       localStorage.setItem('session_renames', JSON.stringify(updated));
       return updated;
     });
@@ -39,6 +41,10 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
     return sessionNames[sessionId] || defaultName;
   };
 
+  const notifyMessageSent = () => {
+    setTraceRefreshTrigger(prev => prev + 1);
+  };
+
   return (
     <SessionContext.Provider value={{ 
       activeSessionId, 
@@ -46,7 +52,9 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
       selectedAgentId, 
       setSelectedAgentId,
       renameSession,
-      getSessionName
+      getSessionName,
+      traceRefreshTrigger, 
+      notifyMessageSent    
     }}>
       {children}
     </SessionContext.Provider>

@@ -33,7 +33,7 @@ const tabIconSrc = "/Tab.png";
 const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { activeSessionId, getSessionName } = useSession();
+  const { activeSessionId, getSessionName, notifyMessageSent } = useSession();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
@@ -66,6 +66,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       }
 
       setMessages((prev) => [...prev, { role: 'bot', text: botText }]);
+      notifyMessageSent();
     } catch (error) {
       console.error("API Error:", error);
       setMessages((prev) => [...prev, { role: 'bot', text: "Error: Could not reach agent." }]);
