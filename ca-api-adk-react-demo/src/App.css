@@ -972,3 +972,74 @@
 .App-link {
   color: #61dafb;
 }
+
+/* =========================================
+   10. RIGHT PANEL (INSPECTOR)
+   ========================================= */
+
+.right-panel-container {
+  width: 0;
+  opacity: 0;
+  visibility: hidden;
+  
+  height: 100%;
+  border-left: 1px solid var(--border-color);
+  background-color: var(--bg-paper); 
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0; 
+  transition: all 0.3s ease-in-out; 
+  overflow: hidden; 
+}
+
+.right-panel-container.open {
+  width: 30%;
+  opacity: 1;
+  visibility: visible;
+}
+
+.right-panel-header {
+  height: 3rem; 
+  border-bottom: 1px solid var(--border-color);
+  padding: 0 16px;
+  background-color: var(--bg-paper);
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.right-panel-header .MuiTypography-root {
+    font-size: 0.875rem; 
+}
+
+.right-panel-content {
+    flex-grow: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    background-color: #F8F9FA; 
+}
+
+[data-theme='dark'] .right-panel-content {
+    background-color: var(--bg-default); 
+}
+
+.empty-state-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+[data-theme='dark'] .empty-state-icon-wrapper {
+    background-color: #004A77; 
+}
+
+.empty-state-icon {
+    font-size: 48px !important;
+    color: #1976d2;
+}
+
+[data-theme='dark'] .empty-state-icon {
+    color: #A8C7FA;
+}

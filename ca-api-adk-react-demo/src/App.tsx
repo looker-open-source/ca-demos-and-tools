@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ComponentsProvider } from '@looker/components-providers';
 import { Box, ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import TopBanner from './components/TopBanner';
@@ -8,9 +8,11 @@ import './App.css';
 import ChatPanel from './components/ChatPanel';
 import { SidePanel } from './components/SidePanel';
 import { SessionProvider } from './context/SessionContext';
+import RightPanel from './components/RightPanel';
 
 const AppContent = () => {
   const { themeMode } = useAppTheme();
+  const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
   // MUI Theme Setup
   const muiTheme = useMemo(() => createTheme({
@@ -34,9 +36,13 @@ const AppContent = () => {
               <SidePanel />
               <Box sx={{ flexGrow: 1, height: '100%', overflow: 'hidden', position: 'relative' }}>
                 <ChatPanel 
-                   onToggleRightPanel={() => console.log('Toggle Inspector')}
+                  onToggleRightPanel={() => setIsInspectorOpen(!isInspectorOpen)}                
                 />
               </Box>
+              <RightPanel 
+                isOpen={isInspectorOpen} 
+                onClose={() => setIsInspectorOpen(false)} 
+              />
             </Box>
           </Box>
         </div>
