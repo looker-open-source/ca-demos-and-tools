@@ -730,7 +730,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Dynamic Background: Light Grey (#f9fafb) or Dark Grey (#131314) */
   background-color: var(--bg-default); 
   position: relative;
 }
@@ -747,7 +746,6 @@
 .chat-header-bar {
   height: 2.5rem;
   border-bottom: 1px solid var(--border-color);
-  /* Dynamic Background: White or Dark Surface */
   background-color: var(--bg-paper); 
   display: flex;
   align-items: center;
@@ -806,7 +804,6 @@
   height: 100%;
   padding: 1.5rem; 
   border-radius: 12px; 
-  /* Dynamic Card Background & Border */
   background-color: var(--bg-paper);
   border: 1px solid var(--border-color);
   cursor: pointer;
@@ -828,8 +825,46 @@
 }
 
 .message-row {
-  margin-bottom: 1rem;
+  display: flex; 
   width: 100%;
+  margin-bottom: 1.5rem;
+  gap: 16px;
+}
+
+.message-row.user {
+  justify-content: flex-end;
+}
+
+.message-row.bot {
+  justify-content: flex-start;
+}
+
+.chat-avatar {
+  width: 32px !important;
+  height: 32px !important;
+  flex-shrink: 0;
+}
+
+.chat-avatar.bot {
+  background-color: var(--bg-paper) !important;
+  border: 1px solid var(--border-color) !important;
+  color: #1976d2 !important; 
+}
+
+[data-theme='dark'] .chat-avatar.bot {
+  background-color: var(--bg-paper) !important;
+  border: 1px solid var(--border-color) !important;
+  color: #A8C7FA !important; 
+}
+
+.chat-avatar.user {
+  background-color: #e3f2fd !important;
+  color: #1976d2 !important;
+}
+
+[data-theme='dark'] .chat-avatar.user {
+  background-color: #004A77 !important;
+  color: #C2E7FF !important;
 }
 
 .message-card {
@@ -838,18 +873,18 @@
   border-radius: 18px; 
   max-width: 80%;
   word-wrap: break-word;
+  line-height: 1.5;
 }
 
 .message-card.user {
   background-color: #E3F2FD; 
   color: #0B57D0;
-  border-top-right-radius: 4px; 
+  border-top-right-radius: 4px;
 }
 
-/* Dark Mode User Bubble Overrides */
 [data-theme='dark'] .message-card.user {
-  background-color: #004A77; /* Dark Blue Background */
-  color: #C2E7FF; /* Light Blue Text */
+  background-color: #004A77;
+  color: #C2E7FF;
 }
 
 .message-card.bot {
@@ -857,6 +892,12 @@
   border: 1px solid var(--border-color);
   color: var(--text-primary);
   border-top-left-radius: 4px;
+}
+
+.thinking-text {
+  color: var(--text-secondary);
+  font-style: italic;
+  font-size: 0.875rem;
 }
 
 .chat-input-container {

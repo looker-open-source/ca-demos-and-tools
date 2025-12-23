@@ -1,14 +1,15 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
-  Box, Typography, IconButton, Tooltip, 
-  TextField, InputAdornment, Stack, Chip, Grid
+  Typography, IconButton, Tooltip, 
+  TextField, InputAdornment, Stack, Chip, Grid, Avatar
 } from '@mui/material';
 import {
-  InfoOutlined, AttachFile, Mic, MoreVert, InsertDriveFile
+  InfoOutlined, AttachFile, Mic, MoreVert, InsertDriveFile,
+  SmartToyOutlined, PersonOutline
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
 import { chatService } from '../services/clientService'; 
-import '../App.css';
+import '../App.css'; // Ensure this is imported
 
 // --- Types ---
 export interface Message {
@@ -20,7 +21,6 @@ interface ChatPanelProps {
   onToggleRightPanel?: () => void;
 }
 
-// --- Constants ---
 const SUGGESTIONS = [
   "Show the top areas of improvement for a specific workflow",
   "Show the top areas of improvement for a specific workflow",
@@ -35,25 +35,20 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { activeSessionId } = useSession();
 
-  // --- Internal State ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
   const [isSending, setIsSending] = useState(false);
 
-  // --- Handlers ---
-
   const handleSendMessage = async () => {
     if (!userInput.trim() && selectedFiles.length === 0) return;
     if (isSending) return;
     if (!activeSessionId) {
-        console.error("Cannot send message: No active session selected.");
         alert("Please select or create a session from the side panel first.");
         return;
     }
 
     const currentText = userInput;
-
     const newUserMsg: Message = { role: 'user', text: currentText };
     setMessages((prev) => [...prev, newUserMsg]);
     
@@ -62,13 +57,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
     setIsSending(true);
 
     try {
-      const response = await chatService.sendUserMessage(currentText, activeSessionId);
-      
-      console.log("API Response:", response);
-
-      // 5. Handle Response
-      let botText = "Received empty response";
-      
+      const response = await chatService.sendUserMessage(currentText, activeSessionId, selectedFiles);      let botText = "Received empty response";
       if (response?.parts?.[0]?.text) {
         botText = response.parts[0].text;
       } else if (typeof response === 'string') {
@@ -76,7 +65,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       }
 
       setMessages((prev) => [...prev, { role: 'bot', text: botText }]);
-
     } catch (error) {
       console.error("API Error:", error);
       setMessages((prev) => [...prev, { role: 'bot', text: "Error: Could not reach agent." }]);
@@ -115,6 +103,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isSending]);
+
   useEffect(() => {
     if (activeSessionId) {
         setMessages([]); 
@@ -150,7 +139,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
         {messages.length === 0 ? (
           <div className="welcome-container">
             <div className="welcome-content-wrapper">
-              
               <div style={{ textAlign: 'left' }}>
                 <h1 className="welcome-text-hi">Hi,</h1>
                 <h1 className="welcome-text-subtitle">What can I help you with today?</h1>
@@ -168,30 +156,40 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
                   </Grid>
                 ))}
               </Grid>
-
             </div>
           </div>
         ) : (
           <div className="welcome-content-wrapper" style={{ marginTop: '1rem' }}>
             {messages.map((msg, i) => (
-              <div 
-                key={i} 
-                className="message-row" 
-                style={{ textAlign: msg.role === 'user' ? 'right' : 'left' }}
-              >
+              <div key={i} className={`message-row ${msg.role}`}>
+                {msg.role === 'bot' && (
+                  <Avatar className="chat-avatar bot">
+                    <SmartToyOutlined fontSize="small" />
+                  </Avatar>
+                )}
                 <div className={`message-card ${msg.role}`}>
                   <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
                     {msg.text}
                   </Typography>
                 </div>
+                {msg.role === 'user' && (
+                   <Avatar className="chat-avatar user">
+                     <PersonOutline fontSize="small" />
+                   </Avatar>
+                )}
               </div>
             ))}
             
             {isSending && (
-               <div className="message-row" style={{ textAlign: 'left' }}>
-                 <Typography variant="caption" sx={{ ml: 2, color: 'var(--text-secondary)' }}>
-                   Thinking...
-                 </Typography>
+               <div className="message-row bot">
+                 <Avatar className="chat-avatar bot">
+                    <SmartToyOutlined fontSize="small" />
+                  </Avatar>
+                 <div className="message-card bot">
+                   <Typography variant="caption" className="thinking-text">
+                     Thinking...
+                   </Typography>
+                 </div>
                </div>
             )}
           </div>
@@ -216,19 +214,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            disabled={isSending || !activeSessionId} // Disable input if no session
+            disabled={isSending || !activeSessionId}
             className="chat-input-field" 
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
                   <Stack direction="row">
-                    <input
-                      type="file"
-                      multiple
-                      hidden
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                    />
+                    <input type="file" multiple hidden ref={fileInputRef} onChange={handleFileSelect} />
                     <Tooltip title="Upload">
                         <IconButton onClick={() => fileInputRef.current?.click()} disabled={!activeSessionId}>
                             <AttachFile />
