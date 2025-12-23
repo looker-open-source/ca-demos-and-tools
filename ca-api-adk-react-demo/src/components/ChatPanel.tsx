@@ -9,7 +9,7 @@ import {
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
 import { chatService } from '../services/clientService'; 
-import '../App.css'; // Ensure this is imported
+import '../App.css'; 
 
 // --- Types ---
 export interface Message {
@@ -33,7 +33,7 @@ const tabIconSrc = "/Tab.png";
 const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { activeSessionId } = useSession();
+  const { activeSessionId, getSessionName } = useSession();
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
@@ -57,7 +57,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
     setIsSending(true);
 
     try {
-      const response = await chatService.sendUserMessage(currentText, activeSessionId, selectedFiles);      let botText = "Received empty response";
+      const response = await chatService.sendUserMessage(currentText, activeSessionId, selectedFiles);      
+      let botText = "Received empty response";
       if (response?.parts?.[0]?.text) {
         botText = response.parts[0].text;
       } else if (typeof response === 'string') {
@@ -110,6 +111,9 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
     }
   }, [activeSessionId]);
 
+  const sessionDisplayName = activeSessionId 
+    ? getSessionName(activeSessionId, `Session: ${activeSessionId.substring(0,8)}...`)
+    : 'No Active Session';
   return (
     <div className="chat-panel-container">
 
@@ -118,7 +122,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
         <Stack direction="row" alignItems="center" justifyContent="space-between" width="100%">
           <Stack direction="row" alignItems="center" spacing={1}>
             <Typography variant="subtitle2" sx={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-              {activeSessionId ? `Session: ${activeSessionId.substring(0,8)}...` : 'No Active Session'}
+              {sessionDisplayName}
             </Typography>
             <IconButton size="small" sx={{ color: 'var(--text-secondary)' }}>
               <InfoOutlined fontSize="small" />
