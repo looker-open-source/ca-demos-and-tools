@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import {Box, Typography, Stack, IconButton, CircularProgress,Accordion, AccordionSummary, AccordionDetails, Tabs, Tab, Divider} from '@mui/material';
-import {Close, Refresh,ArrowDropDown,Input,SupportAgent,ChatBubbleOutline,Code} from '@mui/icons-material';
+import { 
+  Box, Typography, Stack, IconButton, CircularProgress, 
+  Accordion, AccordionSummary, AccordionDetails, Tabs, Tab, Divider 
+} from '@mui/material';
+import { 
+  Close, Refresh, 
+  ArrowDropDown, 
+  Input, SupportAgent, ChatBubbleOutline, Code, 
+  SmartToy, AccountTree, Description, DataObject
+} from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
 import { apiClient } from '../services/clientService';
 import '../App.css'; 
@@ -10,6 +18,7 @@ interface RightPanelProps {
   onClose: () => void;
 }
 
+// --- TYPES ---
 interface TraceAttributes {
   "gcp.vertex.agent.llm_request"?: string;
   "gcp.vertex.agent.invocation_id"?: string;
@@ -30,6 +39,7 @@ interface TraceItem {
 interface InteractionGroup {
   traceId: string;
   title: string;
+  invocationId: string | null; // <--- ADDED THIS FIELD
   rootSpans: TraceItem[];
 }
 
@@ -41,6 +51,8 @@ interface EventItem {
     parts: { text: string }[];
   };
   invocationId?: string;
+  graphData?: { dotSrc: string };
+  innerTab?: number;
 }
 
 interface SessionResponse {
@@ -55,26 +67,34 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   const [interactions, setInteractions] = useState<InteractionGroup[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  
+  const [expandedEventId, setExpandedEventId] = useState<string | false>(false);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabIndex(newValue);
   };
 
+  // --- FETCH MAIN LISTS ---
   const fetchData = async () => {
     if (!activeSessionId || !selectedAgentId) return;
     setIsLoading(true);
     
     try {
       if (tabIndex === 0) {
-
-        const response: SessionResponse = await apiClient.get(`/apps/${selectedAgentId}/users/user/sessions/${activeSessionId}`);
+        // Events Tab
+        const response: SessionResponse = await apiClient.get(
+          `/apps/${selectedAgentId}/users/user/sessions/${activeSessionId}`
+        );
         if (response && Array.isArray(response.events)) {
-          const filteredEvents = response.events.filter(evt => evt.content.role !== 'user').sort((a, b) => b.timestamp - a.timestamp);
+          const filteredEvents = response.events
+            .filter(evt => evt.content.role !== 'user') 
+            .sort((a, b) => b.timestamp - a.timestamp);
           setEvents(filteredEvents);
         } else {
           setEvents([]);
         }
       } else {
+        // Trace Tab
         const response = await apiClient.get(`/debug/trace/session/${activeSessionId}`);
         if (Array.isArray(response)) {
           processTraces(response);
@@ -91,12 +111,45 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   };
 
+  // --- DRILL DOWN: FETCH DETAILS ON EXPAND ---
+  const handleEventExpand = (eventId: string) => async (event: React.SyntheticEvent, isExpanded: boolean) => {
+    setExpandedEventId(isExpanded ? eventId : false);
+
+    if (isExpanded && activeSessionId && selectedAgentId) {
+      const currentEvent = events.find(e => e.id === eventId);
+      if (currentEvent && currentEvent.graphData) return;
+
+      try {
+        const graphResponse = await apiClient.get(
+          `/apps/${selectedAgentId}/users/user/sessions/${activeSessionId}/events/${eventId}/graph`
+        );
+
+        setEvents(prevEvents => prevEvents.map(evt => {
+          if (evt.id === eventId) {
+            return { ...evt, graphData: graphResponse, innerTab: 0 }; 
+          }
+          return evt;
+        }));
+
+      } catch (err) {
+        console.error("Failed to fetch event details", err);
+      }
+    }
+  };
+
+  const handleInnerTabChange = (eventId: string, newValue: number) => {
+    setEvents(prev => prev.map(evt => 
+      evt.id === eventId ? { ...evt, innerTab: newValue } : evt
+    ));
+  };
+
   useEffect(() => {
     if (isOpen && activeSessionId) {
       fetchData();
     }
   }, [isOpen, activeSessionId, tabIndex, traceRefreshTrigger]);
 
+  // --- PROCESSING LOGIC (Updated to find invocationId) ---
   const processTraces = (rawTraces: any[]) => {
     const traces: TraceItem[] = rawTraces.map(t => ({
       ...t,
@@ -127,6 +180,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
         }
       });
 
+      // 1. Extract Title
       let title = "System Event"; 
       const llmSpan = groupSpans.find(s => s.attributes && s.attributes["gcp.vertex.agent.llm_request"]);
       
@@ -145,12 +199,18 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
         title = rootSpans[0]?.name || "Interaction";
       }
 
-      return { traceId, title, rootSpans };
+      // 2. Extract Invocation ID (Scan ALL spans in the group, not just root)
+      const invSpan = groupSpans.find(s => s.attributes && s.attributes["gcp.vertex.agent.invocation_id"]);
+      const invocationId = invSpan ? (invSpan.attributes["gcp.vertex.agent.invocation_id"] as string) : null;
+
+      // 3. Return updated object
+      return { traceId, title, invocationId, rootSpans };
     });
 
     setInteractions(parsedInteractions.reverse());
   };
 
+  // --- HELPERS ---
   const calculateDuration = (start: number, end: number) => {
     const ms = (end - start) / 1000000;
     return `${ms.toFixed(2)}ms`;
@@ -161,32 +221,29 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   };
 
   const getIcon = (name: string) => {
-    const iconProps = { sx: { color: '#616161', fontSize: '1.3rem' } };
+    const iconProps = { fontSize: 'small' as const, sx: { color: '#616161', fontSize: '1.2rem' } };
     if (name.includes("invocation")) return <Input {...iconProps} />; 
     if (name.includes("agent")) return <SupportAgent {...iconProps} />; 
     if (name.includes("llm")) return <ChatBubbleOutline {...iconProps} />;
     return <Code {...iconProps} />;
   };
 
+  // --- RENDERERS ---
   const renderTree = (node: TraceItem) => (
     <Box key={node.span_id} sx={{ mb: 1.5, width: '100%' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
-        
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ overflow: 'hidden', flexGrow: 1, mr: 2 }}>
           {getIcon(node.name)}
-          <Typography variant="body2" sx={{fontWeight: 400,color: '#424242',fontSize: '0.9rem',whiteSpace: 'nowrap',overflow: 'hidden',textOverflow: 'ellipsis'}}>
+          <Typography variant="body2" sx={{ fontWeight: 400, color: '#424242', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {node.name}
           </Typography>
         </Stack>
-        
-        <Box sx={{bgcolor: '#e3f2fd',color: '#1967d2',borderRadius: '4px',px: 1.5,py: 0.5,fontSize: '0.8rem', fontWeight: 500, minWidth: '90px',textAlign: 'left',flexShrink: 0 }}>
+        <Box sx={{ bgcolor: '#e3f2fd', color: '#1967d2', borderRadius: '4px', px: 1.5, py: 0.5, fontSize: '0.8rem', fontWeight: 500, minWidth: '90px', textAlign: 'left', flexShrink: 0 }}>
           {calculateDuration(node.start_time, node.end_time)}
         </Box>
       </Stack>
-
-
       {node.children && node.children.length > 0 && (
-        <Box sx={{pl: 3.5,mt: 1.5,display: 'flex',flexDirection: 'column',gap: 1.5 }}>
+        <Box sx={{ pl: 3.5, mt: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {node.children.map(child => renderTree(child))}
         </Box>
       )}
@@ -196,9 +253,14 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   return (
     <Box className={`right-panel-container ${isOpen ? 'open' : ''}`} sx={{ bgcolor: '#fff' }}>
       
+      {/* Header */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#fff' }}>
          <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1 }}>
-           <Tabs value={tabIndex} onChange={handleTabChange} sx={{ minHeight: '48px', '& .MuiTabs-indicator': { backgroundColor: '#1976d2', height: '3px' } }}>
+           <Tabs 
+              value={tabIndex} 
+              onChange={handleTabChange} 
+              sx={{ minHeight: '48px', '& .MuiTabs-indicator': { backgroundColor: '#1976d2', height: '3px' } }}
+           >
              <Tab label="Events" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: '#5f6368', '&.Mui-selected': { color: '#1976d2' } }} />
              <Tab label="Trace" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: '#5f6368', '&.Mui-selected': { color: '#1976d2' } }} />
            </Tabs>
@@ -213,34 +275,42 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
          </Stack>
       </Box>
       
+      {/* Content */}
       <Box className="right-panel-content" sx={{ backgroundColor: '#fff', height: 'calc(100% - 49px)', overflowY: 'auto', p: 0 }}>
         {!activeSessionId ? (
-           <Box sx={{ textAlign: 'center', mt: 8, color: '#5f6368' }}><Typography variant="body2">Select a session to view details.</Typography></Box>) 
-           : isLoading ? (<Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress size={24} /></Box>) 
-           : (
-           <>
-           {tabIndex === 0 && (
+           <Box sx={{ textAlign: 'center', mt: 8, color: '#5f6368' }}><Typography variant="body2">Select a session to view details.</Typography></Box>
+        ) : isLoading ? (
+           <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress size={24} /></Box>
+        ) : (
+          <>
+            {/* --- EVENTS TAB --- */}
+            {tabIndex === 0 && (
               events.length === 0 ? (
                 <Box sx={{ p: 4, textAlign: 'center' }}>
                    <img src="/Icon.png" alt="No Data" style={{ width: '120px', opacity: 0.5, marginBottom: '16px' }} />
                    <Typography variant="body2" color="text.secondary">No events found</Typography>
                 </Box>
               ) : (
-                <Box sx={{ padding: '1rem' }}>
+                <Box sx={{ padding: '1rem'  }}>
                   {events.map((evt) => {
                     const mainText = evt.content.parts?.[0]?.text || "No content";
                     return (
-                      <Accordion key={evt.id} disableGutters elevation={0} square
+                      <Accordion 
+                        key={evt.id} 
+                        disableGutters 
+                        elevation={0} 
+                        square
+                        expanded={expandedEventId === evt.id}
+                        onChange={handleEventExpand(evt.id)}
                         sx={{ 
                           borderTop: '1px solid #e0e0e0', 
                           borderLeft: '1px solid #e0e0e0', 
                           borderRight: '1px solid #e0e0e0', 
                           '&:before': { display: 'none' },
-                          '&:last-child': { borderBottom: '1px solid #e0e0e0' },
-                          padding: '0px 12px'
+                          '&:last-child': { borderBottom: '1px solid #e0e0e0'},
+                           padding: '0px 12px'
                         }}
                       >
-
                         <AccordionSummary 
                           expandIcon={<ArrowDropDown sx={{ color: '#5f6368' }} />} 
                           sx={{ 
@@ -250,28 +320,63 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                             '&:hover': { backgroundColor: '#f8f9fa' }
                           }}
                         >
-                          <Typography variant="body2" sx={{ fontWeight: 400, color: '#3c4043' }}>
-                             {mainText.length > 50 ? mainText.substring(0, 50) + "..." : mainText}
-                          </Typography>
+                          <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
+                             <Typography variant="body2" sx={{ fontWeight: 400, color: '#3c4043' }}>
+                               {mainText.length > 50 ? mainText.substring(0, 50) + "..." : mainText}
+                             </Typography>
+                          </Stack>
                         </AccordionSummary>
+                        
                         <AccordionDetails sx={{ px: 2, pb: 2, pt: 0 }}>
-                           <Typography variant="body2" sx={{ color: '#3c4043', whiteSpace: 'pre-wrap', fontSize: '0.875rem', mb: 2 }}>
-                             {mainText}
-                           </Typography>
-                           <Divider sx={{ my: 1 }} />
-                           <Stack spacing={0.5} mt={1}>
-                             <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                               <strong>ID:</strong> {evt.id}
-                             </Typography>
-                             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                               <strong>Time:</strong> {formatTimestamp(evt.timestamp)}
-                             </Typography>
-                             {evt.invocationId && (
-                               <Typography variant="caption" sx={{ color: 'text.secondary', fontFamily: 'monospace' }}>
-                                 <strong>Invocation ID:</strong> {evt.invocationId}
-                               </Typography>
-                             )}
-                           </Stack>
+                           
+                           {/* Nested Tabs: Details vs Graph */}
+                           <Tabs 
+                             value={evt.innerTab || 0} 
+                             onChange={(e, val) => handleInnerTabChange(evt.id, val)}
+                             sx={{ minHeight: '36px', mb: 2, borderBottom: '1px solid #e0e0e0' }}
+                           >
+                             <Tab label="Details" icon={<DataObject fontSize="small"/>} iconPosition="start" sx={{ minHeight: '36px', fontSize: '0.75rem', py: 0 }} />
+                             <Tab label="Graph" icon={<AccountTree fontSize="small"/>} iconPosition="start" sx={{ minHeight: '36px', fontSize: '0.75rem', py: 0 }} />
+                           </Tabs>
+
+                           {/* 1. DETAILS TAB (JSON View) */}
+                           { (evt.innerTab === 0 || evt.innerTab === undefined) && (
+                             <Box sx={{ 
+                                bgcolor: '#f8f9fa', 
+                                p: 1.5, 
+                                borderRadius: '4px', 
+                                fontFamily: '"Roboto Mono", monospace', 
+                                fontSize: '0.75rem', 
+                                color: '#37474f',
+                                overflowX: 'auto',
+                                border: '1px solid #e0e0e0'
+                             }}>
+                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>content</span>:</div>
+                                <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>parts</span>:</div>
+                                <div style={{ paddingLeft: '32px', marginBottom: '4px' }}>0:</div>
+                                <div style={{ paddingLeft: '48px', marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>text</span>: "{mainText}"</div>
+                                <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>role</span>: "{evt.content.role}"</div>
+                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>invocationId</span>: "{evt.invocationId}"</div>
+                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>id</span>: "{evt.id}"</div>
+                                <div><span style={{ color: '#1976d2' }}>timestamp</span>: {evt.timestamp}</div>
+                             </Box>
+                           )}
+
+                           {/* 2. GRAPH TAB */}
+                           { evt.innerTab === 1 && (
+                             <Box sx={{ mt: 1 }}>
+                               {evt.graphData ? (
+                                 <Box sx={{ bgcolor: '#fff', border: '1px solid #ddd', p: 1, borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
+                                   <pre style={{ margin: 0, fontSize: '0.7rem', color: '#555', whiteSpace: 'pre-wrap' }}>
+                                     {evt.graphData.dotSrc}
+                                   </pre>
+                                 </Box>
+                               ) : (
+                                 <Typography variant="caption" color="text.secondary">Loading graph...</Typography>
+                               )}
+                             </Box>
+                           )}
+
                         </AccordionDetails>
                       </Accordion>
                     );
@@ -288,7 +393,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                    <Typography variant="body2" color="text.secondary">No traces found</Typography>
                 </Box>
               ) : (
-                <Box sx={{ borderTop: '1px solid #e0e0e0' }}>
+                <Box sx={{  padding: '1rem'  }}>
                   {interactions.map((interaction) => (
                     <Accordion 
                       key={interaction.traceId} 
@@ -296,12 +401,14 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                       elevation={0} 
                       square
                       sx={{ 
-                        borderBottom: '1px solid #e0e0e0', 
-                        '&:before': { display: 'none' },
-                        '&:last-child': { borderBottom: 'none' }
+                        borderTop: '1px solid #e0e0e0', 
+                          borderLeft: '1px solid #e0e0e0', 
+                          borderRight: '1px solid #e0e0e0', 
+                          '&:before': { display: 'none' },
+                          '&:last-child': { borderBottom: '1px solid #e0e0e0'},
+                           padding: '0px 12px'
                       }}
                     >
-                      {/* Arrow on Right (Default) */}
                       <AccordionSummary 
                         expandIcon={<ArrowDropDown sx={{ color: '#5f6368' }} />} 
                         sx={{ 
@@ -319,11 +426,10 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                       <AccordionDetails sx={{ px: 2, pb: 3, pt: 1 }}>
                         <Box sx={{ mb: 2 }}>
                            <Typography variant="body2" sx={{ color: '#424242', fontWeight: 500, fontSize: '0.95rem' }}>
-                             Invocation ID: {interaction.rootSpans[0]?.attributes["gcp.vertex.agent.invocation_id"] || "N/A"}
+                             {/* UPDATED: Displays the extracted Invocation ID */}
+                             Invocation ID: {interaction.invocationId || "N/A"}
                            </Typography>
                         </Box>
-                        
-                        {/* Render Tree with new styling */}
                         {interaction.rootSpans.map(root => renderTree(root))}
                       </AccordionDetails>
                     </Accordion>
