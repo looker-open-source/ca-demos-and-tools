@@ -9,6 +9,7 @@ import ChatPanel from './components/ChatPanel';
 import { SidePanel } from './components/SidePanel';
 import { SessionProvider } from './context/SessionContext';
 import RightPanel from './components/RightPanel';
+import { GlobalToast } from './components/GlobalToast'; // 1. Import GlobalToast
 
 const AppContent = () => {
   const { themeMode } = useAppTheme();
@@ -45,6 +46,10 @@ const AppContent = () => {
               />
             </Box>
           </Box>
+          
+          {/* 2. Add GlobalToast here, inside the theme/component providers but outside layout boxes */}
+          <GlobalToast />
+          
         </div>
       </ComponentsProvider>
     </ThemeProvider>
