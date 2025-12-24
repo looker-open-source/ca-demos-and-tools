@@ -1043,3 +1043,10 @@
 [data-theme='dark'] .empty-state-icon {
     color: #A8C7FA;
 }
+
+.css-1k5f16h{
+  color: #0b57d0 !important;
+  background: #d3e3fd !important;
+  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-weight: 400 !important;
+}

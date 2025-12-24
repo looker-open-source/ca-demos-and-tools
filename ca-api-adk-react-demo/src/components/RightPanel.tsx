@@ -6,7 +6,10 @@ import {
 import { 
   Close, Refresh, 
   ArrowDropDown, 
-  Input, SupportAgent, ChatBubbleOutline, Code, 
+  Start, // Changed from Input to Start
+  SupportAgent, 
+  Comment, // Changed from ChatBubbleOutline to Comment (Chat icon with lines)
+  Code, 
   SmartToy, AccountTree, Description, DataObject
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
@@ -39,7 +42,7 @@ interface TraceItem {
 interface InteractionGroup {
   traceId: string;
   title: string;
-  invocationId: string | null; // <--- ADDED THIS FIELD
+  invocationId: string | null; 
   rootSpans: TraceItem[];
 }
 
@@ -149,7 +152,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   }, [isOpen, activeSessionId, tabIndex, traceRefreshTrigger]);
 
-  // --- PROCESSING LOGIC (Updated to find invocationId) ---
+  // --- PROCESSING LOGIC ---
   const processTraces = (rawTraces: any[]) => {
     const traces: TraceItem[] = rawTraces.map(t => ({
       ...t,
@@ -180,7 +183,6 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
         }
       });
 
-      // 1. Extract Title
       let title = "System Event"; 
       const llmSpan = groupSpans.find(s => s.attributes && s.attributes["gcp.vertex.agent.llm_request"]);
       
@@ -199,11 +201,9 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
         title = rootSpans[0]?.name || "Interaction";
       }
 
-      // 2. Extract Invocation ID (Scan ALL spans in the group, not just root)
       const invSpan = groupSpans.find(s => s.attributes && s.attributes["gcp.vertex.agent.invocation_id"]);
       const invocationId = invSpan ? (invSpan.attributes["gcp.vertex.agent.invocation_id"] as string) : null;
 
-      // 3. Return updated object
       return { traceId, title, invocationId, rootSpans };
     });
 
@@ -220,15 +220,23 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     return new Date(ts * 1000).toLocaleString();
   };
 
+  // --- UPDATED ICON LOGIC ---
   const getIcon = (name: string) => {
-    const iconProps = { fontSize: 'small' as const, sx: { color: '#616161', fontSize: '1.2rem' } };
-    if (name.includes("invocation")) return <Input {...iconProps} />; 
+    // INCREASED SIZE: fontSize 'medium' (default 24px) and custom sx '1.5rem'
+    const iconProps = { fontSize: 'medium' as const, sx: { color: '#616161', fontSize: '1.5rem' } };
+    
+    // 1. Invocation -> Start Icon
+    if (name.includes("invocation")) return <Start {...iconProps} />; 
+    
     if (name.includes("agent")) return <SupportAgent {...iconProps} />; 
-    if (name.includes("llm")) return <ChatBubbleOutline {...iconProps} />;
+    
+    // 2. LLM -> Comment Icon (Chat icon with lines inside)
+    if (name.includes("llm")) return <Comment {...iconProps} />;
+    
     return <Code {...iconProps} />;
   };
 
-  // --- RENDERERS ---
+  // --- RENDER TREE ---
   const renderTree = (node: TraceItem) => (
     <Box key={node.span_id} sx={{ mb: 1.5, width: '100%' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
@@ -347,7 +355,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                                 borderRadius: '4px', 
                                 fontFamily: '"Roboto Mono", monospace', 
                                 fontSize: '0.75rem', 
-                                color: '#37474f',
+                                color: '#37474f', 
                                 overflowX: 'auto',
                                 border: '1px solid #e0e0e0'
                              }}>
@@ -425,9 +433,9 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                       
                       <AccordionDetails sx={{ px: 2, pb: 3, pt: 1 }}>
                         <Box sx={{ mb: 2 }}>
-                           <Typography variant="body2" sx={{ color: '#424242', fontWeight: 500, fontSize: '0.95rem' }}>
+                           <Typography variant="body2" sx={{ color: '#444746', fontWeight: 500, fontSize: '0.95rem' }}>
                              {/* UPDATED: Displays the extracted Invocation ID */}
-                             Invocation ID: {interaction.invocationId || "N/A"}
+                             Invocation ID: <span style={{ color: '#444746' ,fontSize: '14px',fontWeight: 400,fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>{interaction.invocationId || "N/A"}</span> 
                            </Typography>
                         </Box>
                         {interaction.rootSpans.map(root => renderTree(root))}
