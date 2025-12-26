@@ -578,7 +578,7 @@
 .dialog-container {
   background:#e9eef6;
   padding: 24px;
-  border-radius: 28px; /* GM3 style */
+  border-radius: 28px; 
   width: 30rem;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 }
@@ -1049,4 +1049,147 @@
   background: #d3e3fd !important;
   font-family: "Google Sans", Roboto, Arial, sans-serif !important;
   font-weight: 400 !important;
+}
+
+/* =========================================
+   11. CUSTOM THEME DIALOG
+   ========================================= */
+.custom-theme-dialog-paper {
+  border-radius: 24px !important;
+  max-width: 500px !important;
+  width: 100% !important;
+  padding: 8px !important;
+}
+
+.custom-theme-dialog-title {
+  font-weight: 400 !important;
+  font-size: 1.5rem !important;
+  padding-bottom: 8px !important;
+}
+
+.dialog-row-label {
+  font-weight: 500 !important;
+  font-size: 0.875rem !important;
+}
+
+.dialog-row-content {
+  width: 60%;
+}
+
+.choose-file-btn {
+  background-color: #E0E0E0 !important;
+  color: black !important;
+  text-transform: none !important;
+  border-radius: 18px !important;
+  box-shadow: none !important;
+}
+
+.choose-file-btn:hover {
+  background-color: #d5d5d5 !important;
+}
+
+.color-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px; 
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent; 
+  transition: border-color 0.2s;
+}
+
+.color-swatch.selected {
+  border: 2px solid #1976d2;
+}
+
+.color-swatch-check {
+  color: #1976d2 !important;
+}
+
+.restore-defaults-btn {
+  text-transform: none !important;
+  color: #1976d2 !important;
+  font-weight: 600 !important;
+}
+
+.save-changes-btn {
+  text-transform: none !important;
+  color: #9E9E9E !important;
+}
+
+.dialog-pill-input {
+  background-color: #E0E0E0;
+  border-radius: 16px;
+  padding: 6px 12px;
+  font-size: 0.875rem;
+  color: #1f1f1f;
+  display: inline-block;
+  font-family: "Google Sans", Roboto, Arial, sans-serif;
+}
+
+.typography-section-header {
+  font-weight: 500 !important; 
+  font-size: 0.875rem !important;
+  margin-bottom: 16px !important;
+}
+
+.typography-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px; 
+}
+
+.font-card {
+  border: 1px solid #E0E0E0;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+}
+
+.font-card:hover {
+  background-color: #f5f5f5;
+}
+
+.font-card.selected {
+  border: 2px solid #1976d2;
+  background-color: #F8FDFF;
+}
+
+.font-card-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  background-color: #1976d2;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.font-card-check svg {
+  font-size: 14px;
+}
+
+.font-card-ag {
+  margin-bottom: 8px !important;
+  font-weight: 400 !important;
+}
+
+.font-card-name {
+  font-weight: 700 !important;
+}
+
+.font-card-desc {
+  line-height: 1 !important;
 }

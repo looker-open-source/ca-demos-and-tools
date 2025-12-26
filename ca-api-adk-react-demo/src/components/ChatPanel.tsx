@@ -8,7 +8,6 @@ import {
   SmartToyOutlined, PersonOutline
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
-import { chatService } from '../services/clientService'; 
 import '../App.css'; 
 
 // --- Types ---
@@ -33,12 +32,10 @@ const tabIconSrc = "/Tab.png";
 const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { activeSessionId, getSessionName, notifyMessageSent } = useSession();
+  const { activeSessionId, getSessionName, messages, isSending, sendMessage } = useSession();
 
-  const [messages, setMessages] = useState<Message[]>([]);
   const [userInput, setUserInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
-  const [isSending, setIsSending] = useState(false);
 
   const handleSendMessage = async () => {
     if (!userInput.trim() && selectedFiles.length === 0) return;
@@ -48,31 +45,12 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
         return;
     }
 
-    const currentText = userInput;
-    const newUserMsg: Message = { role: 'user', text: currentText };
-    setMessages((prev) => [...prev, newUserMsg]);
+    // Call the centralized send function
+    await sendMessage(userInput, selectedFiles);
     
+    // Clear inputs immediately
     setUserInput('');
     setSelectedFiles([]);
-    setIsSending(true);
-
-    try {
-      const response = await chatService.sendUserMessage(currentText, activeSessionId, selectedFiles);      
-      let botText = "Received empty response";
-      if (response?.parts?.[0]?.text) {
-        botText = response.parts[0].text;
-      } else if (typeof response === 'string') {
-        botText = response;
-      }
-
-      setMessages((prev) => [...prev, { role: 'bot', text: botText }]);
-      notifyMessageSent();
-    } catch (error) {
-      console.error("API Error:", error);
-      setMessages((prev) => [...prev, { role: 'bot', text: "Error: Could not reach agent." }]);
-    } finally {
-      setIsSending(false);
-    }
   };
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,12 +83,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isSending]);
-
-  useEffect(() => {
-    if (activeSessionId) {
-        setMessages([]); 
-    }
-  }, [activeSessionId]);
 
   const sessionDisplayName = activeSessionId 
     ? getSessionName(activeSessionId, `Session: ${activeSessionId.substring(0,8)}...`)
@@ -185,18 +157,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
               </div>
             ))}
             
-            {isSending && (
-               <div className="message-row bot">
-                 <Avatar className="chat-avatar bot">
-                    <SmartToyOutlined fontSize="small" />
-                  </Avatar>
-                 <div className="message-card bot">
-                   <Typography variant="caption" className="thinking-text">
-                     Thinking...
-                   </Typography>
-                 </div>
-               </div>
-            )}
           </div>
         )}
       </div>

@@ -1,4 +1,9 @@
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { chatService } from '../services/clientService'; 
+export interface Message {
+  role: 'user' | 'bot';
+  text: string;
+}
 
 interface SessionContextType {
   activeSessionId: string | null;
@@ -9,6 +14,10 @@ interface SessionContextType {
   getSessionName: (sessionId: string, defaultName: string) => string;
   traceRefreshTrigger: number; 
   notifyMessageSent: () => void;
+  messages: Message[];
+  isSending: boolean;
+  sendMessage: (text: string, files: any[]) => Promise<void>;
+  clearMessages: () => void;
 }
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
@@ -16,8 +25,10 @@ const SessionContext = createContext<SessionContextType | undefined>(undefined);
 export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
-  
   const [traceRefreshTrigger, setTraceRefreshTrigger] = useState(0);
+
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [isSending, setIsSending] = useState(false);
 
   const [sessionNames, setSessionNames] = useState<Record<string, string>>(() => {
     try {
@@ -28,6 +39,32 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
       return {};
     }
   });
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([]);
+      return;
+    }
+
+    setIsSending(false); 
+    try {
+      const savedHistory = localStorage.getItem(`chat_history_${activeSessionId}`);
+      if (savedHistory) {
+        setMessages(JSON.parse(savedHistory));
+      } else {
+        setMessages([]);
+      }
+    } catch (e) {
+      console.error("Failed to parse chat history", e);
+      setMessages([]);
+    }
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    if (activeSessionId && messages.length > 0) {
+      localStorage.setItem(`chat_history_${activeSessionId}`, JSON.stringify(messages));
+    }
+  }, [messages, activeSessionId]);
 
   const renameSession = (sessionId: string, newName: string) => {
     setSessionNames((prev) => {
@@ -45,6 +82,61 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
     setTraceRefreshTrigger(prev => prev + 1);
   };
 
+  const clearMessages = () => setMessages([]);
+  const sendMessage = async (text: string, files: any[]) => {
+    if (!activeSessionId) {
+        alert("No active session!");
+        return;
+    }
+
+    const newUserMsg: Message = { role: 'user', text: text };
+    const placeholderBotMsg: Message = { role: 'bot', text: '' };
+
+    setMessages((prev) => [...prev, newUserMsg, placeholderBotMsg]);
+    setIsSending(true);
+
+    try {
+        await chatService.sendUserMessage(
+            text, 
+            activeSessionId, 
+            files, 
+            (chunk) => {
+                setMessages((prev) => {
+                    const updated = [...prev];
+                    const lastIndex = updated.length - 1;
+                    const lastMsg = updated[lastIndex];
+
+                    if (lastMsg.role === 'bot') {
+                        updated[lastIndex] = {
+                            ...lastMsg,
+                            text: lastMsg.text + chunk
+                        };
+                    }
+                    return updated;
+                });
+            }
+        );
+        notifyMessageSent();
+    } catch (error) {
+        console.error("API Error:", error);
+        setMessages((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+            const lastMsg = updated[lastIndex];
+            
+            if (lastMsg.role === 'bot' && !lastMsg.text) {
+                updated[lastIndex] = {
+                    ...lastMsg,
+                    text: "Error: Could not reach agent."
+                };
+            }
+            return updated;
+        });
+    } finally {
+        setIsSending(false);
+    }
+  };
+
   return (
     <SessionContext.Provider value={{ 
       activeSessionId, 
@@ -54,7 +146,11 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
       renameSession,
       getSessionName,
       traceRefreshTrigger, 
-      notifyMessageSent    
+      notifyMessageSent,
+      messages,
+      isSending,
+      sendMessage,
+      clearMessages
     }}>
       {children}
     </SessionContext.Provider>

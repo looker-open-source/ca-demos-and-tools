@@ -1,4 +1,3 @@
-// src/components/ThemeSwitcher.tsx
 import React, { useState, MouseEvent } from 'react';
 import {
   IconButton, Menu, MenuItem, ListItemIcon, Box, Typography, Stack
@@ -6,7 +5,8 @@ import {
 import {
   WbSunnyOutlined, Brightness2Outlined, PaletteOutlined, Check, ArrowDropDown
 } from '@mui/icons-material';
-import { useAppTheme, ThemeType } from '../context/ThemeContext'; // Import Hook
+import { useAppTheme, ThemeType } from '../context/ThemeContext';
+import CustomThemeDialog from './CustomThemeDialog';
 import '../App.css';
 
 interface ThemeOption {
@@ -26,17 +26,21 @@ interface ThemeSwitcherProps {
 }
 
 const ThemeSwitcher = ({ iconSrc }: ThemeSwitcherProps) => {
-  // 1. USE THE HOOK instead of props/state
   const { themeMode, setThemeMode } = useAppTheme();
   
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const open = Boolean(anchorEl);
 
   const handleClick = (event: MouseEvent<HTMLElement>) => setAnchorEl(event.currentTarget);
   const handleClose = () => setAnchorEl(null);
 
   const handleMenuItemClick = (newTheme: ThemeType) => {
-    setThemeMode(newTheme); // Uses context function
+    if (newTheme === 'custom') {
+      setIsDialogOpen(true);
+    } else {
+      setThemeMode(newTheme);
+    }
     handleClose();
   };
 
@@ -65,7 +69,7 @@ const ThemeSwitcher = ({ iconSrc }: ThemeSwitcherProps) => {
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
       >
         {themeOptions.map((option) => {
-          const isSelected = themeMode === option.id; // Compare with Context value
+          const isSelected = themeMode === option.id; 
           return (
             <MenuItem
               key={option.id}
@@ -88,6 +92,10 @@ const ThemeSwitcher = ({ iconSrc }: ThemeSwitcherProps) => {
           );
         })}
       </Menu>
+      <CustomThemeDialog 
+        open={isDialogOpen} 
+        onClose={() => setIsDialogOpen(false)} 
+      />
     </Box>
   );
 };

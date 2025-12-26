@@ -1,119 +1,93 @@
 /// <reference types="vite/client" />
-import { toastManager } from '../utils/ToastManager'; // Import the manager
-
-/**
- * Architecture Note:
- * This file centralizes all API configuration.
- * It uses ToastManager to push errors to the UI layer.
- */
+import { toastManager } from '../utils/ToastManager';
 
 const BASE_URL = import.meta.env.VITE_ADK_API_BASE_URL;
 console.log(`API Service Initialized using Base URL: ${BASE_URL}`);
 
-// --- Universal Interfaces ---
-export interface ApiResponse<T = any> {
-  data?: T;
-  error?: string;
-  status: number;
-}
+// --- Helpers ---
 
 const fileToBase64 = (file: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
-        reader.onload = () => {
-            const result = reader.result as string;
-            const base64 = result.split(',')[1]; 
-            resolve(base64);
-        };
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
         reader.onerror = error => reject(error);
     });
 };
 
-const getHeaders = () => {
-    return {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream, application/json, text/plain, */*',
-    };
-};
+const getHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Accept': 'text/event-stream, application/json, text/plain, */*',
+});
 
-// --- Centralized Response & Error Handler ---
-const handleResponse = async (response: Response) => {
-    // 1. Handle Errors (4xx, 5xx)
+const handleStreamingResponse = async (response: Response, onChunk?: (text: string) => void) => {
     if (!response.ok) {
         let errorMessage = `HTTP Error: ${response.status}`;
-        
         try {
-            // Try to parse detailed error from server JSON
             const errorBody = await response.json();
             errorMessage = errorBody.message || errorBody.detail || errorMessage;
         } catch {
-            // If strictly text or empty
             const text = await response.text();
             if (text) errorMessage = text;
         }
-
-        // Specific handling
-        if (response.status === 401) errorMessage = "Unauthorized session. Please login again.";
-        if (response.status === 404) errorMessage = "Requested resource not found.";
-
-        // TRIGGER TOAST
         console.error(`API Error (${response.status}):`, errorMessage);
         toastManager.show(errorMessage, 'error');
-        
         throw new Error(errorMessage);
     }
 
-    // 2. Handle SSE (Streaming)
     const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("text/event-stream")) {
-        const text = await response.text();
-        const lines = text.split('\n');
-        let fullBotText = "";
-        let currentDataBuffer = "";
+
+    if (!contentType || !contentType.includes("text/event-stream")) {
+        if (response.status === 204) return {};
+        return await response.json();
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    
+    if (!reader) return {};
+
+    let buffer = "";
+    let fullText = "";
+
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || "";
 
         for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (trimmedLine.startsWith("data:")) {
-                const content = line.replace("data:", "").trim();
-                currentDataBuffer += content;
-            } else if (trimmedLine === "" && currentDataBuffer) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data:")) {
+                const jsonStr = trimmed.replace("data:", "").trim();
+                if (!jsonStr) continue;
+
                 try {
-                    const data = JSON.parse(currentDataBuffer);                  
+                    const data = JSON.parse(jsonStr);
+                    let newText = "";
+
                     if (data?.content?.parts?.[0]?.text) {
-                        fullBotText += data.content.parts[0].text + " ";
+                        newText = data.content.parts[0].text;
                     } else if (data?.parts?.[0]?.text) {
-                        fullBotText += data.parts[0].text + " ";
+                        newText = data.parts[0].text;
+                    }
+
+                    if (newText) {
+                        fullText += newText;
+                        if (onChunk) onChunk(newText);
                     }
                 } catch (e) {
-                    console.warn("Skipping incomplete SSE chunk");
+                    console.warn("Stream parse error", e);
                 }
-                currentDataBuffer = "";
             }
         }
-        
-        // Handle trailing buffer
-        if (currentDataBuffer) {
-            try {
-                const data = JSON.parse(currentDataBuffer);
-                if (data?.content?.parts?.[0]?.text) fullBotText += data.content.parts[0].text;
-                else if (data?.parts?.[0]?.text) fullBotText += data.parts[0].text;
-            } catch (e) {}
-        }
-
-        return { parts: [{ text: fullBotText.trim() }] };
     }
-
-    // 3. Handle JSON / Empty
-    if (response.status !== 204) {
-         try {
-             return await response.json();
-         } catch (e) {
-             console.warn("Response was ok but not valid JSON", e);
-             return {}; 
-         }
-    }
-    return {};
+    
+    return { parts: [{ text: fullText }] };
 };
 
 // --- API Client ---
@@ -124,25 +98,22 @@ export const apiClient = {
                 method: 'GET',
                 headers: getHeaders(),
             });
-            return await handleResponse(response);
+            return await handleStreamingResponse(response);
         } catch (error: any) {
-            // Catch network errors (e.g. server offline)
-            const msg = error.message || "Network error. Please check your connection.";
-            if (!msg.includes("HTTP Error")) {
-                 toastManager.show(msg, 'error');
-            }
+            const msg = error.message || "Network error.";
+            if (!msg.includes("HTTP Error")) toastManager.show(msg, 'error');
             throw error;
         }
     },
 
-    post: async <T = any>(endpoint: string, body: any = {}): Promise<T> => {
+    post: async <T = any>(endpoint: string, body: any = {}, onChunk?: (text: string) => void): Promise<T> => {
         try {
             const response = await fetch(`/api${endpoint}`, {
                 method: 'POST',
                 headers: getHeaders(),
                 body: JSON.stringify(body),
             });
-            return await handleResponse(response);
+            return await handleStreamingResponse(response, onChunk);
         } catch (error: any) {
             const msg = error.message || "Network error.";
             if (!msg.includes("HTTP Error")) {
@@ -158,7 +129,7 @@ export const apiClient = {
                 method: 'DELETE',
                 headers: getHeaders(),
             });
-            return await handleResponse(response);
+            return await handleStreamingResponse(response);
         } catch (error: any) {
             const msg = error.message || "Delete failed.";
             if (!msg.includes("HTTP Error")) {
@@ -174,15 +145,9 @@ export const apiClient = {
                 method: 'GET',
                 headers: { 'Accept': 'application/json, text/plain, */*' },
             });
-
-            if (!response.ok) {
-                // If download fails, try to read error text
-                const errText = await response.text();
-                throw new Error(errText || `Download failed: ${response.status}`);
-            }
-            
+            if (!response.ok) throw new Error(`Download failed: ${response.status}`);
             return await response.blob();
-        } catch (error: any) {
+        } catch (error) {
             console.error(`Download ${endpoint} failed:`, error);
             toastManager.show("Failed to download file.", 'error');
             throw error;
@@ -193,7 +158,12 @@ export const apiClient = {
 };
 
 export const chatService = {
-    sendUserMessage: async (text: string, sessionId: string, files: any[] = []) => {
+    sendUserMessage: async (
+        text: string, 
+        sessionId: string, 
+        files: any[] = [], 
+        onChunk?: (text: string) => void
+    ) => {
         const parts: any[] = [];
         if (text && text.trim().length > 0) parts.push({ text: text });
 
@@ -246,6 +216,6 @@ export const chatService = {
             stateDelta: null
         };
 
-        return await apiClient.post('/run_sse', payload);
+        return await apiClient.post('/run_sse', payload, onChunk);
     }
 };
