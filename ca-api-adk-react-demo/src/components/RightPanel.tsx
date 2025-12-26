@@ -6,11 +6,11 @@ import {
 import { 
   Close, Refresh, 
   ArrowDropDown, 
-  Start, // Changed from Input to Start
+  Start, 
   SupportAgent, 
-  Comment, // Changed from ChatBubbleOutline to Comment (Chat icon with lines)
+  Comment, 
   Code, 
-  SmartToy, AccountTree, Description, DataObject
+  SmartToy
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
 import { apiClient } from '../services/clientService';
@@ -54,8 +54,7 @@ interface EventItem {
     parts: { text: string }[];
   };
   invocationId?: string;
-  graphData?: { dotSrc: string };
-  innerTab?: number;
+  // Removed graphData and innerTab as per requirement
 }
 
 interface SessionResponse {
@@ -71,6 +70,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
+  // Track expanded accordion state
   const [expandedEventId, setExpandedEventId] = useState<string | false>(false);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -114,36 +114,9 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   };
 
-  // --- DRILL DOWN: FETCH DETAILS ON EXPAND ---
-  const handleEventExpand = (eventId: string) => async (event: React.SyntheticEvent, isExpanded: boolean) => {
+  // Simplified Expand Handler (No API calls needed for events anymore)
+  const handleEventExpand = (eventId: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpandedEventId(isExpanded ? eventId : false);
-
-    if (isExpanded && activeSessionId && selectedAgentId) {
-      const currentEvent = events.find(e => e.id === eventId);
-      if (currentEvent && currentEvent.graphData) return;
-
-      try {
-        const graphResponse = await apiClient.get(
-          `/apps/${selectedAgentId}/users/user/sessions/${activeSessionId}/events/${eventId}/graph`
-        );
-
-        setEvents(prevEvents => prevEvents.map(evt => {
-          if (evt.id === eventId) {
-            return { ...evt, graphData: graphResponse, innerTab: 0 }; 
-          }
-          return evt;
-        }));
-
-      } catch (err) {
-        console.error("Failed to fetch event details", err);
-      }
-    }
-  };
-
-  const handleInnerTabChange = (eventId: string, newValue: number) => {
-    setEvents(prev => prev.map(evt => 
-      evt.id === eventId ? { ...evt, innerTab: newValue } : evt
-    ));
   };
 
   useEffect(() => {
@@ -152,7 +125,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   }, [isOpen, activeSessionId, tabIndex, traceRefreshTrigger]);
 
-  // --- PROCESSING LOGIC ---
+  // --- PROCESSING LOGIC (Traces - Unchanged) ---
   const processTraces = (rawTraces: any[]) => {
     const traces: TraceItem[] = rawTraces.map(t => ({
       ...t,
@@ -220,23 +193,16 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     return new Date(ts * 1000).toLocaleString();
   };
 
-  // --- UPDATED ICON LOGIC ---
   const getIcon = (name: string) => {
-    // INCREASED SIZE: fontSize 'medium' (default 24px) and custom sx '1.5rem'
+    // Increased size for Trace tab icons as requested previously
     const iconProps = { fontSize: 'medium' as const, sx: { color: '#616161', fontSize: '1.5rem' } };
-    
-    // 1. Invocation -> Start Icon
     if (name.includes("invocation")) return <Start {...iconProps} />; 
-    
     if (name.includes("agent")) return <SupportAgent {...iconProps} />; 
-    
-    // 2. LLM -> Comment Icon (Chat icon with lines inside)
     if (name.includes("llm")) return <Comment {...iconProps} />;
-    
     return <Code {...iconProps} />;
   };
 
-  // --- RENDER TREE ---
+  // --- RENDERERS ---
   const renderTree = (node: TraceItem) => (
     <Box key={node.span_id} sx={{ mb: 1.5, width: '100%' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
@@ -294,12 +260,12 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
             {/* --- EVENTS TAB --- */}
             {tabIndex === 0 && (
               events.length === 0 ? (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Box sx={{ p: 4, textAlign: 'left' }}>
                    <img src="/Icon.png" alt="No Data" style={{ width: '120px', opacity: 0.5, marginBottom: '16px' }} />
                    <Typography variant="body2" color="text.secondary">No events found</Typography>
                 </Box>
               ) : (
-                <Box sx={{ padding: '1rem'  }}>
+                <Box sx={{ padding: '1rem',textAlign: 'left' }}>
                   {events.map((evt) => {
                     const mainText = evt.content.parts?.[0]?.text || "No content";
                     return (
@@ -337,53 +303,41 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                         
                         <AccordionDetails sx={{ px: 2, pb: 2, pt: 0 }}>
                            
-                           {/* Nested Tabs: Details vs Graph */}
-                           <Tabs 
-                             value={evt.innerTab || 0} 
-                             onChange={(e, val) => handleInnerTabChange(evt.id, val)}
-                             sx={{ minHeight: '36px', mb: 2, borderBottom: '1px solid #e0e0e0' }}
-                           >
-                             <Tab label="Details" icon={<DataObject fontSize="small"/>} iconPosition="start" sx={{ minHeight: '36px', fontSize: '0.75rem', py: 0 }} />
-                             <Tab label="Graph" icon={<AccountTree fontSize="small"/>} iconPosition="start" sx={{ minHeight: '36px', fontSize: '0.75rem', py: 0 }} />
-                           </Tabs>
-
-                           {/* 1. DETAILS TAB (JSON View) */}
-                           { (evt.innerTab === 0 || evt.innerTab === undefined) && (
-                             <Box sx={{ 
-                                bgcolor: '#f8f9fa', 
-                                p: 1.5, 
-                                borderRadius: '4px', 
-                                fontFamily: '"Roboto Mono", monospace', 
-                                fontSize: '0.75rem', 
-                                color: '#37474f', 
-                                overflowX: 'auto',
-                                border: '1px solid #e0e0e0'
-                             }}>
-                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>content</span>:</div>
-                                <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>parts</span>:</div>
-                                <div style={{ paddingLeft: '32px', marginBottom: '4px' }}>0:</div>
-                                <div style={{ paddingLeft: '48px', marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>text</span>: "{mainText}"</div>
-                                <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>role</span>: "{evt.content.role}"</div>
-                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>invocationId</span>: "{evt.invocationId}"</div>
-                                <div style={{ marginBottom: '4px' }}><span style={{ color: '#1976d2' }}>id</span>: "{evt.id}"</div>
-                                <div><span style={{ color: '#1976d2' }}>timestamp</span>: {evt.timestamp}</div>
-                             </Box>
-                           )}
-
-                           {/* 2. GRAPH TAB */}
-                           { evt.innerTab === 1 && (
-                             <Box sx={{ mt: 1 }}>
-                               {evt.graphData ? (
-                                 <Box sx={{ bgcolor: '#fff', border: '1px solid #ddd', p: 1, borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
-                                   <pre style={{ margin: 0, fontSize: '0.7rem', color: '#555', whiteSpace: 'pre-wrap' }}>
-                                     {evt.graphData.dotSrc}
-                                   </pre>
-                                 </Box>
-                               ) : (
-                                 <Typography variant="caption" color="text.secondary">Loading graph...</Typography>
-                               )}
-                             </Box>
-                           )}
+                           {/* Simplified Details View (Matches specific format request) */}
+                           <Box sx={{ 
+                              bgcolor: '#f8f9fa', 
+                              p: 1.5, 
+                              borderRadius: '4px', 
+                              fontFamily: '"Roboto Mono", monospace', 
+                              fontSize: '0.75rem', 
+                              color: '#37474f', 
+                              overflowX: 'auto',
+                              border: '1px solid #e0e0e0',
+                              lineHeight: 1.5
+                           }}>
+                              <div style={{ marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>content</span>:</div>
+                              <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>parts</span>:</div>
+                              <div style={{ paddingLeft: '32px', marginBottom: '4px' }}>0:</div>
+                              <div style={{ paddingLeft: '48px', marginBottom: '4px' }}>
+                                <span style={{ color: '#1976d2' }}>text</span>: <span style={{ color: '#c41d7f' }}>"{mainText}"</span>
+                              </div>
+                              <div style={{ paddingLeft: '16px', marginBottom: '4px' }}>
+                                <span style={{ color: '#1976d2' }}>role</span>: <span style={{ color: '#c41d7f' }}>"{evt.content.role}"</span>
+                              </div>
+                              
+                              {/* Conditionally render fields like API response example */}
+                              <div style={{ marginBottom: '4px' }}>
+                                <span style={{ color: '#1976d2' }}>invocationId</span>: <span style={{ color: '#c41d7f' }}>"{evt.invocationId}"</span>
+                              </div>
+                              
+                              <div style={{ marginBottom: '4px' }}>
+                                <span style={{ color: '#1976d2' }}>id</span>: <span style={{ color: '#c41d7f' }}>"{evt.id}"</span>
+                              </div>
+                              
+                              <div>
+                                <span style={{ color: '#1976d2' }}>timestamp</span>: <span style={{ color: '#096dd9' }}>{evt.timestamp}</span>
+                              </div>
+                           </Box>
 
                         </AccordionDetails>
                       </Accordion>
@@ -393,15 +347,15 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
               )
             )}
 
-            {/* --- TRACE TAB --- */}
+            {/* --- TRACE TAB (Unchanged) --- */}
             {tabIndex === 1 && (
               interactions.length === 0 ? (
-                <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Box sx={{ p: 4, textAlign: 'left' }}>
                    <img src="/Icon.png" alt="No Data" style={{ width: '120px', opacity: 0.5, marginBottom: '16px' }} />
                    <Typography variant="body2" color="text.secondary">No traces found</Typography>
                 </Box>
               ) : (
-                <Box sx={{  padding: '1rem'  }}>
+                <Box sx={{  padding: '1rem', textAlign: 'left'  }}>
                   {interactions.map((interaction) => (
                     <Accordion 
                       key={interaction.traceId} 
@@ -431,10 +385,9 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                         </Typography>
                       </AccordionSummary>
                       
-                      <AccordionDetails sx={{ px: 2, pb: 3, pt: 1 }}>
+                      <AccordionDetails sx={{ px: 2, pb: 3, pt: 1 , textAlign: 'left'}}>
                         <Box sx={{ mb: 2 }}>
                            <Typography variant="body2" sx={{ color: '#444746', fontWeight: 500, fontSize: '0.95rem' }}>
-                             {/* UPDATED: Displays the extracted Invocation ID */}
                              Invocation ID: <span style={{ color: '#444746' ,fontSize: '14px',fontWeight: 400,fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>{interaction.invocationId || "N/A"}</span> 
                            </Typography>
                         </Box>
