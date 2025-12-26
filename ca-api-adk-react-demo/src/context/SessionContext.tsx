@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { chatService } from '../services/clientService'; 
 export interface Message {
   role: 'user' | 'bot';
@@ -29,6 +29,10 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
+  const activeSessionIdRef = useRef(activeSessionId);
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+  }, [activeSessionId]);
 
   const [sessionNames, setSessionNames] = useState<Record<string, string>>(() => {
     try {
@@ -61,10 +65,11 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
   }, [activeSessionId]);
 
   useEffect(() => {
-    if (activeSessionId && messages.length > 0) {
-      localStorage.setItem(`chat_history_${activeSessionId}`, JSON.stringify(messages));
+    const currentId = activeSessionIdRef.current;
+    if (currentId && messages.length > 0) {
+      localStorage.setItem(`chat_history_${currentId}`, JSON.stringify(messages));
     }
-  }, [messages, activeSessionId]);
+  }, [messages]);
 
   const renameSession = (sessionId: string, newName: string) => {
     setSessionNames((prev) => {
@@ -142,9 +147,9 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
       activeSessionId, 
       setActiveSessionId, 
       selectedAgentId, 
-      setSelectedAgentId,
-      renameSession,
-      getSessionName,
+      setSelectedAgentId, 
+      renameSession, 
+      getSessionName, 
       traceRefreshTrigger, 
       notifyMessageSent,
       messages,
