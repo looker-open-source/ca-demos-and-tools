@@ -10,6 +10,7 @@
   --text-primary: rgba(0, 0, 0, 0.87);
   --text-secondary: rgba(0, 0, 0, 0.6);
   --border-color: #DADCE0;
+  --font-family: "Google Sans", Roboto, Arial, sans-serif;
 
   /* Menu Specifics (Light) */
   --menu-bg: #ffffff;
@@ -156,7 +157,7 @@
 }
 
 .top-banner-title {
-  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-family: var(--font-family);
   font-weight: 400 !important;
   font-size: 18px !important;
   line-height: 17px !important;
@@ -187,7 +188,7 @@
 }
 
 .case-bar-text {
-  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-family: var(--font-family);
   font-weight: 500 !important;
   font-size: 14px !important;
   color: var(--text-primary) !important;
@@ -287,7 +288,7 @@
   
   display: flex;
   flex-direction: column;
-  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  font-family: var(--font-family);
 }
 
 .side-panel-header-section {
@@ -328,7 +329,7 @@
 .side-panel-new-session-button {
   width: 100%;
   padding: 0.75rem 1rem;
-  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-family: var(--font-family);
   margin-bottom: 1rem;
   background-color: #0B57D0;
   color: white;
@@ -473,7 +474,7 @@
 .menu-icon {
   font-size: 24px;
   font-weight: 400;
-  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-family: var(--font-family);
   color: var(--text-secondary);
 }
 
@@ -504,7 +505,7 @@
   margin-bottom: 1rem;
   align-items: center;
   cursor: pointer;
-  font-family: 'Google Sans', Arial, sans-serif;
+  font-family: var(--font-family);
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
@@ -629,7 +630,7 @@
   color: #ffffff;
   padding: 12px 24px;
   border-radius: 4px;
-  font-family: "Google Sans", Roboto, sans-serif;
+  font-family: var(--font-family);
   font-size: 14px;
   box-shadow: 0 4px 8px rgba(0,0,0,0.3);
   z-index: 1000000;
@@ -770,7 +771,7 @@
 }
 
 .welcome-text-hi {
-  font-family: "Google Sans", sans-serif;
+  font-family: var(--font-family);
   font-weight: 400;
   font-size: 3rem; 
   color: #4285F4; 
@@ -783,7 +784,7 @@
 }
 
 .welcome-text-subtitle {
-  font-family: "Google Sans", sans-serif;
+  font-family: var(--font-family);
   font-weight: 400;
   font-size: 3rem;
   color: #3C4043; 
@@ -1047,7 +1048,7 @@
 .css-1k5f16h{
   color: #0b57d0 !important;
   background: #d3e3fd !important;
-  font-family: "Google Sans", Roboto, Arial, sans-serif !important;
+  font-family: var(--font-family);
   font-weight: 400 !important;
 }
 
@@ -1126,7 +1127,7 @@
   font-size: 0.875rem;
   color: #1f1f1f;
   display: inline-block;
-  font-family: "Google Sans", Roboto, Arial, sans-serif;
+  font-family: var(--font-family);
 }
 
 .typography-section-header {
@@ -1192,4 +1193,22 @@
 
 .font-card-desc {
   line-height: 1 !important;
+}
+
+[data-theme='custom'] {
+  font-family: var(--font-family) !important;
+}
+
+[data-theme='custom'] body,
+[data-theme='custom'] button,
+[data-theme='custom'] input,
+[data-theme='custom'] textarea,
+[data-theme='custom'] .MuiTypography-root,
+[data-theme='custom'] .top-banner-title,
+[data-theme='custom'] .welcome-text-hi,
+[data-theme='custom'] .welcome-text-subtitle,
+[data-theme='custom'] .case-bar-text,
+[data-theme='custom'] .side-panel-container,
+[data-theme='custom'] .dialog-pill-input {
+  font-family: var(--font-family) !important;
 }

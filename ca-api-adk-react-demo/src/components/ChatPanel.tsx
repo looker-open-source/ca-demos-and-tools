@@ -8,9 +8,9 @@ import {
   SmartToyOutlined, PersonOutline
 } from '@mui/icons-material';
 import { useSession } from '../context/SessionContext';
+import { useAppTheme } from '../context/ThemeContext';
 import '../App.css'; 
 
-// --- Types ---
 export interface Message {
   role: 'user' | 'bot';
   text: string;
@@ -33,6 +33,8 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { activeSessionId, getSessionName, messages, isSending, sendMessage } = useSession();
+  
+  const { themeMode, customTheme } = useAppTheme();
 
   const [userInput, setUserInput] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
@@ -44,11 +46,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
         alert("Please select or create a session from the side panel first.");
         return;
     }
-
-    // Call the centralized send function
     await sendMessage(userInput, selectedFiles);
-    
-    // Clear inputs immediately
     setUserInput('');
     setSelectedFiles([]);
   };
@@ -112,7 +110,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
 
       {/* 2. Scrollable Content Area */}
       <div className="chat-content-area" ref={scrollRef}>
-        
         {messages.length === 0 ? (
           <div className="welcome-container">
             <div className="welcome-content-wrapper">
@@ -120,14 +117,10 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
                 <h1 className="welcome-text-hi">Hi,</h1>
                 <h1 className="welcome-text-subtitle">What can I help you with today?</h1>
               </div>
-
               <Grid container spacing={2}>
                 {SUGGESTIONS.map((text, idx) => (
                   <Grid size={{ xs: 12, sm: 6, md: 3 }} key={idx}>
-                    <div 
-                      className="suggestion-card" 
-                      onClick={() => handleSuggestionClick(text)}
-                    >
+                    <div className="suggestion-card" onClick={() => handleSuggestionClick(text)}>
                       <span className="suggestion-text">{text}</span>
                     </div>
                   </Grid>
@@ -150,8 +143,13 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
                   </Typography>
                 </div>
                 {msg.role === 'user' && (
-                   <Avatar className="chat-avatar user">
-                     <PersonOutline fontSize="small" />
+                   <Avatar 
+                     className="chat-avatar user" 
+                     src={(themeMode === 'custom' && customTheme.userAvatar) || undefined}
+                   >
+                     {!(themeMode === 'custom' && customTheme.userAvatar) && (
+                        <PersonOutline fontSize="small" />
+                     )}
                    </Avatar>
                 )}
               </div>
@@ -164,7 +162,7 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
       {/* 3. Input Footer */}
       <div className="chat-input-container">
         <div className="chat-input-wrapper">
-          
+ 
           {selectedFiles.length > 0 && (
             <Stack direction="row" spacing={1} mb={1}>
               {selectedFiles.map((f, i) => (
@@ -172,7 +170,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
               ))}
             </Stack>
           )}
-
           <TextField
             fullWidth
             placeholder={activeSessionId ? "Type a message..." : "Select a session to start chatting"}
@@ -200,7 +197,6 @@ const ChatPanel: React.FC<ChatPanelProps> = ({ onToggleRightPanel }) => {
           />
         </div>
       </div>
-
     </div>
   );
 };

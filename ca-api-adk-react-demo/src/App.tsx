@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ComponentsProvider } from '@looker/components-providers';
 import { Box, ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import TopBanner from './components/TopBanner';
@@ -9,11 +9,25 @@ import ChatPanel from './components/ChatPanel';
 import { SidePanel } from './components/SidePanel';
 import { SessionProvider } from './context/SessionContext';
 import RightPanel from './components/RightPanel';
-import { GlobalToast } from './components/GlobalToast'; // 1. Import GlobalToast
+import { GlobalToast } from './components/GlobalToast';
 
 const AppContent = () => {
-  const { themeMode } = useAppTheme();
+  const { themeMode, customTheme } = useAppTheme();
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
+
+useEffect(() => {
+    const root = document.documentElement;
+    if (themeMode === 'custom') {
+      root.style.setProperty('--bg-default', customTheme.bgColor);
+      root.style.setProperty('--bg-paper', '#ffffff');
+      
+      root.style.setProperty('--font-family', `"${customTheme.fontFamily}", "Google Sans", Roboto, Arial, sans-serif`);
+    } else {
+      root.style.removeProperty('--bg-default');
+      root.style.removeProperty('--bg-paper');
+      root.style.removeProperty('--font-family');
+    }
+  }, [themeMode, customTheme]);
 
   // MUI Theme Setup
   const muiTheme = useMemo(() => createTheme({
@@ -22,9 +36,11 @@ const AppContent = () => {
       primary: { main: '#1976d2' },
     },
     typography: {
-      fontFamily: '"Google Sans", Roboto, Arial, sans-serif',
+      fontFamily: themeMode === 'custom' 
+        ? `"${customTheme.fontFamily}", "Google Sans", Roboto, Arial, sans-serif`
+        : '"Google Sans", Roboto, Arial, sans-serif',
     }
-  }), [themeMode]);
+  }), [themeMode, customTheme]);
 
   return (
     <ThemeProvider theme={muiTheme}>

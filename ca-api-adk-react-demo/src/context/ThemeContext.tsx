@@ -1,49 +1,45 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-// 1. Define Types
+export interface CustomThemeData {
+  bgColor: string;
+  fontFamily: string;
+  userAvatar: string | null;
+}
+
 export type ThemeType = 'light' | 'dark' | 'custom';
 
 interface ThemeContextType {
   themeMode: ThemeType;
-  setThemeMode: (theme: ThemeType) => void;
+  setThemeMode: (mode: ThemeType) => void;
+  customTheme: CustomThemeData;
+  setCustomTheme: (data: CustomThemeData) => void;
 }
 
-// 2. Create Context
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-// 3. Helper to determine initial theme (moved from App.tsx)
-const getInitialTheme = (): ThemeType => {
-  const savedTheme = localStorage.getItem('app_theme');
-  if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'custom') {
-    return savedTheme;
-  }
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
-};
-
-// 4. Create the Provider Component
-export const AppThemeProvider = ({ children }: { children: ReactNode }) => {
-  const [themeMode, setThemeMode] = useState<ThemeType>(getInitialTheme);
-
-  // Persistence Effect
-  useEffect(() => {
-    localStorage.setItem('app_theme', themeMode);
-  }, [themeMode]);
+export const AppThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [themeMode, setThemeMode] = useState<ThemeType>('light');
+  
+  const [customTheme, setCustomTheme] = useState<CustomThemeData>({
+    bgColor: '#E8F0FE',
+    fontFamily: 'Inter',
+    userAvatar: null 
+  });
 
   return (
-    <ThemeContext.Provider value={{ themeMode, setThemeMode }}>
+    <ThemeContext.Provider value={{ 
+      themeMode, 
+      setThemeMode,
+      customTheme, 
+      setCustomTheme 
+    }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-// 5. Custom Hook for easy usage
 export const useAppTheme = () => {
   const context = useContext(ThemeContext);
-  if (context === undefined) {
-    throw new Error('useAppTheme must be used within an AppThemeProvider');
-  }
+  if (!context) throw new Error('useAppTheme must be used within AppThemeProvider');
   return context;
 };
