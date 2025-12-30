@@ -159,6 +159,7 @@ export const apiClient = {
 
 export const chatService = {
     sendUserMessage: async (
+        agentId: string,
         text: string, 
         sessionId: string, 
         files: any[] = [], 
@@ -205,7 +206,7 @@ export const chatService = {
         }
 
         const payload = {
-            appName: "ca_api_agent", 
+            appName: agentId,
             userId: "user",          
             sessionId: sessionId,
             newMessage: {

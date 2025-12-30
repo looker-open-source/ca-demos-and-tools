@@ -102,6 +102,7 @@ export const SessionProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     try {
         await chatService.sendUserMessage(
+            selectedAgentId || "ca_api_agent",
             text, 
             activeSessionId, 
             files, 
