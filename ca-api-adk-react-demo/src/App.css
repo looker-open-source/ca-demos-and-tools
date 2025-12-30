@@ -17,6 +17,7 @@
   --menu-text: rgba(0, 0, 0, 0.87);
   --menu-selected-bg: #E8F0FE; /* Google Light Blue */
   --menu-selected-text: #1967d2; /* Blue text */
+  --menu-selected-text-code: #1967d2;
 
   /* Side Panel Specifics (Light) */
   --side-panel-bg: #f9fafb;
@@ -53,6 +54,7 @@
   --menu-text: #E3E3E3;
   --menu-selected-bg: #A8C7FA; /* Pastel Blue */
   --menu-selected-text: #041E49; /* Dark Text */
+ 
 
   /* Side Panel Specifics (Dark) */
   --side-panel-bg: #131314;
@@ -1017,8 +1019,7 @@
     /* display: flex; */
     justify-content: center;
     align-items: center;
-    padding: 24px;
-    background-color: #F8F9FA; 
+    padding: 24px; 
 }
 
 [data-theme='dark'] .right-panel-content {
@@ -1043,6 +1044,44 @@
 
 [data-theme='dark'] .empty-state-icon {
     color: #A8C7FA;
+}
+
+
+.event-details-container {
+    background-color: var(--bg-paper) !important;
+    padding: 1.5rem;
+    border-radius: 4px;
+    font-family: 'Roboto Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--text-primary) !important;
+    overflow-x: auto;
+    border-top: 1px solid var(--border-color);
+    line-height: 1.5;
+}
+
+.event-key-label {
+    color: #d32f2f; /* Red for keys */
+}
+
+.event-value-text {
+    color: var(--menu-selected-text-code); /* Blue/Themed for values */
+}
+
+[data-theme='dark'] .event-key-label {
+    color: #f28b82; /* Lighter red for dark mode keys */
+}
+
+.trace-invocation-text {
+    color: var(--text-primary) !important;
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+.trace-invocation-id {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 400;
+    font-family: var(--font-family);
 }
 
 .css-1k5f16h{

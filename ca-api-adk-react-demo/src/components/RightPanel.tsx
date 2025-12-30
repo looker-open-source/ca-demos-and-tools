@@ -54,7 +54,15 @@ interface EventItem {
     parts: { text: string }[];
   };
   invocationId?: string;
-  // Removed graphData and innerTab as per requirement
+  partial?: boolean;
+  turnComplete?: boolean;
+  author?: string;
+  actions?: any;
+  stateDelta?: any;
+  artifactDelta?: any;
+  requestedAuthConfigs?: any;
+  requestedToolConfirmations?: any;
+  title?: string;
 }
 
 interface SessionResponse {
@@ -70,21 +78,18 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   const [events, setEvents] = useState<EventItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   
-  // Track expanded accordion state
   const [expandedEventId, setExpandedEventId] = useState<string | false>(false);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabIndex(newValue);
   };
 
-  // --- FETCH MAIN LISTS ---
   const fetchData = async () => {
     if (!activeSessionId || !selectedAgentId) return;
     setIsLoading(true);
     
     try {
       if (tabIndex === 0) {
-        // Events Tab
         const response: SessionResponse = await apiClient.get(
           `/apps/${selectedAgentId}/users/user/sessions/${activeSessionId}`
         );
@@ -97,7 +102,6 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
           setEvents([]);
         }
       } else {
-        // Trace Tab
         const response = await apiClient.get(`/debug/trace/session/${activeSessionId}`);
         if (Array.isArray(response)) {
           processTraces(response);
@@ -114,7 +118,6 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   };
 
-  // Simplified Expand Handler (No API calls needed for events anymore)
   const handleEventExpand = (eventId: string) => (event: React.SyntheticEvent, isExpanded: boolean) => {
     setExpandedEventId(isExpanded ? eventId : false);
   };
@@ -125,7 +128,6 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     }
   }, [isOpen, activeSessionId, tabIndex, traceRefreshTrigger]);
 
-  // --- PROCESSING LOGIC (Traces - Unchanged) ---
   const processTraces = (rawTraces: any[]) => {
     const traces: TraceItem[] = rawTraces.map(t => ({
       ...t,
@@ -183,7 +185,6 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
     setInteractions(parsedInteractions.reverse());
   };
 
-  // --- HELPERS ---
   const calculateDuration = (start: number, end: number) => {
     const ms = (end - start) / 1000000;
     return `${ms.toFixed(2)}ms`;
@@ -194,21 +195,19 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   };
 
   const getIcon = (name: string) => {
-    // Increased size for Trace tab icons as requested previously
-    const iconProps = { fontSize: 'medium' as const, sx: { color: '#616161', fontSize: '1.5rem' } };
+    const iconProps = { fontSize: 'medium' as const, sx: { color: 'var(--text-secondary)', fontSize: '1.5rem' } };
     if (name.includes("invocation")) return <Start {...iconProps} />; 
     if (name.includes("agent")) return <SupportAgent {...iconProps} />; 
     if (name.includes("llm")) return <Comment {...iconProps} />;
     return <Code {...iconProps} />;
   };
 
-  // --- RENDERERS ---
   const renderTree = (node: TraceItem) => (
     <Box key={node.span_id} sx={{ mb: 1.5, width: '100%' }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ width: '100%' }}>
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ overflow: 'hidden', flexGrow: 1, mr: 2 }}>
           {getIcon(node.name)}
-          <Typography variant="body2" sx={{ fontWeight: 400, color: '#424242', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <Typography variant="body2" className="dashboard-text" sx={{ fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {node.name}
           </Typography>
         </Stack>
@@ -225,34 +224,26 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
   );
 
   return (
-    <Box className={`right-panel-container ${isOpen ? 'open' : ''}`} sx={{ bgcolor: '#fff' }}>
+    <Box className={`right-panel-container ${isOpen ? 'open' : ''}`}>
       
       {/* Header */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', bgcolor: '#fff' }}>
-         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 1 }}>
+      <Box className="right-panel-header">
+         <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ height: '100%' }}>
            <Tabs 
               value={tabIndex} 
               onChange={handleTabChange} 
               sx={{ minHeight: '48px', '& .MuiTabs-indicator': { backgroundColor: '#1976d2', height: '3px' } }}
            >
-             <Tab label="Events" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: '#5f6368', '&.Mui-selected': { color: '#1976d2' } }} />
-             <Tab label="Trace" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: '#5f6368', '&.Mui-selected': { color: '#1976d2' } }} />
+             <Tab label="Events" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: 'var(--text-secondary)', '&.Mui-selected': { color: '#1976d2' } }} />
+             <Tab label="Trace" sx={{ textTransform: 'none', fontWeight: 500, fontSize: '0.95rem', minWidth: '80px', color: 'var(--text-secondary)', '&.Mui-selected': { color: '#1976d2' } }} />
            </Tabs>
-           <Stack direction="row">
-              <IconButton size="small" onClick={fetchData} disabled={isLoading || !activeSessionId} sx={{ color: '#5f6368' }}>
-                  <Refresh fontSize="small" />
-              </IconButton>
-              <IconButton size="small" onClick={onClose} sx={{ color: '#5f6368' }}>
-                  <Close fontSize="small" />
-              </IconButton>
-           </Stack>
          </Stack>
       </Box>
       
       {/* Content */}
-      <Box className="right-panel-content" sx={{ backgroundColor: '#fff', height: 'calc(100% - 49px)', overflowY: 'auto', p: 0 }}>
+      <Box className="right-panel-content" sx={{ height: 'calc(100% - 49px)', overflowY: 'auto', p: 0 }}>
         {!activeSessionId ? (
-           <Box sx={{ textAlign: 'center', mt: 8, color: '#5f6368' }}><Typography variant="body2">Select a session to view details.</Typography></Box>
+           <Box sx={{ textAlign: 'center', mt: 8, color: 'var(--text-secondary)' }}><Typography variant="body2">Select a session to view details.</Typography></Box>
         ) : isLoading ? (
            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 8 }}><CircularProgress size={24} /></Box>
         ) : (
@@ -265,7 +256,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                    <Typography variant="body2" color="text.secondary">No events found</Typography>
                 </Box>
               ) : (
-                <Box sx={{ padding: '1rem',textAlign: 'left' }}>
+                <Box sx={{ padding: '1rem', textAlign: 'left' }}>
                   {events.map((evt) => {
                     const mainText = evt.content.parts?.[0]?.text || "No content";
                     return (
@@ -277,68 +268,68 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                         expanded={expandedEventId === evt.id}
                         onChange={handleEventExpand(evt.id)}
                         sx={{ 
-                          borderTop: '1px solid #e0e0e0', 
-                          borderLeft: '1px solid #e0e0e0', 
-                          borderRight: '1px solid #e0e0e0', 
+                          borderTop: '1px solid var(--border-color)', 
+                          borderLeft: '1px solid var(--border-color)', 
+                          borderRight: '1px solid var(--border-color)', 
+                          backgroundColor: 'var(--bg-paper)',
                           '&:before': { display: 'none' },
-                          '&:last-child': { borderBottom: '1px solid #e0e0e0'},
-                           padding: '0px 12px'
+                          '&:last-child': { borderBottom: '1px solid var(--border-color)'}
                         }}
                       >
                         <AccordionSummary 
-                          expandIcon={<ArrowDropDown sx={{ color: '#5f6368' }} />} 
+                          expandIcon={<ArrowDropDown sx={{ color: 'var(--text-secondary)' }} />} 
                           sx={{ 
                             px: 2, 
                             minHeight: '56px',
                             '& .MuiAccordionSummary-content': { margin: '12px 0' },
-                            '&:hover': { backgroundColor: '#f8f9fa' }
+                            '&:hover': { backgroundColor: 'var(--side-panel-hover)' }
                           }}
                         >
                           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ width: '100%' }}>
-                             <Typography variant="body2" sx={{ fontWeight: 400, color: '#3c4043' }}>
+                             <Typography variant="body2" sx={{ fontWeight: 400, color: 'var(--text-primary)' }}>
                                {mainText.length > 50 ? mainText.substring(0, 50) + "..." : mainText}
                              </Typography>
                           </Stack>
                         </AccordionSummary>
                         
                         <AccordionDetails sx={{ px: 2, pb: 2, pt: 0 }}>
-                           
-                           {/* Simplified Details View (Matches specific format request) */}
-                           <Box sx={{ 
-                              bgcolor: '#f8f9fa', 
-                              p: 1.5, 
-                              borderRadius: '4px', 
-                              fontFamily: '"Roboto Mono", monospace', 
-                              fontSize: '0.75rem', 
-                              color: '#37474f', 
-                              overflowX: 'auto',
-                              border: '1px solid #e0e0e0',
-                              lineHeight: 1.5
-                           }}>
-                              <div style={{ marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>content</span>:</div>
-                              <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span style={{ color: '#d32f2f' }}>parts</span>:</div>
+                           <Box className="event-details-container">
+                              <div style={{ marginBottom: '4px' }}><span className="event-key-label">content</span>:</div>
+                              <div style={{ paddingLeft: '16px', marginBottom: '4px' }}><span className="event-key-label">parts</span>:</div>
                               <div style={{ paddingLeft: '32px', marginBottom: '4px' }}>0:</div>
                               <div style={{ paddingLeft: '48px', marginBottom: '4px' }}>
-                                <span style={{ color: '#1976d2' }}>text</span>: <span style={{ color: '#c41d7f' }}>"{mainText}"</span>
+                                <span className="event-value-text">text</span>: <span style={{ color: '#c41d7f' }}>"{mainText}"</span>
                               </div>
                               <div style={{ paddingLeft: '16px', marginBottom: '4px' }}>
-                                <span style={{ color: '#1976d2' }}>role</span>: <span style={{ color: '#c41d7f' }}>"{evt.content.role}"</span>
+                                <span className="event-value-text">role</span>: <span style={{ color: '#c41d7f' }}>"{evt.content.role}"</span>
                               </div>
-                              
-                              {/* Conditionally render fields like API response example */}
                               <div style={{ marginBottom: '4px' }}>
-                                <span style={{ color: '#1976d2' }}>invocationId</span>: <span style={{ color: '#c41d7f' }}>"{evt.invocationId}"</span>
+                                <span className="event-value-text">partial</span>: <span style={{ color: '#096dd9' }}>{String(evt.partial ?? false)}</span>
                               </div>
-                              
                               <div style={{ marginBottom: '4px' }}>
-                                <span style={{ color: '#1976d2' }}>id</span>: <span style={{ color: '#c41d7f' }}>"{evt.id}"</span>
+                                <span className="event-value-text">turnComplete</span>: <span style={{ color: '#096dd9' }}>{String(evt.turnComplete ?? false)}</span>
                               </div>
-                              
+                              <div style={{ marginBottom: '4px' }}>
+                                <span className="event-value-text">invocationId</span>: <span style={{ color: '#c41d7f' }}>"{evt.invocationId}"</span>
+                              </div>
+                              <div style={{ marginBottom: '4px' }}>
+                                <span className="event-value-text">author</span>: <span style={{ color: '#c41d7f' }}>"{evt.author || "ConversationalAnalyticsAgent"}"</span>
+                              </div>
+                              <div style={{ marginBottom: '4px' }}><span className="event-value-text">actions</span>:</div>
+                              <div style={{ marginBottom: '4px' }}><span className="event-value-text">stateDelta</span>:</div>
+                              <div style={{ marginBottom: '4px' }}><span className="event-value-text">artifactDelta</span>:</div>
+                              <div style={{ marginBottom: '4px' }}><span className="event-value-text">requestedAuthConfigs</span>:</div>
+                              <div style={{ marginBottom: '4px' }}><span className="event-value-text">requestedToolConfirmations</span>:</div>
+                              <div style={{ marginBottom: '4px' }}>
+                                <span className="event-value-text">id</span>: <span style={{ color: '#c41d7f' }}>"{evt.id}"</span>
+                              </div>
+                              <div style={{ marginBottom: '4px' }}>
+                                <span className="event-value-text">timestamp</span>: <span style={{ color: '#096dd9' }}>{evt.timestamp}</span>
+                              </div>
                               <div>
-                                <span style={{ color: '#1976d2' }}>timestamp</span>: <span style={{ color: '#096dd9' }}>{evt.timestamp}</span>
+                                <span className="event-value-text">title</span>: <span style={{ color: '#c41d7f' }}>"text:{mainText}"</span>
                               </div>
                            </Box>
-
                         </AccordionDetails>
                       </Accordion>
                     );
@@ -347,7 +338,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
               )
             )}
 
-            {/* --- TRACE TAB (Unchanged) --- */}
+            {/* --- TRACE TAB --- */}
             {tabIndex === 1 && (
               interactions.length === 0 ? (
                 <Box sx={{ p: 4, textAlign: 'left' }}>
@@ -355,7 +346,7 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                    <Typography variant="body2" color="text.secondary">No traces found</Typography>
                 </Box>
               ) : (
-                <Box sx={{  padding: '1rem', textAlign: 'left'  }}>
+                <Box sx={{ padding: '1rem', textAlign: 'left' }}>
                   {interactions.map((interaction) => (
                     <Accordion 
                       key={interaction.traceId} 
@@ -363,32 +354,32 @@ const RightPanel = ({ isOpen, onClose }: RightPanelProps) => {
                       elevation={0} 
                       square
                       sx={{ 
-                        borderTop: '1px solid #e0e0e0', 
-                          borderLeft: '1px solid #e0e0e0', 
-                          borderRight: '1px solid #e0e0e0', 
-                          '&:before': { display: 'none' },
-                          '&:last-child': { borderBottom: '1px solid #e0e0e0'},
-                           padding: '0px 12px'
+                        borderTop: '1px solid var(--border-color)', 
+                        borderLeft: '1px solid var(--border-color)', 
+                        borderRight: '1px solid var(--border-color)', 
+                        backgroundColor: 'var(--bg-paper)',
+                        '&:before': { display: 'none' },
+                        '&:last-child': { borderBottom: '1px solid var(--border-color)'}
                       }}
                     >
                       <AccordionSummary 
-                        expandIcon={<ArrowDropDown sx={{ color: '#5f6368' }} />} 
+                        expandIcon={<ArrowDropDown sx={{ color: 'var(--text-secondary)' }} />} 
                         sx={{ 
                           px: 2, 
                           minHeight: '56px',
                           '& .MuiAccordionSummary-content': { margin: '12px 0' },
-                          '&:hover': { backgroundColor: '#f8f9fa' }
+                          '&:hover': { backgroundColor: 'var(--side-panel-hover)' }
                         }}
                       >
-                        <Typography variant="body2" sx={{ fontWeight: 400, color: '#3c4043' }}>
+                        <Typography variant="body2" sx={{ fontWeight: 400, color: 'var(--text-primary)' }}>
                           {interaction.title}
                         </Typography>
                       </AccordionSummary>
                       
-                      <AccordionDetails sx={{ px: 2, pb: 3, pt: 1 , textAlign: 'left'}}>
+                      <AccordionDetails sx={{ px: 2, pb: 3, pt: 1, textAlign: 'left' }}>
                         <Box sx={{ mb: 2 }}>
-                           <Typography variant="body2" sx={{ color: '#444746', fontWeight: 500, fontSize: '0.95rem' }}>
-                             Invocation ID: <span style={{ color: '#444746' ,fontSize: '14px',fontWeight: 400,fontFamily: '"Google Sans", Roboto, Arial, sans-serif' }}>{interaction.invocationId || "N/A"}</span> 
+                           <Typography variant="body2" className="trace-invocation-text">
+                             Invocation ID: <span className="trace-invocation-id">{interaction.invocationId || "N/A"}</span> 
                            </Typography>
                         </Box>
                         {interaction.rootSpans.map(root => renderTree(root))}

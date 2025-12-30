@@ -27,14 +27,15 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-
-    "start:dev": "vite --mode dev",     
+    "start:dev": "vite --mode dev",      
     "start:remote": "vite --mode remote",
-    "start": "pnpm run start:dev",         
+    "start:prod": "vite --mode production",
+    "start": "pnpm run start:dev",          
 
     "build:dev": "vite build --mode dev",
     "build:remote": "vite build --mode remote",
-    "build": "pnpm run build:remote",
+    "build:prod": "vite build --mode production",
+    "build": "pnpm run build:prod",
     "test": "react-scripts test",
     "eject": "echo 'Eject is not used with Vite'"
   },
