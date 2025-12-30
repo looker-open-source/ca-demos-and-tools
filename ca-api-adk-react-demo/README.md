@@ -2,6 +2,9 @@
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## Architectural Documentation 
+[React API ADK demo] : (https://docs.google.com/document/d/1PbW5z_Trq2U0HxSn4LMnL9kUEAqLBlUuW1AcfYcXiBo/edit?tab=t.0)
+
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
