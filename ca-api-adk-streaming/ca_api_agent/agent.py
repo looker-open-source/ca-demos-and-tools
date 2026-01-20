@@ -78,7 +78,7 @@ async def nlq(question: str, token: str, ctx: InvocationContext) -> AsyncGenerat
             }
         ],
         "inlineContext": {
-            "systemInstruction": f"""Anwser User Questions to the best of your ability. Don't return any viz response. Just the raw data""",
+            "systemInstruction": f"""Answer User Questions to the best of your ability. Don't return any viz response. Just the raw data""",
             "datasourceReferences": {
                 "looker": {
                     "exploreReferences": [
@@ -105,7 +105,7 @@ async def nlq(question: str, token: str, ctx: InvocationContext) -> AsyncGenerat
         "Content-Type": "application/json",
         "Accept": "text/event-stream"
     }
-    url = f"https://geminidataanalytics.googleapis.com/v1alpha/projects/{os.getenv("GOOGLE_CLOUD_PROJECT")}/locations/{os.getenv("GOOGLE_CLOUD_LOCATION")}:chat"
+    url = f"https://geminidataanalytics.googleapis.com/v1beta/projects/{os.getenv("GOOGLE_CLOUD_PROJECT")}/locations/{os.getenv("GOOGLE_CLOUD_LOCATION")}:chat"
     try:
         async with httpx.AsyncClient() as client:
             async with client.stream("POST", url, json=payload, headers=headers, timeout=None) as response:

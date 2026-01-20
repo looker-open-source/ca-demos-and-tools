@@ -4,20 +4,22 @@ This agent leverages the Gemini Conversational Analytics API to answer questions
 
 ## Folder Structure
 
-*   `ca_api_agent/`: This folder contains the core agent logic.
-    *   `agent.py`: This file defines the `CaApiAgent` and the `root_agent`. The `CaApiAgent` is a custom agent class that inherits from the ADK's `BaseAgent`. It overrides the `_run_async_impl` method to support tool streaming, which allows the agent to process data from the Conversational Analytics API in real-time. The agent uses a simple client ID and secret for Looker authentication. It also saves the summary and raw data results to the agent's temporary session, which makes them accessible to subsequent agents in the same invocation.
-*   `deployment/`: This folder contains the deployment script and the wheel file for the agent.
-    *   `deploy.py`: This script handles the deployment of the agent to Agent Engine. It can create or delete an agent.
-    *   `ca_api_agent-0.1.0-py3-none-any.whl`: The wheel file for the agent. This is created by running `uv build --format=wheel --output-dir=deployment`.
+- `ca_api_agent/`: This folder contains the core agent logic.
+  - `agent.py`: This file defines the `CaApiAgent` and the `root_agent`. The `CaApiAgent` is a custom agent class that inherits from the ADK's `BaseAgent`. It overrides the `_run_async_impl` method to support tool streaming, which allows the agent to process data from the Conversational Analytics API in real-time. The agent uses a simple client ID and secret for Looker authentication. It also saves the summary and raw data results to the agent's temporary session, which makes them accessible to subsequent agents in the same invocation.
+- `deployment/`: This folder contains the deployment script and the wheel file for the agent.
+  - `deploy.py`: This script handles the deployment of the agent to Agent Engine. It can create or delete an agent.
+  - `ca_api_agent-0.1.0-py3-none-any.whl`: The wheel file for the agent. This is created by running `uv build --format=wheel --output-dir=deployment`.
 
 ## Running the Agent Locally
 
 1.  **Install the dependencies:**
+
     ```bash
     uv sync --frozen
     ```
 
 2.  **Enter virtual environment:**
+
     ```bash
     source .venv/bin/activate
     ```
@@ -47,8 +49,8 @@ This agent can be deployed to Agent Engine using the provided `deploy.sh` script
 
 ### Prerequisites
 
-*   [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-*   [uv](https://github.com/astral-sh/uv)
+- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+- [uv](https://github.com/astral-sh/uv)
 
 ### Deployment Steps
 

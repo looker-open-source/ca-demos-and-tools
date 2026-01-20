@@ -12,35 +12,41 @@ This project demonstrates how to interact with a Conversational Analytics API us
 
 ## Setup Instructions
 
-1.  **Clone the Repository:**
+1.  **Enter subfolder:**
+
     ```bash
-    git clone <your-repository-url>
     cd ca-api-adk
     ```
 
 2.  **Create a Virtual Environment:**
     It's recommended to use a virtual environment to manage dependencies.
+
     ```bash
     python -m venv myenv
     ```
 
 3.  **Activate the Virtual Environment:**
+
     ```bash
     source myenv/bin/activate
     ```
+
     (On Windows, use `myenv\Scripts\activate`)
 
 4.  **Install Requirements:**
     Install the necessary Python packages.
+
     ```bash
     pip install -r requirements.txt
     ```
 
 5.  **Configure Environment Variables:**
     Copy the example environment file and add your specific configuration.
+
     ```bash
     cp conversational_analytics_api/.env_example conversational_analytics_api/.env
     ```
+
     Edit `conversational_analytics_api/.env` and fill in the required values.
 
     ```bash
@@ -51,16 +57,15 @@ This project demonstrates how to interact with a Conversational Analytics API us
 
     # Config for Agent
     GEMINI_MODEL = "gemini-2.5-flash"
-    VERTEX_AI_CODE_INTERPRETER_EXTENSION = 
-    LOOKER_CLIENT_ID = 
-    LOOKER_CLIENT_SECRET = 
-    LOOKER_INSTANCE_URI = 
-    LOOKML_MODEL = 
-    LOOKER_EXPLORE = 
+    VERTEX_AI_CODE_INTERPRETER_EXTENSION =
+    LOOKER_CLIENT_ID =
+    LOOKER_CLIENT_SECRET =
+    LOOKER_INSTANCE_URI =
+    LOOKML_MODEL =
+    LOOKER_EXPLORE =
     CA_API_SYSTEM_INSTRUCTIONS = E.g: "You are an expert sales, product, and operations analyst for our e-commerce store. Your primary function is to answer questions by querying the 'Order Items' Explore. Always be concise and data-driven. Never generate a chart."
     CA_API_BILLING_PROJECT =
     ```
-
 
 ## Running the Demo
 
