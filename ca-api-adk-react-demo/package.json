@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
- 
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
@@ -27,16 +26,14 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start:dev": "vite --mode dev",      
+    "start:dev": "vite --mode dev",
     "start:remote": "vite --mode remote",
     "start:prod": "vite --mode production",
-    "start": "pnpm run start:dev",          
-
+    "start": "pnpm run start:dev",
     "build:dev": "vite build --mode dev",
     "build:remote": "vite build --mode remote",
     "build:prod": "vite build --mode production",
     "build": "pnpm run build:prod",
-    "test": "react-scripts test",
     "eject": "echo 'Eject is not used with Vite'"
   },
   "eslintConfig": {

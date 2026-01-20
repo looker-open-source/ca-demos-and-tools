@@ -38,7 +38,7 @@ Inside ca-api-adk-streaming : `adk api_server`
 
 This will start ADK as an API server which this frontend application will send requests to.
 
-**Running both the backand and frontend simultaneosly is required.**
+**Running both the backend and frontend simultaneously is required.**
 
 # Local curl testing steps
 
@@ -103,7 +103,7 @@ Expect:
 ### Post chat stream
 
 ```bash
-curl 'http://localhost:5173/api/run*sse' \-H 'Accept: text/event-stream, application/json, text/plain, */\_' \ --data-raw '{"appName":"ca_api_agent","userId":"user","sessionId":"60f2642d-1f11-42db-8059-a9a6c0e3501f","newMessage":{"role":"user","parts":[{"text":"hi"}]},"streaming":false,"stateDelta":null}'
+curl 'http://localhost:5173/api/run_sse' \-H 'Accept: text/event-stream, application/json, text/plain, */\_' \ --data-raw '{"appName":"ca_api_agent","userId":"user","sessionId":"60f2642d-1f11-42db-8059-a9a6c0e3501f","newMessage":{"role":"user","parts":[{"text":"hi"}]},"streaming":false,"stateDelta":null}'
 ```
 
 Expect:
