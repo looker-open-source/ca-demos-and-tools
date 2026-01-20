@@ -32,3 +32,10 @@ This project provides an example of how to use streaming with the Conversational
 - Showcases examples of how to save various json partials from the CA API (like the viz response, or raw data result) to Agent session temp storage to be accessed by subsequent agents in the same invocation.
 - Documentation on how to deploy this agent to Agent Engine or run locally
 - Examples of using this Agent in a multi agent system.
+
+### [Conversational Analytics API with ADK React Demo](/ca-api-adk-react-demo/README.md)
+
+A generic, configurable web frontend designed to interact with any ADK API Server instance.
+
+- Built with React, TypeScript, and Material UI, this application provides a polished chat experience designed for CA API agents.
+- Use this as a custom frontend to pair with the ADK examples in this repo or any ADK API server.
