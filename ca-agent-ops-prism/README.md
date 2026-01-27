@@ -167,7 +167,3 @@ Run the test suite using the provided script:
 ```bash
 ./scripts/run_tests.sh
 ```
-
----
-
-For architectural guidelines and internal patterns, see [GEMINI.md](GEMINI.md).
