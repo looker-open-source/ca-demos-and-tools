@@ -16,11 +16,14 @@ limitations under the License.
 
 # Prism (Core Backend)
 
-This directory contains the Core Backend for the Prism application, a platform for monitoring and evaluating AI Agents.
+This directory contains the Core Backend for the Prism application,
+a platform for monitoring and evaluating AI Agents.
 
 ## Project Overview
 
-Prism provides a structured way to run test suites, capture traces, and evaluate AI agent performance using assertions. It is designed as a standalone Python package with a Dash-based UI.
+Prism provides a structured way to run test suites, capture traces, and
+evaluate AI agent performance using assertions. It is designed as a standalone
+Python package with a Dash-based UI.
 
 ## Key Features
 
@@ -33,12 +36,15 @@ Prism provides a structured way to run test suites, capture traces, and evaluate
 
 ### 1. Prerequisites
 Ensure you have the following installed on your system:
+
 - **Python 3.10 or higher**
 - **PostgreSQL 14 or higher**
-- **Google Cloud SDK (gcloud)** (Optional, required for LLM-based assertions and suggestions)
+- **Google Cloud SDK (gcloud)** (Optional, required for LLM-based assertions and
+  suggestions)
 
 ### 2. Standard Setup
-Run the `setup.sh` script to automate the virtual environment creation and dependency installation:
+Run the `setup.sh` script to automate virtual environment creation and
+dependency installation:
 ```bash
 ./scripts/setup.sh
 ```
@@ -57,7 +63,8 @@ To also set up a local PostgreSQL database automatically, use:
 Prism requires a PostgreSQL database to store test suites, runs, and results.
 
 #### Automated Setup (Recommended)
-If you have `sudo` access and PostgreSQL installed locally, you can run the standalone database script:
+If you have `sudo` access and PostgreSQL installed locally,
+you can run the standalone database script:
 ```bash
 ./scripts/setup_postgres.sh
 ```
@@ -71,7 +78,7 @@ This script will:
 If you prefer to set up the database manually:
 1. Create a database named `prism`.
 2. Configure your connection string in a `.env` file:
-   ```env
+   ```text
    DATABASE_URL=postgresql://user:password@localhost:5432/prism
    ```
 3. Run migrations:
@@ -81,21 +88,23 @@ If you prefer to set up the database manually:
    ```
 
 ### 4. Google Cloud Configuration
-To use features like **LLM-based assertions** and **suggested assertions**, configure access to Vertex AI:
+To use features like **LLM-based assertions** and **suggested assertions**,
+configure access to Vertex AI:
 1. **Authenticate gcloud**:
    ```bash
    gcloud auth application-default login
    ```
 2. **Configure Environment Variables**:
    Add the following to your `.env` file:
-   ```env
+   ```text
    PRISM_VERTEX_PROJECT=your-gcp-project-id
    PRISM_VERTEX_LOCATION=us-central1
    ```
 
 ## Configuration
 
-Prism uses environment variables for configuration. These can be defined in a `.env` file in the root directory.
+Prism uses environment variables for configuration.
+These can be defined in a `.env` file in the root directory.
 
 ### Database Configuration
 | Variable | Description | Default |
@@ -114,17 +123,27 @@ Prism interacts with GCP services for agent execution and LLM-based evaluation:
 | `PRISM_VERTEX_PROJECT` | The GCP project used for Vertex AI (evaluation). | `my-vertex-project` |
 | `PRISM_VERTEX_LOCATION` | The GCP location for Vertex AI services. | `us-central1` |
 
+### Agent Authentication
+Prism supports various agent types, each requiring specific authentication:
+
+- **Looker Agents**: Require a Looker Instance URI, Client ID, and Client Secret.
+- **BigQuery Agents**: Require the IAM roles listed above. Additionally, the
+  service account must have access to the specific datasets used by the agent.
+
 ## Run Modes
 
 ### 1. Development Mode (Debug)
-This mode uses the built-in Flask development server. Recommended for active development.
+This mode uses the built-in Flask development server.
+Recommended for active development.
 ```bash
 source ~/prism_venv/bin/activate
 python src/prism/ui/app.py
 ```
 
 ### 2. Production Mode (Gunicorn)
-For production deployments, we use **Gunicorn**. This provides better performance and concurrency. It also automatically handles database migrations on startup.
+For production deployments, we use **Gunicorn**. This provides better
+performance and concurrency. It also automatically handles database
+migrations on startup.
 ```bash
 source ~/prism_venv/bin/activate
 gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 0 "prism.prod:app"
@@ -133,18 +152,31 @@ gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 0 "prism.prod:app
 ## Deployment
 
 ### 1. Docker
-Prism includes a `Dockerfile` for containerized deployments. To build and run locally:
+Prism includes a `Dockerfile` for containerized deployments.
+To build and run locally:
 ```bash
 docker build -t prism-app .
 docker run -p 8080:8080 --env-file .env prism-app
 ```
 
 ### 2. Cloud Run & Cloud SQL
-For production deployments on Google Cloud, we recommend **Cloud Run** connected to **Cloud SQL (PostgreSQL)**.
+For production deployments on Google Cloud, we recommend **Cloud Run**
+connected to **Cloud SQL (PostgreSQL)**.
+
+#### IAM Roles
+The Cloud Run service account may require the following IAM roles:
+
+- `BigQuery User`
+- `Cloud Build Service Account`
+- `Cloud SQL Client`
+- `Gemini Data Analytics Data Agent Owner (Beta)`
+- `Gemini for Google Cloud User`
+- `Secret Manager Secret Accessor`
+- `Vertex AI User`
 
 #### Deployment Checklist:
 1.  **Build and Push**: Push your image to Artifact Registry.
-2.  **Database**: Create a Cloud SQL instance and a service account with the `Cloud SQL Client` role.
+2.  **Database**: Create a Cloud SQL instance.
 3.  **Secrets**: Store your database password in Secret Manager.
 4.  **Deploy**: Use `gcloud run deploy` with the following key configurations:
     - Add Cloud SQL instance connection.
@@ -160,7 +192,8 @@ gcloud run deploy prism-app \
   --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"
 ```
 
-For Google-internal developers, a comprehensive `deploy.sh` script is available in the repository root to automate this process.
+For Google-internal developers, a comprehensive `deploy.sh` script is available
+in the repository root to automate this process.
 
 ## Testing
 Run the test suite using the provided script:

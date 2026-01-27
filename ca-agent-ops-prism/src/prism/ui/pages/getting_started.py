@@ -336,6 +336,26 @@ def layout():
                                               " perform without changing"
                                               " their configuration."
                                           ),
+                                          _deep_dive(
+                                              "Agent Authentication"
+                                              " Requirements",
+                                              [
+                                                  (
+                                                      "Looker Agents: Require"
+                                                      " Looker Instance URI,"
+                                                      " Client ID, and Client"
+                                                      " Secret."
+                                                  ),
+                                                  (
+                                                      "BQ Agents: Require"
+                                                      " standard IAM roles"
+                                                      " (BigQuery User, Cloud"
+                                                      " SQL Client, etc.) and"
+                                                      " access to the specified"
+                                                      " datasets."
+                                                  ),
+                                              ],
+                                          ),
                                       ],
                                   ),
                                   # STEP 2: CREATE SUITE
