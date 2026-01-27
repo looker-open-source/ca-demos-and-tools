@@ -68,28 +68,6 @@ def _deep_dive(title: str, content: str | list[str]):
   )
 
 
-def _step_card(title: str, description: str, children: list[Any]):
-  """Renders a major step in the journey."""
-  return dmc.Paper(
-      withBorder=True,
-      p="xl",
-      radius="md",
-      shadow="sm",
-      mb="xl",
-      children=[
-          dmc.Group(
-              gap="sm",
-              mb="md",
-              children=[
-                  dmc.Title(title, order=4, c="indigo"),
-              ],
-          ),
-          dmc.Text(description, mb="lg", size="md", fw=500),
-          *children,
-      ],
-  )
-
-
 def _section_card(title: str, children: list[Any]):
   """Renders a section in a card."""
   return dmc.Paper(
@@ -110,7 +88,6 @@ def _assertion_item(
     title: str,
     badge: str,
     desc: str,
-    keywords: list[str],
 ):
   """Renders a single assertion list item."""
   return dmc.Group(
@@ -140,20 +117,6 @@ def _assertion_item(
                       ]
                   ),
                   dmc.Text(desc, size="xs", c="dimmed", lh=1.4),
-                  dmc.Group(
-                      gap=4,
-                      children=[
-                          dmc.Badge(
-                              k,
-                              size="xs",
-                              variant="outline",
-                              color="gray",
-                              radius="sm",
-                              tt="none",
-                          )
-                          for k in keywords
-                      ],
-                  ),
               ],
           ),
       ],
@@ -172,7 +135,6 @@ def _render_assertion_list():
               "Text Contains",
               "STRING",
               "Validates that the response text contains a specific substring.",
-              ["Simple keyword check", "Logic"],
           ),
           _assertion_item(
               "material-symbols:manage-search",
@@ -180,7 +142,6 @@ def _render_assertion_list():
               "Query Contains",
               "SQL",
               "Checks if the generated SQL contains specific keywords.",
-              ["SQL structure", "Logic"],
           ),
           _assertion_item(
               "material-symbols:query-stats",
@@ -188,7 +149,6 @@ def _render_assertion_list():
               "Looker Query Match",
               "LOOKML",
               "Matches Looker query parameters using YAML configuration.",
-              ["API parameters", "Logic"],
           ),
           _assertion_item(
               "material-symbols:table-rows",
@@ -196,7 +156,6 @@ def _render_assertion_list():
               "Data Check Row",
               "DATA",
               "Validates values in specific columns of the result row.",
-              ["Exact verification", "Data"],
           ),
           _assertion_item(
               "material-symbols:format-list-numbered",
@@ -204,7 +163,6 @@ def _render_assertion_list():
               "Data Check Row Count",
               "DATA",
               "Checks the number of rows in the result.",
-              ["Volume check", "Data"],
           ),
           _assertion_item(
               "material-symbols:bar-chart",
@@ -212,7 +170,6 @@ def _render_assertion_list():
               "Chart Check Type",
               "CHART",
               "Checks if the chart type matches the expected type.",
-              ["Visuals", "Metadata"],
           ),
           _assertion_item(
               "material-symbols:timer",
@@ -220,7 +177,6 @@ def _render_assertion_list():
               "Latency Limit",
               "PERF",
               "Ensures response time does not exceed threshold.",
-              ["Performance", "SLA"],
           ),
           _assertion_item(
               "material-symbols:psychology",
@@ -228,7 +184,6 @@ def _render_assertion_list():
               "AI Judge",
               "LLM",
               "Uses an LLM to evaluate the response based on criteria.",
-              ["Semantic", "Vibe Check"],
           ),
       ],
   )
@@ -333,30 +288,34 @@ def layout():
                           ),
                       ],
                   ),
-                  # SECTION: YOUR FIRST EVALUATION (The Walkthrough)
+                  # SECTION: GETTING STARTED TIMELINE
                   _section_card(
-                      "Your First Evaluation: A 4-Step Guide",
+                      "Getting Started: The Road to Evaluation Mastery",
                       [
                           dmc.Text(
-                              "Follow these steps to hit the ground running"
-                              " with your first benchmark.",
+                              "Follow this unified timeline to master the"
+                              " platform and start perfecting your agents.",
                               mb="lg",
                               c="dimmed",
                               size="sm",
                           ),
                           dmc.Timeline(
-                              active=4,
+                              active=9,
                               bulletSize=36,
                               lineWidth=3,
                               children=[
+                                  # STEP 1: ONBOARD AGENT
                                   dmc.TimelineItem(
-                                      title="Step 1: Onboard an Agent",
-                                      bullet=dmc.Text("1", size="md", fw=700),
+                                      title="1. Onboard an Agent",
+                                      bullet=DashIconify(
+                                          icon="bi:robot", width=20
+                                      ),
                                       children=[
                                           dmc.Text(
                                               "Connect your Gemini model",
                                               c="dimmed",
-                                              size="sm",
+                                              size="xs",
+                                              fw=500,
                                           ),
                                           dmc.Text(
                                               (
@@ -368,18 +327,29 @@ def layout():
                                                   " already deployed in GDA."
                                               ),
                                               size="sm",
-                                              mt="sm",
+                                              mt="xs",
+                                          ),
+                                          _pro_tip(
+                                              "Use 'Monitor Existing' for"
+                                              " production agents where you"
+                                              " only want to see how they"
+                                              " perform without changing"
+                                              " their configuration."
                                           ),
                                       ],
                                   ),
+                                  # STEP 2: CREATE SUITE
                                   dmc.TimelineItem(
-                                      title="Step 2: Create a Test Suite",
-                                      bullet=dmc.Text("2", size="md", fw=700),
+                                      title="2. Create a Test Suite",
+                                      bullet=DashIconify(
+                                          icon="bi:journal-text", width=20
+                                      ),
                                       children=[
                                           dmc.Text(
                                               "Define your benchmark",
                                               c="dimmed",
-                                              size="sm",
+                                              size="xs",
+                                              fw=500,
                                           ),
                                           dmc.Text(
                                               (
@@ -388,331 +358,177 @@ def layout():
                                                   " Add a few 'Examples'"
                                                   " (questions) that represent"
                                                   " common user queries for"
-                                                  " your data."
+                                                  " your data. Grouping them"
+                                                  " into suites helps you test"
+                                                  " specific capabilities"
+                                                  " (e.g., 'Finance Queries')."
                                               ),
                                               size="sm",
-                                              mt="sm",
+                                              mt="xs",
                                           ),
                                       ],
                                   ),
-                                  # STEP 3: ADD TEST CASES
+                                  # STEP 3: DEFINE ASSERTIONS
                                   dmc.TimelineItem(
-                                      title="3. Add Test Cases",
-                                      bullet=dmc.Text("3", size="md", fw=700),
-                                      children=[
-                                          dmc.Text(
-                                              "Define specific scenarios",
-                                              c="dimmed",
-                                              size="sm",
-                                          ),
-                                          _step_card(
-                                              "Choosing the Right Assertion",
-                                              (
-                                                  "Assertions are the heart of"
-                                                  " Prism's automated grading"
-                                                  " system. Prism supports a"
-                                                  " wide range of checks:"
-                                              ),
-                                              [
-                                                  _render_assertion_list(),
-                                                  _deep_dive(
-                                                      "Understanding Scoring",
-                                                      [
-                                                          (
-                                                              "Binary"
-                                                              " Pass/Fail: Each"
-                                                              " assertion"
-                                                              " returns 1.0"
-                                                              " (Pass) or 0.0"
-                                                              " (Fail)."
-                                                          ),
-                                                          (
-                                                              "Accuracy: These"
-                                                              " assertions"
-                                                              " contribute to"
-                                                              " the final"
-                                                              " score."
-                                                          ),
-                                                          (
-                                                              "Diagnostic:"
-                                                              " Useful for"
-                                                              " debugging"
-                                                              " (e.g., latency"
-                                                              " checks) without"
-                                                              " affecting the"
-                                                              " agent's grade."
-                                                          ),
-                                                      ],
-                                                  ),
-                                                  _pro_tip(
-                                                      "Use 'Suggested Asserts'!"
-                                                      " Prism automatically"
-                                                      " analyzes successful"
-                                                      " runs and uses LLMs +"
-                                                      " Heuristics to propose"
-                                                      " relevant assertions for"
-                                                      " you."
-                                                  ),
-                                              ],
-                                          ),
-                                      ],
-                                  ),
-                                  # STEP 4: LAUNCH EVALUATION
-                                  dmc.TimelineItem(
-                                      title="4. Launch Evaluation",
-                                      bullet=dmc.Text("4", size="md", fw=700),
-                                      children=[
-                                          dmc.Text(
-                                              "See the results",
-                                              c="dimmed",
-                                              size="sm",
-                                          ),
-                                          dmc.Text(
-                                              (
-                                                  "Click 'Run Evaluation' from"
-                                                  " the Home screen or a Suite"
-                                                  " page. Prism will handle the"
-                                                  " background execution,"
-                                                  " retries, and scoring. Once"
-                                                  " finished, dive into the"
-                                                  " results!"
-                                              ),
-                                              size="sm",
-                                              mt="sm",
-                                          ),
-                                      ],
-                                  ),
-                                  # STEP 5: INFRASTRUCTURE
-                                  dmc.TimelineItem(
-                                      title=(
-                                          "5. Infrastructure: Monitored Agents"
+                                      title="3. Define Test Cases & Assertions",
+                                      bullet=DashIconify(
+                                          icon="bi:check2-square", width=20
                                       ),
-                                      bullet=dmc.Text("5", size="md", fw=700),
-                                      children=[
-                                          _step_card(
-                                              "The Foundation of Evaluation",
-                                              (
-                                                  "Prism acts as a management"
-                                                  " layer for your GDA agents."
-                                                  " Your changes here are"
-                                                  " persistent and serve as the"
-                                                  " source of truth for all"
-                                                  " tests."
-                                              ),
-                                              [
-                                                  dmc.Text(
-                                                      (
-                                                          "When you update an"
-                                                          " agent's system"
-                                                          " instructions or"
-                                                          " metadata in Prism,"
-                                                          " we 'Publish' those"
-                                                          " changes to the GDA"
-                                                          " API for you. This"
-                                                          " ensures that when"
-                                                          " you run an"
-                                                          " evaluation, you're"
-                                                          " testing exactly"
-                                                          " what you intended."
-                                                      ),
-                                                      size="sm",
-                                                  ),
-                                                  _pro_tip(
-                                                      "Use 'Monitor Existing'"
-                                                      " for production agents"
-                                                      " where you only want to"
-                                                      " see how they perform"
-                                                      " without changing their"
-                                                      " configuration."
-                                                  ),
-                                              ],
-                                          )
-                                      ],
-                                  ),
-                                  # STEP 6: BENCHMARKING
-                                  dmc.TimelineItem(
-                                      title="6. Benchmarking strategies",
-                                      bullet=dmc.Text("6", size="md", fw=700),
-                                      children=[
-                                          _step_card(
-                                              "Building Repeatable Benchmarks",
-                                              (
-                                                  "Test Suites allow you to run"
-                                                  " the same set of tests"
-                                                  " against different model"
-                                                  " versions or prompts."
-                                              ),
-                                              [
-                                                  dmc.Text(
-                                                      (
-                                                          "Think of a Test"
-                                                          " Suite as a"
-                                                          " folder/collection"
-                                                          " of 'Test Cases'."
-                                                          " Each case"
-                                                          " represents a"
-                                                          " specific question"
-                                                          " or scenario you"
-                                                          " want to verify."
-                                                          " Grouping them into"
-                                                          " suites helps you"
-                                                          " test specific"
-                                                          " capabilities (e.g.,"
-                                                          " 'Finance Queries'"
-                                                          " vs 'HR Queries')."
-                                                      ),
-                                                      size="sm",
-                                                  ),
-                                              ],
-                                          )
-                                      ],
-                                  ),
-                                  # STEP 7: VALIDATION
-                                  dmc.TimelineItem(
-                                      title="7. Validation Logic",
-                                      bullet=dmc.Text("7", size="md", fw=700),
                                       children=[
                                           dmc.Text(
+                                              "The heart of Prism",
+                                              c="dimmed",
+                                              size="xs",
+                                              fw=500,
+                                          ),
+                                          dmc.Text(
                                               (
-                                                  "See Step 3 for the detailed"
-                                                  " assertion list."
+                                                  "Assertions are automated"
+                                                  " checks that Prism"
+                                                  " performs. We support a wide"
+                                                  " range of logic and data"
+                                                  " checks:"
                                               ),
                                               size="sm",
-                                              c="dimmed",
-                                          )
-                                      ],
-                                  ),
-                                  # STEP 8: EXECUTION
-                                  dmc.TimelineItem(
-                                      title="8. Execution: Under the Hood",
-                                      bullet=dmc.Text("8", size="md", fw=700),
-                                      children=[
-                                          _step_card(
-                                              "How Runs Work",
-                                              (
-                                                  "When an evaluation starts,"
-                                                  " Prism snapshots everything"
-                                                  " for absolute consistency."
-                                              ),
+                                              mt="xs",
+                                          ),
+                                          _render_assertion_list(),
+                                          _deep_dive(
+                                              "Scoring Mechanisms",
                                               [
-                                                  dmc.Text(
-                                                      (
-                                                          "Prism runs trials in"
-                                                          " parallel background"
-                                                          " processes. If an"
-                                                          " evaluation is"
-                                                          " taking long, it’s"
-                                                          " usually because the"
-                                                          " agent is 'thinking'"
-                                                          " or the data"
-                                                          " warehouse is busy."
-                                                      ),
-                                                      size="sm",
+                                                  (
+                                                      "Binary Pass/Fail: Each"
+                                                      " assertion returns 1.0"
+                                                      " (Pass) or 0.0 (Fail)."
                                                   ),
-                                                  _deep_dive(
-                                                      "Debug with Trace"
-                                                      " Results",
-                                                      (
-                                                          "Every trial has a"
-                                                          " 'Trace' view. This"
-                                                          " is your best friend"
-                                                          " when debugging. It"
-                                                          " shows you the"
-                                                          " agent's raw"
-                                                          " internal thoughts,"
-                                                          " intermediate SQL,"
-                                                          " and data result"
-                                                          " sets."
-                                                      ),
+                                                  (
+                                                      "Accuracy: These"
+                                                      " assertions contribute"
+                                                      " to the final score."
+                                                  ),
+                                                  (
+                                                      "Diagnostic: Useful for"
+                                                      " debugging (e.g.,"
+                                                      " latency) without"
+                                                      " affecting the grade."
                                                   ),
                                               ],
-                                          )
+                                          ),
+                                          _pro_tip(
+                                              "Use 'Suggested Asserts'!"
+                                              " Prism automatically"
+                                              " analyzes successful runs and"
+                                              " proposes relevant assertions"
+                                              " for you."
+                                          ),
                                       ],
                                   ),
-                                  # STEP 9: ITERATION
+                                  # STEP 4: INFRASTRUCTURE
                                   dmc.TimelineItem(
-                                      title=(
-                                          "9. Iteration: Interpreting Results"
+                                      title="4. Infrastructure & Publishing",
+                                      bullet=DashIconify(
+                                          icon="bi:cpu", width=20
                                       ),
-                                      bullet=dmc.Text("9", size="md", fw=700),
                                       children=[
-                                          _step_card(
-                                              "Making Sense of the Data",
+                                          dmc.Text(
+                                              "Source of Truth",
+                                              c="dimmed",
+                                              size="xs",
+                                              fw=500,
+                                          ),
+                                          dmc.Text(
                                               (
-                                                  "Prism isn't just for one-off"
-                                                  " tests; it's for iterative"
-                                                  " improvement."
+                                                  "When you update an agent's"
+                                                  " system instructions or"
+                                                  " metadata in Prism, we"
+                                                  " 'Publish' those changes to"
+                                                  " the GDA API for you. This"
+                                                  " ensures consistency between"
+                                                  " your configuration and"
+                                                  " evaluation."
                                               ),
-                                              [
-                                                  dmc.Text(
-                                                      (
-                                                          "Once you have"
-                                                          " multiple runs, use"
-                                                          " the Comparison"
-                                                          " Dashboard to"
-                                                          " perform Delta"
-                                                          " Analysis."
-                                                      ),
-                                                      size="sm",
-                                                  ),
-                                                  dmc.List(
-                                                      spacing="xs",
-                                                      size="sm",
-                                                      children=[
-                                                          dmc.ListItem(
-                                                              dmc.Text([
-                                                                  dmc.Text(
-                                                                      "Regression:",
-                                                                      fw=700,
-                                                                      span=True,
-                                                                      c="red",
-                                                                  ),
-                                                                  (
-                                                                      " Any"
-                                                                      " question"
-                                                                      " where the"
-                                                                      " score"
-                                                                      " dropped"
-                                                                      " by more"
-                                                                      " than 1%."
-                                                                  ),
-                                                              ])
-                                                          ),
-                                                          dmc.ListItem(
-                                                              dmc.Text([
-                                                                  dmc.Text(
-                                                                      "Improved:",
-                                                                      fw=700,
-                                                                      span=True,
-                                                                      c="green",
-                                                                  ),
-                                                                  (
-                                                                      " Score"
-                                                                      " increased"
-                                                                      " by more"
-                                                                      " than 1%."
-                                                                  ),
-                                                              ])
-                                                          ),
-                                                          dmc.ListItem(
-                                                              dmc.Text([
-                                                                  dmc.Text(
-                                                                      "Stable:",
-                                                                      fw=700,
-                                                                      span=True,
-                                                                      c="dimmed",
-                                                                  ),
-                                                                  (
-                                                                      " Score"
-                                                                      " changed"
-                                                                      " < 1%."
-                                                                  ),
-                                                              ])
-                                                          ),
-                                                      ],
-                                                  ),
-                                              ],
-                                          )
+                                              size="sm",
+                                              mt="xs",
+                                          ),
+                                      ],
+                                  ),
+                                  # STEP 5: LAUNCH EVALUATION
+                                  dmc.TimelineItem(
+                                      title="5. Launch Evaluation",
+                                      bullet=DashIconify(
+                                          icon="bi:play-circle-fill", width=20
+                                      ),
+                                      children=[
+                                          dmc.Text(
+                                              "Execution Engine",
+                                              c="dimmed",
+                                              size="xs",
+                                              fw=500,
+                                          ),
+                                          dmc.Text(
+                                              (
+                                                  "Click 'Run Evaluation'."
+                                                  " Prism snapshots your"
+                                                  " configuration and runs"
+                                                  " trials in parallel"
+                                                  " background processes for"
+                                                  " maximum efficiency."
+                                              ),
+                                              size="sm",
+                                              mt="xs",
+                                          ),
+                                      ],
+                                  ),
+                                  # STEP 6: DEBUGGING
+                                  dmc.TimelineItem(
+                                      title="6. Debug with Trace Results",
+                                      bullet=DashIconify(
+                                          icon="bi:bug", width=20
+                                      ),
+                                      children=[
+                                          dmc.Text(
+                                              "Under the Hood",
+                                              c="dimmed",
+                                              size="xs",
+                                              fw=500,
+                                          ),
+                                          dmc.Text(
+                                              (
+                                                  "Every trial has a 'Trace'"
+                                                  " view. It shows you the"
+                                                  " agent's raw internal"
+                                                  " thoughts, intermediate SQL,"
+                                                  " and full data result sets."
+                                              ),
+                                              size="sm",
+                                              mt="xs",
+                                          ),
+                                      ],
+                                  ),
+                                  # STEP 7: ITERATION
+                                  dmc.TimelineItem(
+                                      title="7. Delta Analysis & Regression",
+                                      bullet=DashIconify(
+                                          icon="bi:graph-up-arrow", width=20
+                                      ),
+                                      children=[
+                                          dmc.Text(
+                                              "Interpretation",
+                                              c="dimmed",
+                                              size="xs",
+                                              fw=500,
+                                          ),
+                                          dmc.Text(
+                                              (
+                                                  "Use the Comparison Dashboard"
+                                                  " to perform Delta Analysis."
+                                                  " Track Regressions (drops >"
+                                                  " 1%) and Improvements"
+                                                  " across multiple runs."
+                                              ),
+                                              size="sm",
+                                              mt="xs",
+                                          ),
                                       ],
                                   ),
                               ],

@@ -30,18 +30,6 @@ def layout():
           "Prism provides a comprehensive toolkit for evaluating and monitoring"
           " Gemini Data Analytics agents."
       ),
-      actions=[
-          dmc.Anchor(
-              dmc.Button(
-                  "Getting Started",
-                  leftSection=DashIconify(icon="bi:info-circle"),
-                  variant="light",
-                  radius="md",
-              ),
-              href="/getting-started",
-              underline=False,
-          )
-      ],
       children=[
           dcc.Interval(
               id=HomeIds.INTERVAL, interval=30000, n_intervals=0
@@ -78,7 +66,7 @@ def layout():
               color="indigo",
               variant="filled",
               radius="md",
-              withCloseButton=True,
+              withCloseButton=False,
               mb="xl",
               icon=DashIconify(icon="bi:stars", width=24),
               id=HomeIds.GETTING_STARTED_CARD,
