@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""IDs for the Home page."""
+"""IDs for the Getting Started page."""
 
 
-class HomeIds:
-  """IDs for the Home page."""
+class GettingStartedIds:
+  """IDs for the Getting Started page."""
 
-  INTERVAL = "home-interval"
-
-  CHART_CONTAINER = "home-chart-container"
-  VOLUME_CHART_CONTAINER = "home-volume-chart-container"
-  RECENT_RUNS_CONTAINER = "home-recent-runs-container"
-  GETTING_STARTED_CARD = "home-getting-started-card"
+  ROOT = "getting-started-root"

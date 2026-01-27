@@ -17,10 +17,13 @@ echo "Activating virtual environment..."
 source "$VENV_PATH/bin/activate"
 
 echo "Installing dependencies..."
+pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
 
-echo "Initializing database..."
-python scripts/init_db.py
+if [[ "$1" == "--db" ]]; then
+    echo "Database setup requested..."
+    ./scripts/setup_postgres.sh
+fi
 
 echo "Setup complete!"

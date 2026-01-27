@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure we are in the project root
+cd "$(dirname "$0")/.."
+
 # Configuration
 CURRENT_USER=$(whoami)
 DB_NAME=${DB_NAME:-"prism"}
@@ -55,41 +58,52 @@ else
     fi
 fi
 
-echo "2. Creating .env file..."
+echo "2. Updating .env file..."
 DOTENV_FILE=".env"
-if [[ -f "$DOTENV_FILE" ]]; then
-    echo ".env file already exists. Overwriting with new configuration."
-fi
 
 if [[ -z "$DB_HOST" ]]; then
-    cat <<EOF > "$DOTENV_FILE"
-DATABASE_URL=postgresql:///$DB_NAME?host=/var/run/postgresql&port=$DB_PORT
-PRISM_VERTEX_LOCATION=us-central1
-PRISM_VERTEX_PROJECT=
-PRISM_GDA_PROJECTS=
-EOF
+    NEW_DATABASE_URL="postgresql:///$DB_NAME?host=/var/run/postgresql&port=$DB_PORT"
 else
+    NEW_DATABASE_URL="postgresql://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAME"
+fi
+
+if [[ -f "$DOTENV_FILE" ]]; then
+    echo "Updating existing $DOTENV_FILE..."
+    # Backup
+    cp "$DOTENV_FILE" "$DOTENV_FILE.bak"
+    
+    # Update or append DATABASE_URL
+    if grep -q "^DATABASE_URL=" "$DOTENV_FILE"; then
+        sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${NEW_DATABASE_URL}|" "$DOTENV_FILE"
+    else
+        echo "DATABASE_URL=${NEW_DATABASE_URL}" >> "$DOTENV_FILE"
+    fi
+else
+    echo "Creating new $DOTENV_FILE..."
     cat <<EOF > "$DOTENV_FILE"
-DATABASE_URL=postgresql://$DB_USER:$DB_PASS@$DB_HOST:$DB_PORT/$DB_NAME
-PRISM_VERTEX_LOCATION=us-central1
-PRISM_VERTEX_PROJECT=
+DATABASE_URL=${NEW_DATABASE_URL}
+PRISM_VERTEX_LOCATION=global
+PRISM_VERTEX_PROJECT=your-gcp-project-id
 PRISM_GDA_PROJECTS=
 EOF
 fi
-    echo ".env file created/updated with local PostgreSQL configuration."
+echo ".env file updated with local PostgreSQL configuration."
 
 echo "3. Initializing database schema (Alembic)..."
-# Ensure we are in the project root
-cd "$(dirname "$0")/.."
 VENV_PATH="$HOME/prism_venv"
 if [[ -f "$VENV_PATH/bin/activate" ]]; then
     source "$VENV_PATH/bin/activate"
+elif [[ -f "prism_venv/bin/activate" ]]; then
+    source "prism_venv/bin/activate"
+fi
+
+if [[ -n "$VIRTUAL_ENV" ]]; then
+    echo "Using virtual environment at $VIRTUAL_ENV"
     alembic upgrade head
 else
-    echo "Warning: Virtual environment not found at $VENV_PATH. Please run migrations manually."
+    echo "Warning: Virtual environment not found. Please run migrations manually."
 fi
 
 echo "========================================================"
 echo "Setup Complete!"
-echo "You can now run the app with: python src/prism/ui/app.py"
 echo "========================================================"

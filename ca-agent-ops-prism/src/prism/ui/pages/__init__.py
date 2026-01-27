@@ -27,6 +27,7 @@ from prism.ui.pages import dataset_view
 from prism.ui.pages import evaluation_detail
 from prism.ui.pages import evaluations
 from prism.ui.pages import execution_detail
+from prism.ui.pages import getting_started
 from prism.ui.pages import home
 from prism.ui.pages import run_comparison
 from prism.ui.pages import trial_detail
@@ -47,6 +48,7 @@ def register_all_pages():
   evaluation_detail.register_page()
   evaluations.register_page()
   execution_detail.register_page()
+  getting_started.register_page()
   home.register_page()
   run_comparison.register_page()
   trial_detail.register_page()

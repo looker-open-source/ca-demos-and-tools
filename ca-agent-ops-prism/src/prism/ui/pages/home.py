@@ -17,6 +17,7 @@
 import dash
 from dash import dcc
 from dash import html
+from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
 from prism.ui.pages.home_ids import HomeIds
@@ -29,10 +30,59 @@ def layout():
           "Prism provides a comprehensive toolkit for evaluating and monitoring"
           " Gemini Data Analytics agents."
       ),
+      actions=[
+          dmc.Anchor(
+              dmc.Button(
+                  "Getting Started",
+                  leftSection=DashIconify(icon="bi:info-circle"),
+                  variant="light",
+                  radius="md",
+              ),
+              href="/getting-started",
+              underline=False,
+          )
+      ],
       children=[
           dcc.Interval(
               id=HomeIds.INTERVAL, interval=30000, n_intervals=0
           ),  # Refresh every 30s
+          # Hero: Getting Started
+          dmc.Alert(
+              title="New to Prism?",
+              children=[
+                  dmc.Group(
+                      [
+                          dmc.Text(
+                              "Check out our comprehensive Getting Started"
+                              " guide to learn the ropes of Agent Evaluation.",
+                              size="sm",
+                          ),
+                          dmc.Anchor(
+                              dmc.Button(
+                                  "Go to Guide",
+                                  variant="white",
+                                  color="indigo",
+                                  size="xs",
+                                  leftSection=DashIconify(
+                                      icon="bi:arrow-right-circle"
+                                  ),
+                              ),
+                              href="/getting-started",
+                              underline=False,
+                          ),
+                      ],
+                      justify="space-between",
+                      align="center",
+                  )
+              ],
+              color="indigo",
+              variant="filled",
+              radius="md",
+              withCloseButton=True,
+              mb="xl",
+              icon=DashIconify(icon="bi:stars", width=24),
+              id=HomeIds.GETTING_STARTED_CARD,
+          ),
           # Charts Grid
           dmc.Grid(
               children=[
