@@ -6,24 +6,33 @@ cd "$(dirname "$0")/.."
 
 echo "Setting up Prism environment..."
 
-VENV_PATH="$HOME/prism_venv"
+UV_BIN="$HOME/.local/bin/uv"
 
-if [[ ! -d "$VENV_PATH" ]]; then
-    echo "Creating virtual environment at $VENV_PATH..."
-    python3 -m venv "$VENV_PATH"
+if [[ ! -f "$UV_BIN" ]]; then
+    echo "uv not found at $UV_BIN. Attempting to install..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
-echo "Activating virtual environment..."
-source "$VENV_PATH/bin/activate"
+echo "Syncing dependencies with uv..."
+$UV_BIN sync
 
-echo "Installing dependencies..."
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e .
+# Parse arguments
+SETUP_DB=false
+for arg in "$@"; do
+    case $arg in
+        --db)
+            SETUP_DB=true
+            shift
+            ;;
+    esac
+done
 
-if [[ "$1" == "--db" ]]; then
-    echo "Database setup requested..."
+if [ "$SETUP_DB" = true ]; then
+    echo "Starting database setup..."
     ./scripts/setup_postgres.sh
 fi
 
 echo "Setup complete!"
+if [ "$SETUP_DB" = false ]; then
+    echo "To setup the database, run: ./scripts/setup_postgres.sh"
+fi

@@ -128,7 +128,7 @@ class SuggestionService:
     client = self.gen_ai_client
     if location and location != client.location:
       client = gen_ai_client.GenAIClient(
-          project=settings.gcp_vertex_project, location=location
+          project=settings.gcp_genai_project, location=location
       )
 
     # 1. LLM Generation

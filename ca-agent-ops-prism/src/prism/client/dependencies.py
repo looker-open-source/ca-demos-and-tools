@@ -142,8 +142,8 @@ def get_gen_ai_client() -> gen_ai_client.GenAIClient:
   global _GEN_AI_CLIENT
   if _GEN_AI_CLIENT is None:
     _GEN_AI_CLIENT = gen_ai_client.GenAIClient(
-        project=settings.gcp_vertex_project,
-        location=settings.gcp_vertex_location,
+        project=settings.gcp_genai_project,
+        location=settings.gcp_genai_location,
     )
   return _GEN_AI_CLIENT
 

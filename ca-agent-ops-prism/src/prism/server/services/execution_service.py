@@ -143,8 +143,8 @@ class ExecutionService:
     """Returns the GenAIClient, initializing it if necessary."""
     if self._gen_ai_client is None:
       self._gen_ai_client = GenAIClient(
-          project=settings.gcp_vertex_project,
-          location=settings.gcp_vertex_location,
+          project=settings.gcp_genai_project,
+          location=settings.gcp_genai_location,
       )
     return self._gen_ai_client
 

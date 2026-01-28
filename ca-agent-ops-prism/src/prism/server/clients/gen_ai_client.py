@@ -76,12 +76,12 @@ class GenAIClient:
       if response and response.text:
         return response.text
 
-      logging.warning("Vertex AI response was empty or malformed.")
+      logging.warning("Gen AI response was empty or malformed.")
       return None
 
     except Exception as e:  # pylint: disable=broad-except
       logging.error(
-          "[VertexAI] Error during text generation: %s", e, exc_info=True
+          "[GenAI] Error during text generation: %s", e, exc_info=True
       )
       raise
 
@@ -102,7 +102,7 @@ class GenAIClient:
         An instance of the response_schema or None if generation failed.
     """
     try:
-      # Clean schema to be compatible with Vertex AI (no 'const')
+      # Clean schema to be compatible with Gen AI (no 'const')
       schema_dict = response_schema.model_json_schema()
       cleaned_schema = self._clean_schema(schema_dict)
 
@@ -120,12 +120,12 @@ class GenAIClient:
       if response and response.text:
         return response_schema.model_validate_json(response.text)
 
-      logging.warning("Vertex AI structured response was empty.")
+      logging.warning("Gen AI structured response was empty.")
       return None
 
     except Exception as e:  # pylint: disable=broad-except
       logging.error(
-          "[VertexAI] Error during structured generation: %s",
+          "[GenAI] Error during structured generation: %s",
           e,
           exc_info=True,
       )

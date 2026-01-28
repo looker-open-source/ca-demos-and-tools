@@ -4,17 +4,20 @@ FROM python:3.11-slim
 # Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements file into the container at /app
-COPY requirements.txt ./
+# Install uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy pyproject.toml and README.md (referenced in pyproject.toml) to ensure fresh lockfile
+COPY pyproject.toml README.md ./
 
-# Copy the rest of the application code into the container at /app
+# Install dependencies (generates uv.lock inside the container)
+RUN uv sync --no-install-project --no-dev
+
+# Copy the rest of the application code
 COPY . .
 
-# Install the application
-RUN pip install -e .
+# Install the application as a non-editable package
+RUN uv sync --no-dev --no-editable
 
 # Make port 8080 available to the world outside this container
 EXPOSE 8080
@@ -22,8 +25,8 @@ EXPOSE 8080
 # Define environment variable
 ENV PYTHONUNBUFFERED=1
 
-# Run the application using Gunicorn
+# Run the application using Gunicorn from the virtual environment
 # Workers=1 to prevent multiple backend dispatchers (if applicable, though Prism UI seems stateless mostly)
 # Threads=8 for concurrency
 # Timeout=0 to allow long-running requests (if any)
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "prism.prod:app"]
+CMD ["/app/.venv/bin/gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--threads", "8", "--timeout", "0", "prism.prod:app"]

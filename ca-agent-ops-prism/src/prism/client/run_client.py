@@ -26,6 +26,7 @@ from prism.client import dependencies
 from prism.common.schemas import execution as execution_schemas
 from prism.common.schemas import timeline as timeline_schemas
 from prism.server.clients.gen_ai_client import GenAIClient
+from prism.server.config import settings
 from prism.server.db import SessionLocal
 from prism.server.models.assertion import SuggestedAssertion
 from prism.server.models.run import Trial
@@ -359,11 +360,10 @@ class RunsClient:
         with SessionLocal() as session:
           trial_repo = TrialRepository(session)
           example_repo = ExampleRepository(session)
-          from prism.server.config import settings
 
           gen_ai_client_inst = GenAIClient(
-              project=settings.gcp_vertex_project,
-              location=settings.gcp_vertex_location,
+              project=settings.gcp_genai_project,
+              location=settings.gcp_genai_location,
           )
           service = SuggestionService(
               gen_ai_client_inst, trial_repo, example_repo

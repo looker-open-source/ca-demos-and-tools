@@ -16,95 +16,73 @@ limitations under the License.
 
 # Prism (Core Backend)
 
-This directory contains the Core Backend for the Prism application,
-a platform for monitoring and evaluating AI Agents.
+This directory contains the Core Backend for the Prism application, a platform
+for monitoring and evaluating AI Agents.
 
 ## Project Overview
 
 Prism provides a structured way to run test suites, capture traces, and
-evaluate AI agent performance using assertions. It is designed as a standalone
-Python package with a Dash-based UI.
+evaluate AI agent performance using assertions. It is designed as a
+standalone Python package with a Dash-based UI.
 
 ## Key Features
 
 - **Test Suite Management**: Organize and run complex evaluations.
 - **Trace Capture**: Detailed visibility into agent execution steps.
 - **Assertion Engine**: Automated validation of agent responses.
-- **Modern UI**: High-density diagnostic tables and comparison dashboards built with Dash Mantine Components.
+- **Modern UI**: High-density diagnostic tables and comparison dashboards
+  built with Dash Mantine Components.
 
-## Setup & Installation
+## Quick Start
 
 ### 1. Prerequisites
-Ensure you have the following installed on your system:
 
-- **Python 3.10 or higher**
-- **PostgreSQL 14 or higher**
-- **Google Cloud SDK (gcloud)** (Optional, required for LLM-based assertions and
-  suggestions)
+- Python 3.10+
+- PostgreSQL (Local or Cloud SQL)
+- Google Cloud SDK (for Gen AI features)
 
-### 2. Standard Setup
-Run the `setup.sh` script to automate virtual environment creation and
-dependency installation:
+### 2. Setup (Automated)
+The easiest way to get started is using the provided setup script, which
+automates dependency installation via `uv`:
 ```bash
 ./scripts/setup.sh
 ```
-This script will:
-1. Create a virtual environment at `~/prism_venv`.
-2. Install all necessary Python dependencies from `requirements.txt`.
-3. Install the `prism` package in editable mode.
-
-To also set up a local PostgreSQL database automatically, use:
+To also set up a local PostgreSQL database automatically (requires `sudo` and
+PostgreSQL installed), use:
 ```bash
 ./scripts/setup.sh --db
 ```
+The script will:
+1. Ensure `uv` is installed.
+2. Synchronize all dependencies and create/update the virtual environment in
+   `.venv`.
+3. (If `--db` is used) Create the `prism` and `prism_test` databases and run
+   migrations.
 
-### 3. Database Setup (PostgreSQL)
+### 3. Running the Application
 
-Prism requires a PostgreSQL database to store test suites, runs, and results.
-
-#### Automated Setup (Recommended)
-If you have `sudo` access and PostgreSQL installed locally,
-you can run the standalone database script:
+#### Development Mode (Debug)
+The built-in Flask development server is recommended for active development.
+You can use the convenience script or `uv run` directly:
 ```bash
-./scripts/setup_postgres.sh
+./scripts/run_app.sh
 ```
-This script will:
-1. Create `prism` and `prism_test` databases.
-2. Create a database user and grant permissions.
-3. Generate a `.env` file with the correct `DATABASE_URL`.
-4. Run initial database migrations via Alembic.
+Or:
+```bash
+uv run python src/prism/ui/app.py
+```
 
-#### Manual Setup
-If you prefer to set up the database manually:
-1. Create a database named `prism`.
-2. Configure your connection string in a `.env` file:
-   ```text
-   DATABASE_URL=postgresql://user:password@localhost:5432/prism
-   ```
-3. Run migrations:
-   ```bash
-   source ~/prism_venv/bin/activate
-   alembic upgrade head
-   ```
-
-### 4. Google Cloud Configuration
-To use features like **LLM-based assertions** and **suggested assertions**,
-configure access to Vertex AI:
-1. **Authenticate gcloud**:
-   ```bash
-   gcloud auth application-default login
-   ```
-2. **Configure Environment Variables**:
-   Add the following to your `.env` file:
-   ```text
-   PRISM_VERTEX_PROJECT=your-gcp-project-id
-   PRISM_VERTEX_LOCATION=us-central1
-   ```
+#### Production Mode (Gunicorn)
+For production deployments, we use **Gunicorn** for better performance and
+concurrency.
+```bash
+uv run gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 0 "prism.prod:app"
+```
 
 ## Configuration
 
-Prism uses environment variables for configuration.
-These can be defined in a `.env` file in the root directory.
+Prism uses environment variables for configuration. These can be defined in
+a `.env` file in the root directory.
 
 ### Database Configuration
 | Variable | Description | Default |
@@ -120,8 +98,8 @@ Prism interacts with GCP services for agent execution and LLM-based evaluation:
 | Variable | Description | Example |
 | :--- | :--- | :--- |
 | `PRISM_GDA_PROJECTS` | Comma-separated list of GCP projects containing GDA agents. | `project-1,project-2` |
-| `PRISM_VERTEX_PROJECT` | The GCP project used for Vertex AI (evaluation). | `my-vertex-project` |
-| `PRISM_VERTEX_LOCATION` | The GCP location for Vertex AI services. | `us-central1` |
+| `PRISM_GENAI_CLIENT_PROJECT` | The GCP project used for Gen AI (evaluation). | `my-genai-project` |
+| `PRISM_GENAI_CLIENT_LOCATION` | The GCP location for Gen AI services. | `us-central1` |
 
 ### Agent Authentication
 Prism supports various agent types, each requiring specific authentication:
@@ -129,25 +107,6 @@ Prism supports various agent types, each requiring specific authentication:
 - **Looker Agents**: Require a Looker Instance URI, Client ID, and Client Secret.
 - **BigQuery Agents**: Require the IAM roles listed above. Additionally, the
   service account must have access to the specific datasets used by the agent.
-
-## Run Modes
-
-### 1. Development Mode (Debug)
-This mode uses the built-in Flask development server.
-Recommended for active development.
-```bash
-source ~/prism_venv/bin/activate
-python src/prism/ui/app.py
-```
-
-### 2. Production Mode (Gunicorn)
-For production deployments, we use **Gunicorn**. This provides better
-performance and concurrency. It also automatically handles database
-migrations on startup.
-```bash
-source ~/prism_venv/bin/activate
-gunicorn --bind 0.0.0.0:8080 --workers 1 --threads 8 --timeout 0 "prism.prod:app"
-```
 
 ## Deployment
 
@@ -172,7 +131,7 @@ The Cloud Run service account may require the following IAM roles:
 - `Gemini Data Analytics Data Agent Owner (Beta)`
 - `Gemini for Google Cloud User`
 - `Secret Manager Secret Accessor`
-- `Vertex AI User`
+- `Vertex AI User` (for Gen AI evaluation)
 
 #### Deployment Checklist:
 1.  **Build and Push**: Push your image to Artifact Registry.
@@ -181,7 +140,6 @@ The Cloud Run service account may require the following IAM roles:
 4.  **Deploy**: Use `gcloud run deploy` with the following key configurations:
     - Add Cloud SQL instance connection.
     - Set `DATABASE_URL` or connection environment variables.
-    - Mount necessary volumes (e.g., for persistent trace data if not using a database for everything).
 
 Example deployment command (simplified):
 ```bash
@@ -200,3 +158,7 @@ Run the test suite using the provided script:
 ```bash
 ./scripts/run_tests.sh
 ```
+
+---
+
+For architectural guidelines and internal patterns, see [GEMINI.md](GEMINI.md).

@@ -44,13 +44,15 @@ class Settings(pydantic.BaseModel):
   db_pass: str = os.getenv("DB_PASS", "")
   db_name: str = os.getenv("DB_NAME", "prism")
   db_ip_type: str = os.getenv("DB_IP_TYPE", "PUBLIC")
-  gcp_vertex_location: str = os.getenv("PRISM_VERTEX_LOCATION", "us-central1")
+  gcp_genai_location: str = os.getenv(
+      "PRISM_GENAI_CLIENT_LOCATION", "us-central1"
+  )
 
   # GCP Projects
   # Comma-separated list for GDA API (e.g., "proj-1,proj-2")
   gcp_gda_projects_raw: str = os.getenv("PRISM_GDA_PROJECTS", "")
-  # Single project for Vertex AI
-  gcp_vertex_project: str | None = os.getenv("PRISM_VERTEX_PROJECT")
+  # Single project for Gen AI
+  gcp_genai_project: str | None = os.getenv("PRISM_GENAI_CLIENT_PROJECT")
 
   @property
   def gcp_gda_projects(self) -> list[str]:

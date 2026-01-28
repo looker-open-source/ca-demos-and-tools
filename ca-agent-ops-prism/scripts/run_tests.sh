@@ -2,19 +2,13 @@
 set -e
 
 # Ensure we are in the project root
-# Note: This method handles relative paths correctly on both OSs
 cd "$(dirname "$0")/.."
 
-# Check if venv is active
-if [[ -z "$VIRTUAL_ENV" ]]; then
-    # Try to activate standard location
-    if [[ -f "$HOME/prism_venv/bin/activate" ]]; then
-        source "$HOME/prism_venv/bin/activate"
-    else
-        echo "Error: Virtual environment is not active and not found at ~/prism_venv."
-        echo "Please run: source ~/prism_venv/bin/activate"
-        exit 1
-    fi
+UV_BIN="$HOME/.local/bin/uv"
+
+if [[ ! -f "$UV_BIN" ]]; then
+    echo "Error: uv not found at $UV_BIN. Please run ./scripts/setup.sh first."
+    exit 1
 fi
 
 # --- OS Detection Logic ---
@@ -44,8 +38,8 @@ fi
 echo "Running tests against PostgreSQL..."
 export PYTHONPATH=$PYTHONPATH:$(pwd)/src
 
-# Inject the dynamic PG_HOST into the connection string
-export TEST_DATABASE_URL="postgresql:///prism_test?host=${PG_HOST}"
+# Tests strictly use the prism_test database
+export TEST_DATABASE_URL="postgresql:///prism_test?host=/var/run/postgresql"
 export DATABASE_URL="$TEST_DATABASE_URL"
 
-python3 -m pytest "$@"
+$UV_BIN run pytest "$@"

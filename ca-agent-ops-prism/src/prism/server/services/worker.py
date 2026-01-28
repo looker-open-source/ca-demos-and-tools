@@ -74,8 +74,8 @@ def execute_trial(trial_id: int):
       )
 
       gen_ai_client_inst = gen_ai_client.GenAIClient(
-          project=settings.gcp_vertex_project,
-          location=settings.gcp_vertex_location,
+          project=settings.gcp_genai_project,
+          location=settings.gcp_genai_location,
       )
       sug_service = suggestion_service.SuggestionService(
           gen_ai_client_inst, t_repo, example_repo
