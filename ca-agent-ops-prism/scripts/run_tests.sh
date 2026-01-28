@@ -39,7 +39,7 @@ echo "Running tests against PostgreSQL..."
 export PYTHONPATH=$PYTHONPATH:$(pwd)/src
 
 # Tests strictly use the prism_test database
-export TEST_DATABASE_URL="postgresql:///prism_test?host=/var/run/postgresql"
+export TEST_DATABASE_URL="postgresql:///prism_test?host=$PG_HOST"
 export DATABASE_URL="$TEST_DATABASE_URL"
 
 $UV_BIN run pytest "$@"
