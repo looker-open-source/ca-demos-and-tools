@@ -31,6 +31,7 @@ This agent leverages the Gemini Conversational Analytics API to answer questions
     GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
     GOOGLE_CLOUD_LOCATION=<your-gcp-location>
     GOOGLE_CLOUD_STORAGE_BUCKET=<your-gcs-bucket-name>
+    GOOGLE_GENAI_USE_VERTEXAI=1
     LOOKERSDK_CLIENT_ID=<your-looker-client-id>
     LOOKERSDK_CLIENT_SECRET=<your-looker-client-secret>
     LOOKERSDK_BASE_URL=<your-looker-base-url>
