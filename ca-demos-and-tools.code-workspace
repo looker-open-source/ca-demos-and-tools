@@ -20,6 +20,9 @@
       "path": "ca-api-adk-react-demo"
     },
     {
+      "path": "ca-agent-ops-prism"
+    },
+    {
       "path": ".",
       "name": "root"
     }

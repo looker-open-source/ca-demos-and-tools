@@ -1,0 +1,13 @@
+/**
+ * @license
+ * Copyright 2026 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+:root {
+    --font-mono: SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.font-mono {
+    font-family: var(--font-mono) !important;
+}
