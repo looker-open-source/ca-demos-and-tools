@@ -65,11 +65,6 @@ class PlaygroundService:
     # 3. Initialize Client
     client = gemini_data_analytics_client.GeminiDataAnalyticsClient(
         project=f"projects/{agent.project_id}/locations/{agent.location}",
-        env=(
-            gemini_data_analytics_client.ClientEnv(agent.env)
-            if agent.env
-            else gemini_data_analytics_client.ClientEnv.STAGING
-        ),
     )
 
     # 4. Initialize Services
@@ -77,8 +72,8 @@ class PlaygroundService:
         self._session, self._suite_repo, self._example_repo
     )
     gen_ai_client_inst = gen_ai_client.GenAIClient(
-        project=settings.gcp_vertex_project,
-        location=settings.gcp_vertex_location,
+        project=settings.gcp_genai_project,
+        location=settings.gcp_genai_location,
     )
     sug_service = suggestion_service.SuggestionService(
         gen_ai_client_inst,

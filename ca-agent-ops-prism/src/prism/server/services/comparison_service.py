@@ -150,22 +150,24 @@ class ComparisonService:
         score_delta = chal_score - base_score
         duration_delta = chal_duration - base_duration
 
-        total_score_delta += score_delta
-        total_duration_delta += duration_delta
-        valid_score_comparison_count += 1
-
-        if challenger_trial.error_message:
+        is_error = base_trial.error_message or challenger_trial.error_message
+        if is_error:
           status = ComparisonStatus.ERROR
           errors += 1
-        elif score_delta < -0.01:  # Tolerance for float
-          status = ComparisonStatus.REGRESSION
-          regressions += 1
-        elif score_delta > 0.01:
-          status = ComparisonStatus.IMPROVED
-          improvements += 1
         else:
-          status = ComparisonStatus.STABLE
-          same += 1
+          total_score_delta += score_delta
+          total_duration_delta += duration_delta
+          valid_score_comparison_count += 1
+
+          if score_delta < -0.01:  # Tolerance for float
+            status = ComparisonStatus.REGRESSION
+            regressions += 1
+          elif score_delta > 0.01:
+            status = ComparisonStatus.IMPROVED
+            improvements += 1
+          else:
+            status = ComparisonStatus.STABLE
+            same += 1
 
       elif base_trial:
         # Removed in challenger
@@ -176,6 +178,8 @@ class ComparisonService:
         if challenger_trial.error_message:
           status = ComparisonStatus.ERROR
           errors += 1
+        # Note: NEW cases are currently not included in top-level deltas
+        # because we are doing intersection delta for precision on regressions.
 
       cases.append(
           ComparisonCase(

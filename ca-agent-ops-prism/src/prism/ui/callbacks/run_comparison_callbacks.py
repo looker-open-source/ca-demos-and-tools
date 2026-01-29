@@ -24,11 +24,12 @@ from dash import State
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
+from prism.common.schemas.execution import RunStatus
 from prism.ui.components.assertion_components import get_assertion_style
 from prism.ui.components.assertion_components import render_assertion_diagnostic_accordion
 from prism.ui.components.run_components import render_modern_context_diff
+from prism.ui.ids import ComparisonIds
 from prism.ui.models.comparison_state import RunComparisonUIState
-from prism.ui.pages.comparison_ids import ComparisonIds
 from prism.ui.utils import handle_errors
 from prism.ui.utils import typed_callback
 
@@ -217,9 +218,9 @@ def _parse_search(search: str | None) -> RunComparisonUIState:
     vals = params.get(key, [])
     return vals[0] if vals else default
 
-  state.dataset_id = (
-      int(get_first(ComparisonIds.URL_DATASET_ID))
-      if get_first(ComparisonIds.URL_DATASET_ID)
+  state.suite_id = (
+      int(get_first(ComparisonIds.URL_SUITE_ID))
+      if get_first(ComparisonIds.URL_SUITE_ID)
       else None
   )
   state.base_run_id = (
@@ -239,13 +240,13 @@ def _parse_search(search: str | None) -> RunComparisonUIState:
 def _build_search(
     base_id: int | None,
     chal_id: int | None,
-    dataset_id: int | None = None,
+    suite_id: int | None = None,
     filter_status: str | None = None,
 ) -> str:
   """Builds URL search string from state."""
   params = {}
-  if dataset_id:
-    params[ComparisonIds.URL_DATASET_ID] = str(dataset_id)
+  if suite_id:
+    params[ComparisonIds.URL_SUITE_ID] = str(suite_id)
   if base_id:
     params[ComparisonIds.URL_BASE_RUN_ID] = str(base_id)
   if chal_id:
@@ -265,7 +266,7 @@ def _build_search(
         Input(ComparisonIds.FILTER_UNCHANGED, "n_clicks"),
     ],
     output=[
-        Output(ComparisonIds.DATASET_SELECT, "value"),
+        Output(ComparisonIds.SUITE_SELECT, "value"),
         Output(ComparisonIds.BASE_RUN_SELECT, "value"),
         Output(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
         Output(ComparisonIds.LOC_URL, "search", allow_duplicate=True),
@@ -298,7 +299,7 @@ def synchronize_state(
     new_search = _build_search(
         url_state.base_run_id,
         url_state.challenger_run_id,
-        url_state.dataset_id,
+        url_state.suite_id,
         new_filter,
     )
     return (
@@ -310,7 +311,7 @@ def synchronize_state(
 
   # Otherwise (URL change), update UI selects
   return (
-      str(url_state.dataset_id) if url_state.dataset_id else None,
+      str(url_state.suite_id) if url_state.suite_id else None,
       str(url_state.base_run_id) if url_state.base_run_id else None,
       str(url_state.challenger_run_id) if url_state.challenger_run_id else None,
       dash.no_update,
@@ -326,7 +327,7 @@ def synchronize_state(
         Input(ComparisonIds.BTN_APPLY_SELECT_RUNS, "n_clicks"),
     ],
     state=[
-        State(ComparisonIds.DATASET_SELECT, "value"),
+        State(ComparisonIds.SUITE_SELECT, "value"),
         State(ComparisonIds.BASE_RUN_SELECT, "value"),
         State(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
     ],
@@ -341,7 +342,7 @@ def handle_select_runs_modal(
     unused_empty_clicks,
     unused_close_clicks,
     unused_apply_clicks,
-    dataset_id,
+    suite_id,
     base_id,
     chal_id,
 ):
@@ -356,7 +357,7 @@ def handle_select_runs_modal(
     if not base_id or not chal_id:
       return dash.no_update  # Or show error in modal
     new_search = _build_search(
-        int(base_id), int(chal_id), int(dataset_id) if dataset_id else None
+        int(base_id), int(chal_id), int(suite_id) if suite_id else None
     )
     return False, new_search
 
@@ -519,6 +520,20 @@ def update_page_content(
       ],
       mb="md",
   )
+
+  # Exclusion Notice
+  if delta.errors_count > 0:
+    subtitle.children.append(
+        dmc.Alert(
+            f"Note: {delta.errors_count} failed trial(s) were excluded from"
+            " accuracy and latency calculations.",
+            color="orange",
+            variant="light",
+            radius="md",
+            mt="md",
+            icon=DashIconify(icon="material-symbols:info-outline", width=18),
+        )
+    )
 
   # Assertion Deltas (Aggregate from cases)
   assertion_deltas: dict[str, list[float]] = {}
@@ -795,15 +810,15 @@ def update_page_content(
 # 4. Populate Run Selects (Independent)
 @handle_errors
 @dash.callback(
-    Output(ComparisonIds.DATASET_SELECT, "data"),
+    Output(ComparisonIds.SUITE_SELECT, "data"),
     Output(ComparisonIds.BASE_RUN_SELECT, "data"),
     Output(ComparisonIds.CHALLENGE_RUN_SELECT, "data"),
     Input(ComparisonIds.LOC_URL, "pathname"),  # Trigger on load
-    Input(ComparisonIds.DATASET_SELECT, "value"),  # Trigger on dataset change
+    Input(ComparisonIds.SUITE_SELECT, "value"),  # Trigger on test suite change
     State(ComparisonIds.LOC_URL, "search"),  # Get current IDs
 )
 def populate_run_selects(
-    pathname: str | None, selected_dataset_id: str | None, search: str | None
+    pathname: str | None, selected_suite_id: str | None, search: str | None
 ):
   """Populates the run selection dropdowns."""
   if not pathname or pathname != "/compare":
@@ -815,37 +830,37 @@ def populate_run_selects(
 
   client = get_client()
 
-  # 1. Populate Dataset Options
+  # 1. Populate Test Suite Options
   suites = client.runs.get_unique_suites_from_snapshots()
-  dataset_options = [
+  suite_options = [
       {"label": s["name"], "value": str(s["original_suite_id"])} for s in suites
   ]
 
-  # 2. Determine which dataset to use for filtering runs
-  # Priority: selected_dataset_id > state.dataset_id > inferred
-  dataset_to_use = selected_dataset_id or (
-      str(state.dataset_id) if state.dataset_id else None
+  # 2. Determine which test suite to use for filtering runs
+  # Priority: selected_suite_id > state.suite_id > inferred
+  suite_to_use = selected_suite_id or (
+      str(state.suite_id) if state.suite_id else None
   )
 
-  if not dataset_to_use and required_ids:
-    # Try to infer dataset from the first required run
+  if not suite_to_use and required_ids:
+    # Try to infer test suite from the first required run
     first_run = client.runs.get_run(next(iter(required_ids)))
     if first_run and first_run.original_suite_id:
-      dataset_to_use = str(first_run.original_suite_id)
+      suite_to_use = str(first_run.original_suite_id)
 
   # 3. Populate Run Options
-  if not dataset_to_use:
-    return dataset_options, [], []
+  if not suite_to_use:
+    return suite_options, [], []
 
-  # Fetch runs for the selected dataset
-  runs = client.runs.list_runs(original_suite_id=int(dataset_to_use), limit=50)
+  # Fetch runs for the selected test suite
+  runs = client.runs.list_runs(original_suite_id=int(suite_to_use), limit=50)
 
-  # Ensure required IDs are in the list if they belong to this dataset
+  # Ensure required IDs are in the list if they belong to this test suite
   existing_ids = {r.id for r in runs}
   for run_id in required_ids:
     if run_id not in existing_ids:
       run = client.runs.get_run(run_id)
-      if run and run.original_suite_id == int(dataset_to_use):
+      if run and run.original_suite_id == int(suite_to_use):
         runs.append(run)
 
   # Sort again just in case
@@ -859,7 +874,7 @@ def populate_run_selects(
       for r in runs
   ]
 
-  return dataset_options, run_options, run_options
+  return suite_options, run_options, run_options
 
 
 # 5. Swap Runs
@@ -1077,48 +1092,56 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
 
   # Anchors and diagnostics
   view_trial_anchor = None
-  if case.base_trial:
-    view_trial_anchor = dmc.Anchor(
-        "View Trial",
-        href=f"/evaluations/trials/{case.base_trial.id}",
-        size="10px",
-        fw=700,
-        underline=True,
-        c="blue.6",
-    )
-
   view_trace_anchor = None
   if case.base_trial:
-    view_trace_anchor = dmc.Anchor(
-        "View Trace",
-        href=f"/evaluations/trials/{case.base_trial.id}/trace",
-        size="10px",
-        fw=700,
-        underline=True,
-        c="blue.6",
+    is_terminal = case.base_trial.status in (
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
     )
+    if is_terminal:
+      view_trial_anchor = dmc.Anchor(
+          "View Trial",
+          href=f"/evaluations/trials/{case.base_trial.id}",
+          size="10px",
+          fw=700,
+          underline=True,
+          c="blue.6",
+      )
+      view_trace_anchor = dmc.Anchor(
+          "View Trace",
+          href=f"/evaluations/trials/{case.base_trial.id}/trace",
+          size="10px",
+          fw=700,
+          underline=True,
+          c="blue.6",
+      )
 
   view_chal_trial_anchor = None
-  if case.challenger_trial:
-    view_chal_trial_anchor = dmc.Anchor(
-        "View Trial",
-        href=f"/evaluations/trials/{case.challenger_trial.id}",
-        size="10px",
-        fw=700,
-        underline=True,
-        c="blue.6",
-    )
-
   view_chal_trace_anchor = None
   if case.challenger_trial:
-    view_chal_trace_anchor = dmc.Anchor(
-        "View Trace",
-        href=f"/evaluations/trials/{case.challenger_trial.id}/trace",
-        size="10px",
-        fw=700,
-        underline=True,
-        c="blue.6",
+    is_terminal = case.challenger_trial.status in (
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
     )
+    if is_terminal:
+      view_chal_trial_anchor = dmc.Anchor(
+          "View Trial",
+          href=f"/evaluations/trials/{case.challenger_trial.id}",
+          size="10px",
+          fw=700,
+          underline=True,
+          c="blue.6",
+      )
+      view_chal_trace_anchor = dmc.Anchor(
+          "View Trace",
+          href=f"/evaluations/trials/{case.challenger_trial.id}/trace",
+          size="10px",
+          fw=700,
+          underline=True,
+          c="blue.6",
+      )
 
   assertion_diagnostic = None
   if (case.base_trial and case.base_trial.assertion_results) or (
@@ -1337,10 +1360,33 @@ def _render_trial_summary(trial, is_base: bool):
           dmc.Text(
               trial.output_text,
               size="sm",
-              style={"fontFamily": "var(--font-mono)", "lineHeight": "1.7"},
+              style={
+                  "fontFamily": "var(--font-mono)",
+                  "lineHeight": "1.7",
+                  "whiteSpace": "pre-wrap",
+              },
           ),
           (
-              dmc.Text(trial.error_message, c="red", size="xs", mt="xs")
+              dmc.Alert(
+                  dmc.Code(
+                      trial.error_message,
+                      block=True,
+                      style={
+                          "backgroundColor": "transparent",
+                          "padding": 0,
+                          "color": "inherit",
+                          "whiteSpace": "pre-wrap",
+                          "wordBreak": "break-all",
+                      },
+                  ),
+                  color="red",
+                  title="Trial Error",
+                  icon=DashIconify(
+                      icon="material-symbols:error-outline", width=18
+                  ),
+                  mt="xs",
+                  styles={"message": {"paddingTop": 0}},
+              )
               if trial.error_message
               else None
           ),

@@ -70,7 +70,7 @@ def execute_trial(trial_id: int):
 
       parent = f"projects/{agent.project_id}/locations/{agent.location}"
       gda_client = gemini_data_analytics_client.GeminiDataAnalyticsClient(
-          parent, agent.env
+          parent
       )
 
       gen_ai_client_inst = gen_ai_client.GenAIClient(

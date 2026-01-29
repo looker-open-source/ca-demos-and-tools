@@ -28,7 +28,6 @@ class AgentCreateForm(pydantic.BaseModel):
   project_id: str
   location: str
   agent_resource_id: str
-  env: agent.AgentEnv
   name: str
 
 
@@ -42,8 +41,8 @@ class AssertItem(pydantic.BaseModel):
   model_config = pydantic.ConfigDict(extra="allow")
 
 
-class SuiteQuestion(pydantic.BaseModel):
-  """Represents a test case (question) in the UI builder."""
+class TestCaseState(pydantic.BaseModel):
+  """Represents a test case in the UI builder."""
 
   id: int | None = None
   logical_id: str = pydantic.Field(default_factory=lambda: str(uuid.uuid4()))
@@ -51,8 +50,8 @@ class SuiteQuestion(pydantic.BaseModel):
   asserts: list[AssertItem] = []
 
 
-class QuestionModalState(pydantic.BaseModel):
-  """State for the question editor modal."""
+class TestCaseModalState(pydantic.BaseModel):
+  """State for the test case editor modal."""
 
   mode: str = "add"  # "add" or "edit"
   index: int | None = None

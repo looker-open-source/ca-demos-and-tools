@@ -1,7 +1,6 @@
 """Unit tests for RunRepository."""
 
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.run_repository import RunRepository
@@ -22,7 +21,6 @@ def test_create_run(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = agent_repo.create(name="Bot", config=config)
   suite = suite_repo.create(name="Suite")
@@ -54,7 +52,6 @@ def test_list_runs(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = agent_repo.create(name="Bot", config=config)
   suite = suite_repo.create(name="Suite")

@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Datasets dashboard page."""
+"""Test Suites dashboard page."""
 
 import dash
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.dataset_ids import DatasetHomeIds
+from prism.ui.ids import TestSuiteHomeIds as Ids
 
 
 def layout():
-  """Renders the Datasets dashboard layout."""
+  """Renders the Test Suites dashboard layout."""
   return render_page(
       title="Test Suites",
       description=(
@@ -45,7 +45,7 @@ def layout():
           dmc.Group(
               children=[
                   dmc.Select(
-                      id=DatasetHomeIds.FILTER_COVERAGE,
+                      id=Ids.FILTER_COVERAGE,
                       label="Filter by Coverage",
                       placeholder="All Coverage",
                       data=[
@@ -65,11 +65,11 @@ def layout():
               children=[
                   dmc.LoadingOverlay(
                       visible=False,
-                      id=DatasetHomeIds.LOADING,
+                      id=Ids.LOADING,
                       overlayProps={"blur": 2},
                   ),
                   dmc.Paper(
-                      id=DatasetHomeIds.DATASETS_LIST,
+                      id=Ids.TEST_SUITES_LIST,
                       withBorder=True,
                       radius="md",
                       p=0,
@@ -81,7 +81,7 @@ def layout():
               ],
           ),
           # Hidden div for redirect
-          html.Div(id="datasets-redirect-div"),
+          html.Div(id="test-suites-redirect-div"),
       ],
   )
 

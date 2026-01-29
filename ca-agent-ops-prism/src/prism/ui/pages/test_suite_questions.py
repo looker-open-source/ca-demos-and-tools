@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Page for the Question Playground (editing and triggering runs)."""
+"""Page for the Test Case Playground (editing and triggering runs)."""
 
 import dash
 from dash import html
@@ -21,7 +21,7 @@ import dash_mantine_components as dmc
 from prism.ui.components.assertion_components import render_assertion_form_content
 from prism.ui.components.cards import render_detail_card
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
+from prism.ui.ids import TestSuiteIds as Ids
 
 
 def render_bulk_add_modal():
@@ -75,7 +75,7 @@ def render_bulk_add_modal():
   )
 
 
-def layout(dataset_id: str | None = None, **_):
+def layout(suite_id: str | None = None, **_):
   """Renders the Test Case Playground layout."""
   return render_page(
       title="Edit Test Cases",
@@ -91,7 +91,7 @@ def layout(dataset_id: str | None = None, **_):
                   fw=500,
               ),
               dmc.Anchor(
-                  id=Ids.Q_BREADCRUMB_SUITE_NAME,
+                  id=Ids.TC_BREADCRUMB_SUITE_NAME,
                   href="#",
                   size="sm",
                   fw=500,
@@ -155,7 +155,7 @@ def layout(dataset_id: str | None = None, **_):
                                       },
                                       children=[
                                           dmc.Stack(
-                                              id=Ids.Q_LIST,
+                                              id=Ids.TC_LIST,
                                               gap="xs",
                                               p="md",
                                               children=[dmc.Loader(size="sm")],
@@ -175,7 +175,7 @@ def layout(dataset_id: str | None = None, **_):
                                               children=[
                                                   dmc.Button(
                                                       "New Test Case",
-                                                      id=Ids.Q_PLAYGROUND_ADD_BTN,
+                                                      id=Ids.TC_PLAYGROUND_ADD_BTN,
                                                       leftSection=DashIconify(
                                                           icon="bi:plus-lg"
                                                       ),
@@ -186,7 +186,7 @@ def layout(dataset_id: str | None = None, **_):
                                                   ),
                                                   dmc.Button(
                                                       "Bulk Add",
-                                                      id=Ids.Q_BULK_ADD_BTN,
+                                                      id=Ids.TC_BULK_ADD_BTN,
                                                       leftSection=DashIconify(
                                                           icon="bi:list-ul"
                                                       ),
@@ -215,7 +215,7 @@ def layout(dataset_id: str | None = None, **_):
                       children=[
                           # Empty State
                           dmc.Center(
-                              id=Ids.Q_EDITOR_EMPTY,
+                              id=Ids.TC_EDITOR_EMPTY,
                               style={
                                   "height": "100%",
                                   "width": "100%",
@@ -239,7 +239,7 @@ def layout(dataset_id: str | None = None, **_):
                           ),
                           # Editor Container
                           dmc.Box(
-                              id=Ids.Q_EDITOR_CONTAINER,
+                              id=Ids.TC_EDITOR_CONTAINER,
                               style={
                                   "height": "100%",
                                   "display": "flex",
@@ -265,11 +265,9 @@ def layout(dataset_id: str | None = None, **_):
                                               children=[
                                                   # Test Case Text
                                                   render_detail_card(
-                                                      title=(
-                                                          "Test Case Question"
-                                                      ),
+                                                      title="Test Case",
                                                       description=(
-                                                          "Question sent to"
+                                                          "Prompt sent to"
                                                           " GDA Agent"
                                                       ),
                                                       mb="3rem",
@@ -277,7 +275,7 @@ def layout(dataset_id: str | None = None, **_):
                                                           "Delete Test Case",
                                                           id={
                                                               "type": (
-                                                                  Ids.Q_REMOVE_QUESTION_BTN
+                                                                  Ids.TC_REMOVE_TEST_CASE_BTN
                                                               ),
                                                               "index": (
                                                                   "current"
@@ -300,7 +298,7 @@ def layout(dataset_id: str | None = None, **_):
                                                               },
                                                               children=[
                                                                   dmc.Textarea(
-                                                                      id=Ids.Q_INPUT_QUESTION,
+                                                                      id=Ids.TC_INPUT_TEST_CASE,
                                                                       placeholder=(
                                                                           "E.g., Did"
                                                                           " the agent"
@@ -354,7 +352,7 @@ def layout(dataset_id: str | None = None, **_):
                                                               ],
                                                           ),
                                                           dmc.Group(
-                                                              id=Ids.Q_CHANGE_ACTIONS_GROUP,
+                                                              id=Ids.TC_CHANGE_ACTIONS_GROUP,
                                                               justify=(
                                                                   "flex-end"
                                                               ),
@@ -368,7 +366,7 @@ def layout(dataset_id: str | None = None, **_):
                                                               children=[
                                                                   dmc.Button(
                                                                       "Revert",
-                                                                      id=Ids.Q_REVERT_BTN,
+                                                                      id=Ids.TC_REVERT_BTN,
                                                                       leftSection=DashIconify(
                                                                           icon="bi:arrow-counterclockwise"
                                                                       ),
@@ -383,7 +381,7 @@ def layout(dataset_id: str | None = None, **_):
                                                                   ),
                                                                   dmc.Button(
                                                                       "Save Change",
-                                                                      id=Ids.Q_SAVE_BTN,
+                                                                      id=Ids.TC_SAVE_BTN,
                                                                       leftSection=DashIconify(
                                                                           icon="bi:check-lg"
                                                                       ),
@@ -416,7 +414,7 @@ def layout(dataset_id: str | None = None, **_):
                                                                           ),
                                                                           dmc.Badge(
                                                                               "0",
-                                                                              id=Ids.Q_ASSERT_COUNT,
+                                                                              id=Ids.TC_ASSERT_COUNT,
                                                                               color="gray",
                                                                               variant="light",
                                                                               radius="sm",
@@ -478,7 +476,7 @@ def layout(dataset_id: str | None = None, **_):
                                                                                       lts="0.05em",
                                                                                   ),
                                                                                   dmc.Select(
-                                                                                      id=Ids.Q_AGENT_SELECT,
+                                                                                      id=Ids.TC_AGENT_SELECT,
                                                                                       placeholder=(
                                                                                           "Select Agent"
                                                                                       ),
@@ -507,7 +505,7 @@ def layout(dataset_id: str | None = None, **_):
                                                                           dmc.Button(
                                                                               "Run Test"
                                                                               " Case",
-                                                                              id=Ids.Q_RUN_BTN,
+                                                                              id=Ids.TC_RUN_BTN,
                                                                               leftSection=DashIconify(
                                                                                   icon="material-symbols:refresh",
                                                                                   width=20,
@@ -594,7 +592,7 @@ def layout(dataset_id: str | None = None, **_):
                                                       ],
                                                   ),
                                                   dmc.Stack(
-                                                      id=Ids.Q_ASSERT_LIST,
+                                                      id=Ids.TC_ASSERT_LIST,
                                                       gap="md",
                                                       mb="xl",
                                                       children=[],
@@ -644,7 +642,7 @@ def layout(dataset_id: str | None = None, **_):
                                                   ),
                                                   # Simulation Area
                                                   dash.html.Div(
-                                                      id=Ids.Q_RESULT_CONTAINER
+                                                      id=Ids.TC_RESULT_CONTAINER
                                                   ),
                                               ],
                                           )
@@ -662,7 +660,7 @@ def layout(dataset_id: str | None = None, **_):
           ),  # Local state of questions
           dash.dcc.Store(id=Ids.STORE_SELECTED_INDEX, data=None),
           dash.dcc.Store(id=Ids.STORE_PLAYGROUND_RESULT, data=None),
-          dash.dcc.Store(id=Ids.STORE_DELETE_QUESTION_INDEX, data=None),
+          dash.dcc.Store(id=Ids.STORE_DELETE_TEST_CASE_INDEX, data=None),
           dash.dcc.Store(id=Ids.STORE_DELETE_ASSERTION_INDEX, data=None),
           # Delete Modal
           dmc.Modal(
@@ -712,7 +710,7 @@ def layout(dataset_id: str | None = None, **_):
                   dmc.Stack([
                       dash.dcc.Loading(
                           dmc.Stack(id=Ids.SUGGESTION_LIST),
-                          id=Ids.Q_SUGGEST_LOADING,
+                          id=Ids.TC_SUGGEST_LOADING,
                       ),
                       dmc.Group(
                           justify="flex-end",
@@ -750,6 +748,7 @@ def layout(dataset_id: str | None = None, **_):
                                   "ASSERT_WEIGHT": Ids.SUG_EDIT_WEIGHT,
                                   "ASSERT_VALUE": Ids.SUG_EDIT_VALUE,
                                   "ASSERT_YAML": Ids.SUG_EDIT_YAML,
+                                  "ASSERT_CHART_TYPE": Ids.SUG_EDIT_CHART_TYPE,
                                   "ASSERT_GUIDE_CONTAINER": (
                                       Ids.SUG_EDIT_GUIDE_CONTAINER
                                   ),
@@ -848,10 +847,11 @@ def layout(dataset_id: str | None = None, **_):
                               "AssertionModalIds",
                               (),
                               {
-                                  "ASSERT_TYPE": Ids.Q_ASSERT_TYPE,
-                                  "ASSERT_WEIGHT": Ids.Q_ASSERT_WEIGHT,
-                                  "ASSERT_VALUE": Ids.Q_ASSERT_VALUE,
-                                  "ASSERT_YAML": Ids.Q_ASSERT_YAML,
+                                  "ASSERT_TYPE": Ids.TC_ASSERT_TYPE,
+                                  "ASSERT_WEIGHT": Ids.TC_ASSERT_WEIGHT,
+                                  "ASSERT_VALUE": Ids.TC_ASSERT_VALUE,
+                                  "ASSERT_YAML": Ids.TC_ASSERT_YAML,
+                                  "ASSERT_CHART_TYPE": Ids.ASSERT_CHART_TYPE,
                                   "ASSERT_GUIDE_CONTAINER": (
                                       Ids.ASSERT_GUIDE_CONTAINER
                                   ),
@@ -909,7 +909,7 @@ def layout(dataset_id: str | None = None, **_):
 def register_page():
   dash.register_page(
       __name__,
-      path_template="/test_suites/edit/<dataset_id>",
-      title="Prism | Test Case Playground",
+      path_template="/test_suites/edit/<suite_id>",
+      title="Prism | Edit Test Cases",
       layout=layout,
   )

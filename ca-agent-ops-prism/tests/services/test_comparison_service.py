@@ -203,6 +203,148 @@ class TestComparisonService(unittest.TestCase):
         case.challenger_trial.assertion_results[0].reasoning, "Expected reason"
     )
 
+  def test_compare_runs_excludes_errors(self):
+    """Verifies that trials with errors are excluded from accuracy and latency deltas."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    suite1 = mock.MagicMock(examples=[])
+    suite1.name = "Suite 1"
+    agent = mock.MagicMock()
+    agent.name = "Agent 1"
+    run1 = Run(
+        id=1,
+        status=RunStatus.COMPLETED,
+        test_suite_snapshot_id=1,
+        agent_id=1,
+        snapshot_suite=suite1,
+        agent=agent,
+        created_at=now,
+    )
+    self.run_repository.get_by_id.side_effect = [run1, run1]
+
+    # Success trial
+    t_success_base = Trial(
+        id=101,
+        run_id=1,
+        status=RunStatus.COMPLETED,
+        started_at=now,
+        completed_at=now + datetime.timedelta(milliseconds=100),
+        created_at=now,
+        modified_at=now,
+        example_snapshot_id=101,
+        example_snapshot=ExampleSnapshot(logical_id="success", question="Q1"),
+    )
+    t_success_base.assertion_results = [
+        AssertionResult(
+            score=1.0,
+            passed=True,
+            created_at=now,
+            modified_at=now,
+            assertion_snapshot=AssertionSnapshot(
+                type=AssertionType.TEXT_CONTAINS,
+                weight=1.0,
+                params={"value": "test"},
+                created_at=now,
+                modified_at=now,
+                example_snapshot_id=101,
+            ),
+        )
+    ]
+
+    t_success_chal = Trial(
+        id=201,
+        run_id=2,
+        status=RunStatus.COMPLETED,
+        started_at=now,
+        completed_at=now + datetime.timedelta(milliseconds=150),  # +50ms
+        created_at=now,
+        modified_at=now,
+        example_snapshot_id=201,
+        example_snapshot=ExampleSnapshot(logical_id="success", question="Q1"),
+    )
+    t_success_chal.assertion_results = [
+        AssertionResult(
+            score=1.0,
+            passed=True,
+            created_at=now,
+            modified_at=now,
+            assertion_snapshot=AssertionSnapshot(
+                type=AssertionType.TEXT_CONTAINS,
+                weight=1.0,
+                params={"value": "test"},
+                created_at=now,
+                modified_at=now,
+                example_snapshot_id=201,
+            ),
+        )
+    ]
+
+    # Error trial (in Challenger)
+    t_error_chal = Trial(
+        id=202,
+        run_id=2,
+        status=RunStatus.FAILED,
+        error_message="Failed to execute",
+        started_at=now,
+        completed_at=now + datetime.timedelta(milliseconds=0),
+        created_at=now,
+        modified_at=now,
+        example_snapshot_id=202,
+        example_snapshot=ExampleSnapshot(
+            logical_id="error_chal", question="Q2"
+        ),
+    )
+    t_error_chal.assertion_results = []
+
+    t_error_base = Trial(
+        id=102,
+        run_id=1,
+        status=RunStatus.COMPLETED,
+        started_at=now,
+        completed_at=now + datetime.timedelta(milliseconds=100),
+        created_at=now,
+        modified_at=now,
+        example_snapshot_id=102,
+        example_snapshot=ExampleSnapshot(
+            logical_id="error_chal", question="Q2"
+        ),
+    )
+    t_error_base.assertion_results = [
+        AssertionResult(
+            score=1.0,
+            passed=True,
+            created_at=now,
+            modified_at=now,
+            assertion_snapshot=AssertionSnapshot(
+                type=AssertionType.TEXT_CONTAINS,
+                weight=1.0,
+                params={"value": "test"},
+                created_at=now,
+                modified_at=now,
+                example_snapshot_id=102,
+            ),
+        )
+    ]
+
+    self.trial_repository.list_for_run.side_effect = [
+        [t_success_base, t_error_base],
+        [t_success_chal, t_error_chal],
+    ]
+
+    result = self.service.compare_runs(1, 2)
+
+    # Metrics should only reflect the success trial
+    # Accuracy delta: (1.0 - 1.0) / 1 = 0.0
+    self.assertEqual(result.delta.accuracy_delta, 0.0)
+    # Duration delta: (150 - 100) / 1 = 50.0
+    self.assertEqual(result.delta.duration_delta_avg, 50.0)
+    # Error count should be 1
+    self.assertEqual(result.delta.errors_count, 1)
+
+    # Check case statuses
+    case_map = {c.logical_id: c for c in result.cases}
+    self.assertEqual(case_map["success"].status, ComparisonStatus.STABLE)
+    self.assertEqual(case_map["error_chal"].status, ComparisonStatus.ERROR)
+
 
 if __name__ == "__main__":
   unittest.main()

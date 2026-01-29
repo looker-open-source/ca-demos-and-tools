@@ -165,10 +165,8 @@ def get_gda_client() -> gemini_data_analytics_client.GeminiDataAnalyticsClient:
   """Provides a GeminiDataAnalyticsClient."""
   global _GDA_CLIENT
   if _GDA_CLIENT is None:
-    # Default to staging for now. In a real Boq/FastAPI app, this would be
-    # configured.
     _GDA_CLIENT = gemini_data_analytics_client.GeminiDataAnalyticsClient(
-        project="", env=gemini_data_analytics_client.ClientEnv.STAGING
+        project=""
     )
   return _GDA_CLIENT
 

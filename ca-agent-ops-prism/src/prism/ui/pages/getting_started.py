@@ -245,7 +245,7 @@ def layout():
                                           ),
                                           dmc.AccordionPanel(
                                               "A Test Suite is a collection of"
-                                              " 'Examples' (Test Cases) that"
+                                              " Test Cases that"
                                               " you want to test your agent"
                                               " against. Think of it as a"
                                               " standardized benchmark for your"
@@ -279,7 +279,7 @@ def layout():
                                               " execution. When you 'Run' a"
                                               " Suite against an Agent, Prism"
                                               " generates responses for every"
-                                              " question and validates them"
+                                              " test case and validates them"
                                               " using your assertions."
                                           ),
                                       ],
@@ -352,7 +352,7 @@ def layout():
                                                       " (BigQuery User, Cloud"
                                                       " SQL Client, etc.) and"
                                                       " access to the specified"
-                                                      " datasets."
+                                                      " BigQuery tables."
                                                   ),
                                               ],
                                           ),
@@ -375,8 +375,8 @@ def layout():
                                               (
                                                   "Go to 'Test Suites' and"
                                                   " create your first suite."
-                                                  " Add a few 'Examples'"
-                                                  " (questions) that represent"
+                                                  " Add a few Test Cases"
+                                                  " that represent"
                                                   " common user queries for"
                                                   " your data. Grouping them"
                                                   " into suites helps you test"

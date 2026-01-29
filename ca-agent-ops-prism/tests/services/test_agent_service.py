@@ -15,7 +15,6 @@ def test_create_agent_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=schemas.AgentEnv.STAGING,
   )
   agent = service.create_agent(name="Service Bot", config=config)
 
@@ -31,7 +30,6 @@ def test_get_agent_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=schemas.AgentEnv.STAGING,
   )
   created = service.create_agent(name="Getter Bot", config=config)
 
@@ -48,7 +46,6 @@ def test_update_agent_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=schemas.AgentEnv.STAGING,
   )
   agent = service.create_agent(name="Updater", config=config)
 
@@ -64,7 +61,6 @@ def test_archive_agent_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=schemas.AgentEnv.STAGING,
   )
   agent = service.create_agent(name="To Archive", config=config)
 
@@ -83,7 +79,6 @@ def test_looker_credentials_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r1",
-      env=schemas.AgentEnv.STAGING,
       datasource={"tables": ["t1"]},
   )
   bq_agent = service.create_agent(name="BQ Bot", config=bq_config)
@@ -95,7 +90,6 @@ def test_looker_credentials_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r2",
-      env=schemas.AgentEnv.STAGING,
       datasource={"instance_uri": "https://looker.com", "explores": ["e1"]},
   )
   looker_agent_no_creds = service.create_agent(
@@ -109,7 +103,6 @@ def test_looker_credentials_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r3",
-      env=schemas.AgentEnv.STAGING,
       datasource={"instance_uri": "https://looker.com", "explores": ["e1"]},
       looker_client_id="id",
       looker_client_secret="secret",

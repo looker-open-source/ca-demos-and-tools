@@ -1,7 +1,6 @@
 import datetime
 import unittest.mock
 
-from prism.common.schemas.agent import AgentEnv
 from prism.common.schemas.execution import RunStatus
 from prism.server.models.agent import Agent
 from prism.server.models.run import Run
@@ -20,7 +19,6 @@ def _setup_test_data(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   db_session.add(agent)
   db_session.flush()

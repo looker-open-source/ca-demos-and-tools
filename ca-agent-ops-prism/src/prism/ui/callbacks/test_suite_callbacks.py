@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Callbacks for the Datasets UI."""
+"""Callbacks for the Test Suites UI."""
 
 import traceback
 from typing import Any
@@ -24,16 +24,16 @@ from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
 from prism.common.schemas import agent as agent_schemas
-from prism.ui.components import dataset_components
+from prism.ui import ids as test_suite_ids
 from prism.ui.components import empty_states
 from prism.ui.components import tables
+from prism.ui.components import test_case_components
 from prism.ui.components.agent_components import render_agent_card
 from prism.ui.constants import CP
 from prism.ui.constants import REDIRECT_HANDLER
+from prism.ui.ids import EvaluationIds
+from prism.ui.ids import TestSuiteHomeIds
 from prism.ui.models import ui_state
-from prism.ui.pages import dataset_ids
-from prism.ui.pages.dataset_ids import DatasetHomeIds
-from prism.ui.pages.evaluation_ids import EvaluationIds
 from prism.ui.utils import typed_callback
 
 
@@ -121,16 +121,17 @@ def render_eval_agent_details(agent_id):
 
 @typed_callback(
     [
-        (DatasetHomeIds.DATASETS_LIST, CP.CHILDREN),
-        (DatasetHomeIds.LOADING, CP.VISIBLE),
+        (TestSuiteHomeIds.TEST_SUITES_LIST, CP.CHILDREN),
+        (TestSuiteHomeIds.LOADING, CP.VISIBLE),
     ],
     inputs=[
         ("url", CP.PATHNAME),
         ("url", CP.SEARCH),
     ],
 )
-def update_datasets_list(pathname: str, search: str):
-  """Renders the list of datasets on the dashboard."""
+def update_test_suites_list(pathname: str, search: str):
+  """Renders the list of test suites on the dashboard."""
+
   if pathname != "/test_suites":
     return typed_callback.no_update, typed_callback.no_update
 
@@ -148,7 +149,7 @@ def update_datasets_list(pathname: str, search: str):
         empty_states.render_empty_state(
             title="No Test Suites Found",
             description=(
-                "Create your first dataset to start defining evaluation"
+                "Create your first test suite to start defining evaluation"
                 " criteria."
             ),
             button_label="Create Test Suite",
@@ -158,7 +159,7 @@ def update_datasets_list(pathname: str, search: str):
         False,
     )
 
-  table = tables.render_dataset_table(suites_with_stats)
+  table = tables.render_test_suite_table(suites_with_stats)
 
   return table, False
 
@@ -166,13 +167,15 @@ def update_datasets_list(pathname: str, search: str):
 @typed_callback(
     dash.Output("url", "search", allow_duplicate=True),
     inputs=[
-        (DatasetHomeIds.FILTER_COVERAGE, CP.VALUE),
+        (TestSuiteHomeIds.FILTER_COVERAGE, CP.VALUE),
     ],
     state=[("url", CP.SEARCH)],
     prevent_initial_call=True,
 )
-def update_dataset_url_from_filters(coverage: str | None, current_search: str):
-  """Update URL search params from Datasets Home filters."""
+def update_test_suite_url_from_filters(
+    coverage: str | None, current_search: str
+):
+  """Update URL search params from Test Suites Home filters."""
   params = (
       urllib.parse.parse_qs(current_search.lstrip("?"))
       if current_search
@@ -191,11 +194,11 @@ def update_dataset_url_from_filters(coverage: str | None, current_search: str):
 
 
 @typed_callback(
-    (DatasetHomeIds.FILTER_COVERAGE, CP.VALUE),
+    (TestSuiteHomeIds.FILTER_COVERAGE, CP.VALUE),
     inputs=[("url", CP.SEARCH)],
 )
-def sync_dataset_filters_to_url(search: str):
-  """Sync Datasets Home filters to URL search params."""
+def sync_test_suite_filters_to_url(search: str):
+  """Sync Test Suites Home filters to URL search params."""
   if not search:
     return None
 
@@ -205,15 +208,15 @@ def sync_dataset_filters_to_url(search: str):
 
 @typed_callback(
     [
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
-        (dataset_ids.DatasetIds.STORE_BUILDER, CP.DATA),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.STORE_BUILDER, CP.DATA),
     ],
-    inputs=[(dataset_ids.DatasetIds.NAME, "id")],
+    inputs=[(test_suite_ids.TestSuiteIds.NAME, "id")],
     state=[("url", CP.PATHNAME)],
 )
-def load_dataset_data(_, pathname: str):
-  """Loads existing dataset data if editing or viewing."""
+def load_test_suite_data(_, pathname: str):
+  """Loads existing test suite data if editing or viewing."""
   if pathname == "/test_suites/new":
     return "", "", []
 
@@ -232,11 +235,11 @@ def load_dataset_data(_, pathname: str):
   if not s:
     return "", "", []
 
-  examples = client.suites.list_examples(suite_id)
-  questions = []
-  for e in examples:
+  test_cases_data = client.suites.list_examples(suite_id)
+  test_cases = []
+  for tc in test_cases_data:
     q_asserts = []
-    for a in e.asserts:
+    for a in tc.asserts:
       # Map Model to AssertItem structure
       if hasattr(a, "model_dump"):
         a_dict = a.model_dump()
@@ -248,37 +251,37 @@ def load_dataset_data(_, pathname: str):
             "type": a.type.value if hasattr(a.type, "value") else a.type,
             "params": getattr(a, "params", {}),
         })
-    questions.append({
-        "id": e.id,
-        "question": e.question,
+    test_cases.append({
+        "id": tc.id,
+        "question": tc.question,
         "asserts": q_asserts,
     })
 
   return (
       s.name,
       s.description,
-      questions,
+      test_cases,
   )
 
 
 @typed_callback(
     (REDIRECT_HANDLER, CP.HREF),
     inputs=[
-        (dataset_ids.DatasetIds.SAVE_NEW_BTN, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.SAVE_NEW_BTN, CP.N_CLICKS),
     ],
     state=[
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
     ],
     allow_duplicate=True,
     prevent_initial_call=True,
 )
-def create_dataset(
+def create_test_suite(
     save_clicks: int | None,
     name: str | None,
     desc: str | None,
 ):
-  """Handles creation of a new dataset."""
+  """Handles creation of a new test suite."""
   if not save_clicks:
     return typed_callback.no_update
 
@@ -302,25 +305,25 @@ def create_dataset(
 @typed_callback(
     (REDIRECT_HANDLER, CP.HREF),
     inputs=[
-        (dataset_ids.DatasetIds.SAVE_EDIT_BTN, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.SAVE_EDIT_BTN, CP.N_CLICKS),
     ],
     state=[
         ("url", CP.PATHNAME),
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
-        (dataset_ids.DatasetIds.STORE_BUILDER, CP.DATA),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.STORE_BUILDER, CP.DATA),
     ],
     allow_duplicate=True,
     prevent_initial_call=True,
 )
-def update_dataset(
+def update_test_suite(
     save_clicks: int | None,
     pathname: str,
     name: str | None,
     desc: str | None,
-    questions: list[dict[str, Any]] | None,
+    test_cases: list[dict[str, Any]] | None,
 ):
-  """Handles updating an existing dataset."""
+  """Handles updating an existing test suite."""
   if not save_clicks:
     return typed_callback.no_update
 
@@ -328,95 +331,95 @@ def update_dataset(
     return typed_callback.no_update
 
   try:
-    ds_id = int(pathname.split("/")[-1])
+    suite_id = int(pathname.split("/")[-1])
     client = get_client()
     client.suites.update_suite(
-        suite_id=ds_id,
+        suite_id=suite_id,
         name=name,
         description=desc,
     )
-    # Sync questions
-    if questions:
-      client.suites.sync_suite(ds_id, questions)
+    # Sync test cases
+    if test_cases:
+      client.suites.sync_suite(suite_id, test_cases)
 
-    return f"/test_suites/view/{ds_id}"
+    return f"/test_suites/view/{suite_id}"
   except Exception:  # pylint: disable=broad-exception-caught
     traceback.print_exc()
     return typed_callback.no_update
 
 
 @typed_callback(
-    (dataset_ids.DatasetIds.QUESTION_LIST, CP.CHILDREN),
+    (test_suite_ids.TestSuiteIds.TEST_CASE_LIST, CP.CHILDREN),
     inputs=[
-        (dataset_ids.DatasetIds.STORE_BUILDER, CP.DATA),
+        (test_suite_ids.TestSuiteIds.STORE_BUILDER, CP.DATA),
     ],
     state=[
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
 )
-def render_question_list(questions: list[dict[str, Any]], pathname: str):
-  """Renders the list of questions in the inventory."""
-  if not questions:
+def render_test_case_list(test_cases: list[dict[str, Any]], pathname: str):
+  """Renders the list of test cases in the inventory."""
+  if not test_cases:
     try:
-      dataset_id = pathname.rstrip("/").split("/")[-1]
+      suite_id = pathname.rstrip("/").split("/")[-1]
     except (IndexError, AttributeError):
-      dataset_id = "new"
+      suite_id = "new"
 
     return empty_states.render_empty_state(
-        title="No questions added yet",
+        title="No test cases added yet",
         description=(
-            "Start building your evaluation dataset by adding questions to the"
-            " inventory."
+            "Start building your evaluation test suite by adding test cases to"
+            " the inventory."
         ),
-        button_label="Create First Question",
-        href=f"/test_suites/edit/{dataset_id}?action=add",
+        button_label="Create First Test Case",
+        href=f"/test_suites/edit/{suite_id}?action=add",
         icon="bi:playlist-add",
     )
 
   read_only = "/view/" in pathname
   if read_only:
     try:
-      dataset_id = int(pathname.rstrip("/").split("/")[-1])
+      suite_id = int(pathname.rstrip("/").split("/")[-1])
     except (ValueError, IndexError):
-      dataset_id = 0
+      suite_id = 0
 
     return [
         dmc.Anchor(
-            dataset_components.render_question_card(
-                ui_state.SuiteQuestion(**q), i, read_only=True
+            test_case_components.render_test_case_card(
+                ui_state.TestCaseState(**tc), i, read_only=True
             ),
-            href=f"/test_suites/edit/{dataset_id}?test_case_id={q.get('id')}",
+            href=f"/test_suites/edit/{suite_id}?test_case_id={tc.get('id')}",
             underline=False,
             c="inherit",
             style={"display": "block", "textDecoration": "none"},
         )
-        for i, q in enumerate(questions)
+        for i, tc in enumerate(test_cases)
     ]
 
   return [
-      dataset_components.render_question_card(
-          ui_state.SuiteQuestion(**q), i, read_only=False
+      test_case_components.render_test_case_card(
+          ui_state.TestCaseState(**tc), i, read_only=False
       )
-      for i, q in enumerate(questions)
+      for i, tc in enumerate(test_cases)
   ]
 
 
 @typed_callback(
     [
-        (dataset_ids.DatasetIds.MODAL_CONFIG_EDIT, "opened"),
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.MODAL_CONFIG_EDIT, "opened"),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
     ],
     inputs=[
-        (dataset_ids.DatasetIds.BTN_CONFIG_EDIT, CP.N_CLICKS),
-        (dataset_ids.DatasetIds.MODAL_CONFIG_CANCEL_BTN, CP.N_CLICKS),
-        (dataset_ids.DatasetIds.MODAL_CONFIG_CLOSE_BTN_X, CP.N_CLICKS),
-        (dataset_ids.DatasetIds.MODAL_CONFIG_SAVE_BTN, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.BTN_CONFIG_EDIT, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.MODAL_CONFIG_CANCEL_BTN, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.MODAL_CONFIG_CLOSE_BTN_X, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.MODAL_CONFIG_SAVE_BTN, CP.N_CLICKS),
     ],
     state=[
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
@@ -433,7 +436,7 @@ def toggle_edit_config_modal(
   del edit_clicks, cancel_clicks, x_clicks, save_clicks
   trigger = typed_callback.triggered_id()
   # If edit was clicked, open. If cancel, close.
-  if trigger == dataset_ids.DatasetIds.BTN_CONFIG_EDIT:
+  if trigger == test_suite_ids.TestSuiteIds.BTN_CONFIG_EDIT:
     # Open and Populate
     return (
         True,
@@ -451,12 +454,12 @@ def toggle_edit_config_modal(
 @typed_callback(
     (REDIRECT_HANDLER, CP.HREF),
     inputs=[
-        (dataset_ids.DatasetIds.MODAL_CONFIG_SAVE_BTN, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.MODAL_CONFIG_SAVE_BTN, CP.N_CLICKS),
     ],
     state=[
         ("url", CP.PATHNAME),
-        (dataset_ids.DatasetIds.NAME, CP.VALUE),
-        (dataset_ids.DatasetIds.DESC, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
+        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
@@ -467,15 +470,15 @@ def save_edit_config(
     name,
     desc,
 ):
-  """Saves the dataset configuration from the modal."""
+  """Saves the test suite configuration from the modal."""
   if not save_clicks:
     return typed_callback.no_update
 
-  # Reuse the update logic from `update_dataset` but for config only
-  return update_dataset(
+  # Reuse the update logic from `update_test_suite` but for config only
+  return update_test_suite(
       save_clicks=save_clicks,
       pathname=pathname,
       name=name,
       desc=desc,
-      questions=None,
+      test_cases=None,
   )

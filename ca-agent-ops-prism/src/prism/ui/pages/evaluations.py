@@ -19,7 +19,7 @@ from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(**kwargs):  # pylint: disable=unused-argument
@@ -32,7 +32,7 @@ def layout(**kwargs):  # pylint: disable=unused-argument
       ),
       actions=[
           dmc.Button(
-              "New Evaluation",
+              "Start New Evaluation",
               id=Ids.BTN_NEW_EVAL,
               leftSection=DashIconify(icon="bi:plus"),
               radius="md",
@@ -53,9 +53,9 @@ def layout(**kwargs):  # pylint: disable=unused-argument
                               style={"width": 250},
                           ),
                           dmc.Select(
-                              id=Ids.FILTER_DATASET,
-                              label="Filter by Dataset",
-                              placeholder="All Datasets",
+                              id=Ids.FILTER_SUITE,
+                              label="Filter by Test Suite",
+                              placeholder="All Test Suites",
                               data=[],
                               clearable=True,
                               style={"width": 250},
@@ -112,7 +112,8 @@ def render_new_run_modal():
           dmc.Stack(
               children=[
                   dmc.Text(
-                      "Select an agent and a compatible dataset to evaluate.",
+                      "Select an agent and a compatible test suite to"
+                      " evaluate.",
                       size="sm",
                       mb="md",
                   ),
@@ -125,9 +126,9 @@ def render_new_run_modal():
                       mb="sm",
                   ),
                   dmc.Select(
-                      id=Ids.NEW_EVAL_DATASET_SELECT,
-                      label="Select Dataset",
-                      placeholder="Pick a dataset",
+                      id=Ids.NEW_EVAL_SUITE_SELECT,
+                      label="Select Test Suite",
+                      placeholder="Pick a test suite",
                       searchable=True,
                       data=[],  # Populated when agent selected
                       mb="xl",

@@ -20,7 +20,7 @@ from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.assertion_components import render_assertion_form_content
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(**_kwargs):
@@ -52,6 +52,9 @@ def layout(**_kwargs):
                               "ASSERT_WEIGHT": Ids.TRIAL_SUG_EDIT_WEIGHT,
                               "ASSERT_VALUE": Ids.TRIAL_SUG_EDIT_VALUE,
                               "ASSERT_YAML": Ids.TRIAL_SUG_EDIT_YAML,
+                              "ASSERT_CHART_TYPE": (
+                                  Ids.TRIAL_SUG_EDIT_CHART_TYPE
+                              ),
                               "ASSERT_GUIDE_CONTAINER": (
                                   Ids.TRIAL_SUG_EDIT_GUIDE_CONTAINER
                               ),
@@ -90,7 +93,6 @@ def layout(**_kwargs):
               mb="lg",
               variant="contained",
               radius="md",
-              style={"display": "none"},
               styles={
                   "control": {
                       "padding": "8px 16px",
@@ -129,8 +131,29 @@ def layout(**_kwargs):
                               children=dmc.Stack(
                                   children=[
                                       dmc.Group(
-                                          justify="flex-end",
+                                          justify="space-between",
                                           children=[
+                                              dmc.Group(
+                                                  gap="xs",
+                                                  children=[
+                                                      DashIconify(
+                                                          icon="material-symbols:info-outline",
+                                                          width=20,
+                                                          color="var(--mantine-color-grape-6)",
+                                                      ),
+                                                      dmc.Text(
+                                                          "Accepted suggestions"
+                                                          " are added to the"
+                                                          " test suite for"
+                                                          " future runs. They"
+                                                          " do not affect"
+                                                          " current results.",
+                                                          size="xs",
+                                                          c="dimmed",
+                                                          fw=500,
+                                                      ),
+                                                  ],
+                                              ),
                                               dmc.Button(
                                                   "Generate New",
                                                   id={
@@ -171,7 +194,7 @@ def layout(**_kwargs):
           # Context Store for Edit (Trial ID, Index)
           dash.dcc.Store(id=Ids.TRIAL_SUG_EDIT_CONTEXT),
           # Signal Store for Refresh
-          dash.dcc.Store(id=Ids.TRIAL_SUG_UPDATE_SIGNAL),
+          dash.dcc.Store(id=Ids.TRIAL_SUG_UPDATE_SIGNAL, data=0),
           # Loading Store for Skeletons
           dash.dcc.Store(id=Ids.TRIAL_SUG_LOADING_STORE, data=False),
           # Polling for background tasks

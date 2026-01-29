@@ -19,7 +19,7 @@ from dash import html
 import dash_mantine_components as dmc
 from prism.ui.components.assertion_components import render_assertion_form_content
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(execution_id: str = None, **_kwargs):
@@ -48,26 +48,29 @@ def layout(execution_id: str = None, **_kwargs):
                           "ExecutionSuggestionEditIds",
                           (),
                           {
-                              "CRITERION_TYPE": Ids.EXECUTION_SUG_EDIT_TYPE,
-                              "CRITERION_WEIGHT": Ids.EXECUTION_SUG_EDIT_WEIGHT,
-                              "CRITERION_VALUE": Ids.EXECUTION_SUG_EDIT_VALUE,
-                              "CRITERION_YAML": Ids.EXECUTION_SUG_EDIT_YAML,
-                              "CRITERION_GUIDE_CONTAINER": (
+                              "ASSERT_TYPE": Ids.EXECUTION_SUG_EDIT_TYPE,
+                              "ASSERT_WEIGHT": Ids.EXECUTION_SUG_EDIT_WEIGHT,
+                              "ASSERT_VALUE": Ids.EXECUTION_SUG_EDIT_VALUE,
+                              "ASSERT_YAML": Ids.EXECUTION_SUG_EDIT_YAML,
+                              "ASSERT_CHART_TYPE": (
+                                  Ids.EXECUTION_SUG_EDIT_CHART_TYPE
+                              ),
+                              "ASSERT_GUIDE_CONTAINER": (
                                   Ids.EXECUTION_SUG_EDIT_GUIDE_CONTAINER
                               ),
-                              "CRITERION_GUIDE_TITLE": (
+                              "ASSERT_GUIDE_TITLE": (
                                   Ids.EXECUTION_SUG_EDIT_GUIDE_TITLE
                               ),
-                              "CRITERION_GUIDE_DESC": (
+                              "ASSERT_GUIDE_DESC": (
                                   Ids.EXECUTION_SUG_EDIT_GUIDE_DESC
                               ),
-                              "CRITERION_EXAMPLE_CONTAINER": (
+                              "ASSERT_EXAMPLE_CONTAINER": (
                                   Ids.EXECUTION_SUG_EDIT_EXAMPLE_CONTAINER
                               ),
-                              "CRITERION_EXAMPLE_VALUE": (
+                              "ASSERT_EXAMPLE_VALUE": (
                                   Ids.EXECUTION_SUG_EDIT_EXAMPLE_VALUE
                               ),
-                              "CRITERION_EXAMPLE_YAML": (
+                              "ASSERT_EXAMPLE_YAML": (
                                   Ids.EXECUTION_SUG_EDIT_EXAMPLE_YAML
                               ),
                               "VAL_MSG": Ids.EXECUTION_SUG_VAL_MSG,

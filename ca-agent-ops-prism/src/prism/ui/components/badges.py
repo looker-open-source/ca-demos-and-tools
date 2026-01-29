@@ -60,16 +60,18 @@ def render_coverage_badge(
   """
   descriptions = {
       "Full Coverage": (
-          "All test cases in this dataset have at least one assertion."
+          "All test cases in this test suite have at least one assertion."
       ),
       "Partial Coverage": (
-          "Some test cases in this dataset have assertions, but some do not."
+          "Some test cases in this test suite have assertions, but some do not."
       ),
-      "No Coverage": "None of the test cases in this dataset have assertions.",
-      "No Test Cases": "This dataset does not contain any test cases.",
+      "No Coverage": (
+          "None of the test cases in this test suite have assertions."
+      ),
+      "No Test Cases": "This test suite does not contain any test cases.",
   }
 
-  help_text = descriptions.get(label, "Assertion coverage for this dataset.")
+  help_text = descriptions.get(label, "Assertion coverage for this test suite.")
 
   return dmc.Tooltip(
       label=help_text,

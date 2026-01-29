@@ -1,7 +1,6 @@
 """Unit tests for AgentRepository."""
 
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.server.repositories.agent_repository import AgentRepository
 from sqlalchemy.orm import Session
 
@@ -13,7 +12,6 @@ def test_create_agent(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = repo.create(name="Test Bot", config=config)
 
@@ -30,7 +28,6 @@ def test_get_agent(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   created = repo.create(name="Finder Bot", config=config)
 
@@ -47,7 +44,6 @@ def test_update_agent(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = repo.create(name="Updater Bot", config=config)
 
@@ -55,7 +51,6 @@ def test_update_agent(db_session: Session):
       project_id="p2",
       location="l2",
       agent_resource_id="r2",
-      env=AgentEnv.PROD,
   )
   updated = repo.update(agent.id, name="New Name", config=new_config)
   assert updated.name == "New Name"
@@ -74,7 +69,6 @@ def test_archive_agent(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = repo.create(name="Old Bot", config=config)
 

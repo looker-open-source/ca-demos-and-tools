@@ -1,7 +1,6 @@
 """Unit tests for TrialRepository."""
 
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.server.models.assertion import SuggestedAssertion
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
@@ -25,7 +24,6 @@ def test_create_trial(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = agent_repo.create(name="Bot", config=config)
   suite = suite_repo.create(name="Suite")
@@ -58,7 +56,6 @@ def test_update_result_trial(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = agent_repo.create(name="Bot", config=config)
   suite = suite_repo.create(name="Suite")
@@ -113,7 +110,6 @@ def test_update_suggestion(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   agent = agent_repo.create(name="Bot", config=config)
   suite = suite_repo.create(name="Suite")

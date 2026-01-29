@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.common.schemas.agent import BigQueryConfig
 from prism.common.schemas.assertion import ChartCheckType
 from prism.common.schemas.assertion import DataCheckRow
@@ -102,7 +101,6 @@ def test_successful_run_flow(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
       datasource=BigQueryConfig(tables=["t1"]),
   )
   agent = agent_repo.create(name="E2E Agent", config=config)

@@ -4,10 +4,10 @@ from unittest import mock
 
 from google.cloud import geminidataanalytics
 from prism.common.schemas.agent import AgentBase
+from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
+from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import BigQueryConfig
-from prism.server.clients.gemini_data_analytics_client import ClientEnv
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 import pytest
 
@@ -45,7 +45,6 @@ def client(mock_gemini_lib, mock_auth):
   """Creates a GeminiDataAnalyticsClient instance with mocks."""
   return GeminiDataAnalyticsClient(
       project="projects/test-project/locations/us-central1",
-      env=ClientEnv.STAGING,
   )
 
 
@@ -103,7 +102,6 @@ def test_create_agent(client, mock_gemini_lib):
       project_id="test-project",
       location="us-central1",
       agent_resource_id="new-agent",
-      env=AgentEnv.STAGING,
       system_instruction="desc",
       datasource=BigQueryConfig(tables=["p.d.t"]),
   )

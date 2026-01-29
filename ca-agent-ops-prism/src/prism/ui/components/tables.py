@@ -118,7 +118,7 @@ def render_run_table(
     # 3. Score
     score_content = dmc.Text("N/A", size="sm", c="dimmed")
     if run.status == RunStatus.COMPLETED and run.accuracy is not None:
-      score_pct = int(run.accuracy * 100)
+      score_pct = run.accuracy * 100
       if score_pct >= 90:
         score_bar_color = "green"
       elif score_pct >= 70:
@@ -129,13 +129,13 @@ def render_run_table(
       score_content = dmc.Group(
           [
               dmc.Progress(
-                  value=score_pct,
+                  value=int(score_pct),
                   color=score_bar_color,
                   size="sm",
                   radius="md",
                   w=60,
               ),
-              dmc.Text(f"{score_pct}%", size="sm", fw=700),
+              dmc.Text(f"{score_pct:.1f}%", size="sm", fw=700),
           ],
           gap="xs",
       )
@@ -171,9 +171,9 @@ def render_run_table(
                 links.render_agent_link(run.agent_id, agent_name),
                 style={"padding": "16px 24px"},
             ),
-            # Dataset
+            # Test Suite
             html.Td(
-                links.render_dataset_link(
+                links.render_test_suite_link(
                     getattr(
                         run, "original_suite_id", run.test_suite_snapshot_id
                     ),
@@ -402,7 +402,31 @@ def render_trial_table(
       accuracy_str = f"{trial.score * 100:.1f}%"
 
     # 5. Test Case
-    question_text = trial.question or "Unknown"
+    test_case_text = trial.question or "Unknown"
+
+    # 6. Action
+    is_terminal = trial.status in (
+        RunStatus.COMPLETED,
+        RunStatus.FAILED,
+        RunStatus.CANCELLED,
+    )
+
+    action_cell = html.Td("", style={"padding": "16px 24px"})
+    if is_terminal:
+      action_cell = html.Td(
+          dmc.Anchor(
+              dmc.Button(
+                  "View Details",
+                  variant="light",
+                  color="blue",
+                  size="xs",
+                  radius="md",
+              ),
+              href=f"/evaluations/trials/{trial.id}",
+              underline=False,
+          ),
+          style={"textAlign": "right", "padding": "16px 24px"},
+      )
 
     row = html.Tr(
         children=[
@@ -410,7 +434,7 @@ def render_trial_table(
             html.Td(
                 html.Div(
                     dmc.Text(
-                        question_text,
+                        test_case_text,
                         size="sm",
                         fw=500,
                         c="dark",
@@ -422,7 +446,7 @@ def render_trial_table(
                         "overflow": "hidden",
                         "textOverflow": "ellipsis",
                     },
-                    title=question_text,
+                    title=test_case_text,
                 ),
                 style={"padding": "16px 24px"},
             ),
@@ -449,20 +473,7 @@ def render_trial_table(
                 style={"textAlign": "right", "padding": "16px 24px"},
             ),
             # Action
-            html.Td(
-                dmc.Anchor(
-                    dmc.Button(
-                        "View Details",
-                        variant="light",
-                        color="blue",
-                        size="xs",
-                        radius="md",
-                    ),
-                    href=f"/evaluations/trials/{trial.id}",
-                    underline=False,
-                ),
-                style={"textAlign": "right", "padding": "16px 24px"},
-            ),
+            action_cell,
         ]
     )
     rows.append(row)
@@ -567,10 +578,11 @@ def render_trial_table(
   )
 
 
-def render_dataset_table(
+def render_test_suite_table(
     suites: list[SuiteWithStats],
 ) -> html.Div:
-  """Renders a table of datasets."""
+  """Renders a stylistic table of test suites."""
+
   rows = []
   for s in suites:
     # Coverage Logic
@@ -586,9 +598,9 @@ def render_dataset_table(
 
     row = html.Tr(
         children=[
-            # Dataset Name
+            # Test Suite Name
             html.Td(
-                links.render_dataset_link(s.suite.id, s.suite.name),
+                links.render_test_suite_link(s.suite.id, s.suite.name),
                 style={"padding": "16px 24px"},
             ),
             # Description

@@ -168,14 +168,13 @@ class RunRepository:
         .all()
     )
 
-    # 3. Calculate Accuracy for these runs
-    # SELECT run_id, AVG(ar.score) FROM trials
-    # JOIN assertion_results ar ...
-    # GROUP BY run_id
-
-    accuracy_stmt = (
+    # 3. Calculate Accuracy for these runs (Average of Trial Averages)
+    # First, get average score per trial
+    trial_scores_subquery = (
         sqlalchemy.select(
-            Trial.run_id, sqlalchemy.func.avg(AssertionResult.score)
+            Trial.run_id,
+            Trial.id.label("trial_id"),
+            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
         )
         .join(AssertionResult, Trial.id == AssertionResult.trial_id)
         .join(
@@ -184,8 +183,15 @@ class RunRepository:
         )
         .where(AssertionSnapshot.weight > 0)
         .where(Trial.run_id.in_(latest_run_ids))
-        .group_by(Trial.run_id)
+        .group_by(Trial.run_id, Trial.id)
+        .subquery()
     )
+
+    # Then, average those trial scores per run
+    accuracy_stmt = sqlalchemy.select(
+        trial_scores_subquery.c.run_id,
+        sqlalchemy.func.avg(trial_scores_subquery.c.trial_score),
+    ).group_by(trial_scores_subquery.c.run_id)
     accuracy_map = dict(self.session.execute(accuracy_stmt).all())
 
     result = {}
@@ -280,21 +286,27 @@ class RunRepository:
       recent_evals.append({
           "id": r.id,
           "score": r.accuracy,
-          "dataset_name": r.snapshot_suite.name if r.snapshot_suite else "N/A",
+          "suite_name": r.snapshot_suite.name if r.snapshot_suite else "N/A",
+          "suite_id": (
+              r.snapshot_suite.original_suite_id if r.snapshot_suite else None
+          ),
           "status": r.status.value,
           "duration": duration_str,
           "created_at": r.created_at,
       })
 
     # 4. Daily Metrics (for Charts)
-    # Group by date AND dataset
+    # Average of Trial Averages
 
-    chart_stmt = (
+    # First, get trial-level stats
+    trial_stats_subquery = (
         sqlalchemy.select(
             sqlalchemy.func.date(Run.created_at).label("date"),
-            TestSuiteSnapshot.name.label("dataset_name"),
-            sqlalchemy.func.avg(AssertionResult.score).label("daily_score"),
-            sqlalchemy.func.avg(Trial.duration_ms).label("daily_duration"),
+            Run.id.label("run_id"),
+            Trial.id.label("trial_id"),
+            TestSuiteSnapshot.name.label("suite_name"),
+            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
+            sqlalchemy.func.max(Trial.duration_ms).label("trial_duration"),
         )
         .join(Trial, Trial.run_id == Run.id)
         .join(
@@ -316,8 +328,31 @@ class RunRepository:
                 AssertionSnapshot.weight > 0, AssertionSnapshot.id.is_(None)
             ),
         )
-        .group_by("date", "dataset_name")
-        .order_by("date")
+        .group_by(
+            sqlalchemy.func.date(Run.created_at),
+            Run.id,
+            Trial.id,
+            TestSuiteSnapshot.name,
+        )
+        .subquery()
+    )
+
+    # Then, aggregate to daily/suite level
+    chart_stmt = (
+        sqlalchemy.select(
+            trial_stats_subquery.c.date,
+            trial_stats_subquery.c.suite_name,
+            sqlalchemy.func.avg(trial_stats_subquery.c.trial_score).label(
+                "daily_score"
+            ),
+            sqlalchemy.func.avg(trial_stats_subquery.c.trial_duration).label(
+                "daily_duration"
+            ),
+        )
+        .group_by(
+            trial_stats_subquery.c.date, trial_stats_subquery.c.suite_name
+        )
+        .order_by(trial_stats_subquery.c.date)
     )
     daily_results = self.session.execute(chart_stmt).all()
 
@@ -333,11 +368,11 @@ class RunRepository:
         daily_duration_map[d_str] = {"date": d_str}
 
       if row.daily_score is not None:
-        daily_accuracy_map[d_str][row.dataset_name] = row.daily_score
+        daily_accuracy_map[d_str][row.suite_name] = row.daily_score
       if row.daily_duration is not None:
-        daily_duration_map[d_str][row.dataset_name] = int(row.daily_duration)
+        daily_duration_map[d_str][row.suite_name] = int(row.daily_duration)
 
-      all_datasets.add(row.dataset_name)
+      all_datasets.add(row.suite_name)
 
     daily_accuracy = sorted(
         daily_accuracy_map.values(), key=lambda x: x["date"]
@@ -355,7 +390,7 @@ class RunRepository:
         "recent_evals": recent_evals,
         "daily_accuracy": daily_accuracy,
         "daily_duration": daily_duration,
-        "datasets": sorted(list(all_datasets)),
+        "suites": sorted(list(all_datasets)),
     }
 
   def get_run_history_for_agents(
@@ -399,11 +434,11 @@ class RunRepository:
 
     run_ids = [r.id for r in recent_runs]
 
-    # 2. Calculate accuracy for these runs
-
-    accuracy_stmt = (
+    # 2. Calculate accuracy for these runs (Average of Trial Averages)
+    trial_scores_subquery = (
         sqlalchemy.select(
-            Trial.run_id, sqlalchemy.func.avg(AssertionResult.score)
+            Trial.run_id,
+            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
         )
         .join(AssertionResult, Trial.id == AssertionResult.trial_id)
         .join(
@@ -412,8 +447,14 @@ class RunRepository:
         )
         .where(AssertionSnapshot.weight > 0)
         .where(Trial.run_id.in_(run_ids))
-        .group_by(Trial.run_id)
+        .group_by(Trial.run_id, Trial.id)
+        .subquery()
     )
+
+    accuracy_stmt = sqlalchemy.select(
+        trial_scores_subquery.c.run_id,
+        sqlalchemy.func.avg(trial_scores_subquery.c.trial_score),
+    ).group_by(trial_scores_subquery.c.run_id)
     accuracy_map = dict(self.session.execute(accuracy_stmt).all())
 
     # 3. Assemble result

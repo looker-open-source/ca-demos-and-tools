@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Page for creating a new dataset."""
+"""Page for creating a new test suite."""
 
 import dash
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
+from prism.ui.ids import TestSuiteIds as Ids
 
 
 def layout():
-  """Renders the Create New Dataset layout."""
+  """Renders the Create New Test Suite layout."""
   return render_page(
       title="Create New Test Suite",
       description="Configure the initial details for your new test suite.",
@@ -88,7 +88,7 @@ def layout():
                           dmc.Textarea(
                               id=Ids.DESC,
                               label="Description",
-                              placeholder="What is this dataset for?",
+                              placeholder="What is this test suite for?",
                               minRows=4,
                               size="md",
                           ),

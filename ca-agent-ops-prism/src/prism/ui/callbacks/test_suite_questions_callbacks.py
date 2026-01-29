@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Callbacks for the Question Playground."""
+"""Callbacks for the Test Case Playground."""
 
 import json
 import logging
@@ -27,10 +27,11 @@ import dash_mantine_components as dmc
 from prism.client import get_client
 from prism.ui import constants
 from prism.ui.components import assertion_components
-from prism.ui.components import dataset_components
+from prism.ui.components import test_case_components
 from prism.ui.constants import CP
+from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models import ui_state
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
+from prism.ui.utils import clean_empty
 from prism.ui.utils import typed_callback
 import yaml
 
@@ -120,13 +121,13 @@ def render_suggestion_card(
 @typed_callback(
     [
         (Ids.STORE_BUILDER, CP.DATA),
-        (Ids.Q_AGENT_SELECT, CP.DATA),
+        (Ids.TC_AGENT_SELECT, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
-        (Ids.Q_BREADCRUMB_SUITE_NAME, CP.CHILDREN),
-        (Ids.Q_BREADCRUMB_SUITE_NAME, CP.HREF),
+        (Ids.TC_BREADCRUMB_SUITE_NAME, CP.CHILDREN),
+        (Ids.TC_BREADCRUMB_SUITE_NAME, CP.HREF),
     ],
     inputs=[
-        (Ids.Q_AGENT_SELECT, "id"),  # Trigger on component mount
+        (Ids.TC_AGENT_SELECT, "id"),  # Trigger on component mount
     ],
     state=[
         ("url", CP.PATHNAME),
@@ -157,8 +158,8 @@ def load_playground_data(_, pathname: str, search: str):
           typed_callback.no_update,
           typed_callback.no_update,
       )
-    dataset_id_idx = parts.index("edit") + 1
-    dataset_id = int(parts[dataset_id_idx])
+    suite_id_idx = parts.index("edit") + 1
+    suite_id = int(parts[suite_id_idx])
   except (ValueError, IndexError):
     return (
         typed_callback.no_update,
@@ -177,13 +178,13 @@ def load_playground_data(_, pathname: str, search: str):
     if parsed_search.get("action") == ["add"]:
       # Add to DB
       new_example = client.suites.add_example(
-          suite_id=dataset_id, question="New Test Case"
+          suite_id=suite_id, question="New Test Case"
       )
       newly_added_id = new_example.id
 
-  suite = client.suites.get_suite(dataset_id)
-  examples = client.suites.list_examples(dataset_id)
-  questions = [
+  suite = client.suites.get_suite(suite_id)
+  examples = client.suites.list_examples(suite_id)
+  test_cases = [
       {
           "id": e.id,
           "question": e.question,
@@ -200,7 +201,7 @@ def load_playground_data(_, pathname: str, search: str):
 
   agent_options = [{"label": a.name, "value": str(a.id)} for a in all_agents]
 
-  selected_index = 0 if questions else None
+  selected_index = 0 if test_cases else None
 
   # Check for deep link via ?test_case_id=...
   if search:
@@ -216,39 +217,39 @@ def load_playground_data(_, pathname: str, search: str):
         pass
 
     if target_id:
-      for i, q in enumerate(questions):
+      for i, q in enumerate(test_cases):
         if q["id"] == target_id:
           selected_index = i
           break
 
-  suite_name = suite.name if suite else f"Suite {dataset_id}"
-  suite_href = f"/test_suites/view/{dataset_id}"
+  suite_name = suite.name if suite else f"Suite {suite_id}"
+  suite_href = f"/test_suites/view/{suite_id}"
 
-  return questions, agent_options, selected_index, suite_name, suite_href
+  return test_cases, agent_options, selected_index, suite_name, suite_href
 
 
 # 2. Render List
 @typed_callback(
-    (Ids.Q_LIST, CP.CHILDREN),
+    (Ids.TC_LIST, CP.CHILDREN),
     inputs=[
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
     ],
 )
-def render_question_list(
-    questions: list[dict[str, Any]], selected_index: int | None
+def render_test_case_list(
+    test_cases: list[dict[str, Any]], selected_index: int | None
 ):
   """Renders the sidebar list of test cases."""
-  if questions is None:
+  if test_cases is None:
     return typed_callback.no_update
 
   items = []
   try:
-    for i, q in enumerate(questions):
-      dq = ui_state.SuiteQuestion(**q)
+    for i, q in enumerate(test_cases):
+      dq = ui_state.TestCaseState(**q)
       active = i == selected_index
       items.append(
-          dataset_components.render_question_nav_item(dq, i, active=active)
+          test_case_components.render_test_case_nav_item(dq, i, active=active)
       )
   except Exception as e:
     traceback.print_exc()
@@ -258,8 +259,8 @@ def render_question_list(
 
 # 2b. Render Assertion List (New)
 @typed_callback(
-    [(Ids.Q_RUN_BTN, CP.DISABLED)],
-    inputs=[(Ids.Q_AGENT_SELECT, CP.VALUE)],
+    [(Ids.TC_RUN_BTN, CP.DISABLED)],
+    inputs=[(Ids.TC_AGENT_SELECT, CP.VALUE)],
     prevent_initial_call=False,
 )
 def toggle_run_button(agent_id):
@@ -268,7 +269,7 @@ def toggle_run_button(agent_id):
 
 
 @typed_callback(
-    (Ids.Q_ASSERT_LIST, CP.CHILDREN),
+    (Ids.TC_ASSERT_LIST, CP.CHILDREN),
     inputs=[
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
@@ -276,16 +277,16 @@ def toggle_run_button(agent_id):
     ],
     prevent_initial_call=True,
 )
-def render_assertion_list(questions, selected_index, result_data):
+def render_assertion_list(test_cases, selected_index, result_data):
   """Renders the list of assertions for the selected test case."""
-  if questions is None or selected_index is None:
+  if test_cases is None or selected_index is None:
     return []
 
-  if selected_index >= len(questions):
+  if selected_index >= len(test_cases):
     return []
 
-  q = questions[selected_index]
-  asserts = q.get("asserts", [])
+  tc = test_cases[selected_index]
+  asserts = tc.get("asserts", [])
 
   # Map results if available
   results_map = {}
@@ -309,17 +310,17 @@ def render_assertion_list(questions, selected_index, result_data):
     state=[(Ids.STORE_BUILDER, CP.DATA), ("url", CP.SEARCH)],
     prevent_initial_call=True,
 )
-def update_url_on_question_select(selected_index, questions, current_search):
+def update_url_on_test_case_select(selected_index, test_cases, current_search):
   """Updates URL search parameters when a test case is selected."""
   if (
       selected_index is None
-      or not questions
-      or selected_index >= len(questions)
+      or not test_cases
+      or selected_index >= len(test_cases)
   ):
     return typed_callback.no_update
 
-  q_id = questions[selected_index].get("id")
-  if not q_id:
+  tc_id = test_cases[selected_index].get("id")
+  if not tc_id:
     return typed_callback.no_update
 
   params = (
@@ -327,10 +328,10 @@ def update_url_on_question_select(selected_index, questions, current_search):
       if current_search
       else {}
   )
-  if params.get("test_case_id") == [str(q_id)]:
+  if params.get("test_case_id") == [str(tc_id)]:
     return typed_callback.no_update
 
-  params["test_case_id"] = [str(q_id)]
+  params["test_case_id"] = [str(tc_id)]
   return f"?{urllib.parse.urlencode(params, doseq=True)}"
 
 
@@ -341,9 +342,9 @@ def update_url_on_question_select(selected_index, questions, current_search):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def sync_selection_from_url(search, questions, current_index):
+def sync_selection_from_url(search, test_cases, current_index):
   """Syncs selected test case from URL when navigating."""
-  if not search or not questions:
+  if not search or not test_cases:
     return typed_callback.no_update
 
   params = urllib.parse.parse_qs(search.lstrip("?"))
@@ -352,9 +353,9 @@ def sync_selection_from_url(search, questions, current_index):
     return typed_callback.no_update
 
   try:
-    q_id = int(q_id_str)
-    for i, q in enumerate(questions):
-      if q.get("id") == q_id:
+    tc_id = int(q_id_str)
+    for i, tc in enumerate(test_cases):
+      if tc.get("id") == tc_id:
         if i == current_index:
           return typed_callback.no_update
         return i
@@ -368,12 +369,12 @@ def sync_selection_from_url(search, questions, current_index):
 @typed_callback(
     (Ids.STORE_SELECTED_INDEX, CP.DATA),
     inputs=[
-        dash.Input({"type": Ids.Q_LIST_ITEM, "index": dash.ALL}, CP.N_CLICKS),
+        dash.Input({"type": Ids.TC_LIST_ITEM, "index": dash.ALL}, CP.N_CLICKS),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def handle_question_selection(list_clicks):
+def handle_test_case_selection(list_clicks):
   """Updates selected index based on list click."""
   ctx = dash.callback_context
   if not ctx.triggered:
@@ -397,15 +398,15 @@ def handle_question_selection(list_clicks):
     return typed_callback.no_update
 
 
-# 3b. Add Question Action
+# 3b. Add Test Case Action
 @typed_callback(
     [
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
     ],
     inputs=[
-        (Ids.Q_ADD_BTN, CP.N_CLICKS),
-        ({"type": Ids.Q_ADD_BTN, "index": dash.ALL}, CP.N_CLICKS),
+        (Ids.TC_ADD_BTN, CP.N_CLICKS),
+        ({"type": Ids.TC_ADD_BTN, "index": dash.ALL}, CP.N_CLICKS),
     ],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
@@ -414,7 +415,7 @@ def handle_question_selection(list_clicks):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def add_new_question(n_clicks, empty_add_clicks, current_questions, pathname):
+def add_new_test_case(n_clicks, empty_add_clicks, current_test_cases, pathname):
   """Adds a new empty test case and selects it (Persisted to DB)."""
   # Combine clicks logic - if any triggered
   if not n_clicks and not any(empty_add_clicks or []):
@@ -425,23 +426,23 @@ def add_new_question(n_clicks, empty_add_clicks, current_questions, pathname):
     if not pathname or "/test_suites/edit/" not in pathname:
       return typed_callback.no_update, typed_callback.no_update
     parts = pathname.split("/")
-    dataset_id = int(parts[parts.index("edit") + 1])
+    suite_id = int(parts[parts.index("edit") + 1])
   except (ValueError, IndexError):
     return typed_callback.no_update, typed_callback.no_update
 
   client = get_client()
   # Add to DB
   example = client.suites.add_example(
-      suite_id=dataset_id, question="New Test Case"
+      suite_id=suite_id, question="New Test Case"
   )
 
   # Update Local State
-  new_q = {
+  new_tc = {
       "id": example.id,
       "question": example.question,
       "asserts": [],  # Empty initially
   }
-  updated = (current_questions or []) + [new_q]
+  updated = (current_test_cases or []) + [new_tc]
   new_index = len(updated) - 1
 
   return updated, new_index
@@ -451,13 +452,13 @@ def add_new_question(n_clicks, empty_add_clicks, current_questions, pathname):
 # 4. Sync Editor Fields (Selection Change Only)
 @typed_callback(
     [
-        (Ids.Q_INPUT_QUESTION, CP.VALUE),
-        (Ids.Q_ASSERT_TYPE, CP.VALUE),
-        (Ids.Q_ASSERT_VALUE, CP.VALUE),
-        (Ids.Q_ASSERT_YAML, CP.VALUE),
-        (Ids.Q_EDITOR_CONTAINER, "style"),
-        (Ids.Q_EDITOR_EMPTY, "style"),
-        (Ids.Q_ASSERT_COUNT, CP.CHILDREN),
+        (Ids.TC_INPUT_TEST_CASE, CP.VALUE),
+        (Ids.TC_ASSERT_TYPE, CP.VALUE),
+        (Ids.TC_ASSERT_VALUE, CP.VALUE),
+        (Ids.TC_ASSERT_YAML, CP.VALUE),
+        (Ids.TC_EDITOR_CONTAINER, "style"),
+        (Ids.TC_EDITOR_EMPTY, "style"),
+        (Ids.TC_ASSERT_COUNT, CP.CHILDREN),
     ],
     inputs=[
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
@@ -468,12 +469,12 @@ def add_new_question(n_clicks, empty_add_clicks, current_questions, pathname):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def sync_editor_selection(selected_index, questions):
+def sync_editor_selection(selected_index, test_cases):
   """Populates editor inputs when selection changes or builder updates."""
   if (
       selected_index is None
-      or not questions
-      or selected_index >= len(questions)
+      or not test_cases
+      or selected_index >= len(test_cases)
   ):
     return (
         "",
@@ -485,14 +486,14 @@ def sync_editor_selection(selected_index, questions):
         "0",
     )
 
-  q_data = questions[selected_index]
-  q = ui_state.SuiteQuestion(**q_data)
+  test_case_data = test_cases[selected_index]
+  test_case = ui_state.TestCaseState(**test_case_data)
 
   # Note: Assertion List is now handled by `render_assertion_list`
   # We just reset the "Add Assertion" inputs and populate Question Text
 
   return (
-      q.question,
+      test_case.question,
       None,
       "",
       "",
@@ -504,15 +505,15 @@ def sync_editor_selection(selected_index, questions):
           "boxSizing": "border-box",
       },
       {"display": "none"},
-      str(len(q.asserts)),
+      str(len(test_case.asserts)),
   )
 
 
 # 5. Handle Assertion UI Updates (Type Change)
 @typed_callback(
     [
-        (Ids.Q_ASSERT_VALUE, CP.STYLE),
-        (Ids.Q_ASSERT_YAML, CP.STYLE),
+        (Ids.TC_ASSERT_VALUE, CP.STYLE),
+        (Ids.TC_ASSERT_YAML, CP.STYLE),
         (Ids.ASSERT_GUIDE_CONTAINER, CP.STYLE),
         (Ids.ASSERT_GUIDE_TITLE, CP.CHILDREN),
         (Ids.ASSERT_GUIDE_DESC, CP.CHILDREN),
@@ -521,9 +522,10 @@ def sync_editor_selection(selected_index, questions):
         (Ids.ASSERT_EXAMPLE_VALUE, CP.STYLE),
         (Ids.ASSERT_EXAMPLE_YAML, CP.STYLE),
         (Ids.ASSERT_EXAMPLE_CONTAINER, CP.STYLE),
+        (Ids.ASSERT_CHART_TYPE, CP.STYLE),
         (Ids.ASSERT_VAL_MSG, CP.STYLE),
     ],
-    inputs=[(Ids.Q_ASSERT_TYPE, CP.VALUE)],
+    inputs=[(Ids.TC_ASSERT_TYPE, CP.VALUE)],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
@@ -569,6 +571,7 @@ def update_assertion_ui(assert_type: str | None):
         {"display": "none"},
         {"display": "none"},
         {"display": "none"},
+        {"display": "none"},
     )
 
   if is_yaml:
@@ -584,18 +587,22 @@ def update_assertion_ui(assert_type: str | None):
         {"display": "block"},
         container_style,
         {"display": "none"},
+        {"display": "none"},
     )
+
+  is_chart = assert_type == "chart-check-type"
   return (
-      {"display": "block"},
+      {"display": "none" if is_chart else "block"},
       {"display": "none"},
       style_to_use,
       title,
       desc,
-      example,
+      example if not is_chart else "",
       "",
-      {"display": "block"},
+      {"display": "block" if not is_chart else "none"},
       {"display": "none"},
-      container_style,
+      container_style if not is_chart else {"display": "none"},
+      {"display": "block" if is_chart else "none"},
       {"display": "none"},
   )
 
@@ -613,6 +620,7 @@ def update_assertion_ui(assert_type: str | None):
         (Ids.SUG_EDIT_EXAMPLE_VALUE, CP.STYLE),
         (Ids.SUG_EDIT_EXAMPLE_YAML, CP.STYLE),
         (Ids.SUG_EDIT_EXAMPLE_CONTAINER, CP.STYLE),
+        (Ids.SUG_EDIT_CHART_TYPE, CP.STYLE),
         (Ids.ASSERT_VAL_MSG, CP.STYLE),
     ],
     inputs=[(Ids.SUG_EDIT_TYPE, CP.VALUE)],
@@ -661,6 +669,7 @@ def update_suggestion_edit_ui(assert_type: str | None):
         {"display": "none"},
         {"display": "none"},
         {"display": "none"},
+        {"display": "none"},
     )
 
   if is_yaml:
@@ -676,26 +685,30 @@ def update_suggestion_edit_ui(assert_type: str | None):
         {"display": "block"},
         container_style,
         {"display": "none"},
+        {"display": "none"},
     )
+
+  is_chart = assert_type == "chart-check-type"
   return (
-      {"display": "block"},
+      {"display": "none" if is_chart else "block"},
       {"display": "none"},
       style_to_use,
       title,
       desc,
-      example,
+      example if not is_chart else "",
       "",
-      {"display": "block"},
+      {"display": "block" if not is_chart else "none"},
       {"display": "none"},
-      container_style,
+      container_style if not is_chart else {"display": "none"},
+      {"display": "block" if is_chart else "none"},
       {"display": "none"},
   )
 
 
 # 5b. Update Assertion Weight UI
 @typed_callback(
-    [(Ids.Q_ASSERT_WEIGHT, CP.LABEL), (Ids.Q_ASSERT_WEIGHT, CP.COLOR)],
-    inputs=[(Ids.Q_ASSERT_WEIGHT, CP.CHECKED)],
+    [(Ids.TC_ASSERT_WEIGHT, CP.LABEL), (Ids.TC_ASSERT_WEIGHT, CP.COLOR)],
+    inputs=[(Ids.TC_ASSERT_WEIGHT, CP.CHECKED)],
     prevent_initial_call=True,
 )
 def update_assertion_weight_ui(checked: bool):
@@ -721,10 +734,11 @@ def update_suggestion_edit_weight_ui(checked: bool):
 @typed_callback(
     [
         (Ids.ASSERT_MODAL, CP.OPENED),
-        (Ids.Q_ASSERT_TYPE, CP.VALUE),
-        (Ids.Q_ASSERT_VALUE, CP.VALUE),
-        (Ids.Q_ASSERT_YAML, CP.VALUE),
-        (Ids.Q_ASSERT_WEIGHT, CP.CHECKED),
+        (Ids.TC_ASSERT_TYPE, CP.VALUE),
+        (Ids.TC_ASSERT_VALUE, CP.VALUE),
+        (Ids.TC_ASSERT_YAML, CP.VALUE),
+        (Ids.TC_ASSERT_WEIGHT, CP.CHECKED),
+        (Ids.ASSERT_CHART_TYPE, CP.VALUE),
         (Ids.STORE_ASSERT_EDIT_INDEX, CP.DATA),
         (Ids.ASSERT_MODAL_TITLE_TEXT, CP.CHILDREN),
         (Ids.ASSERT_MODAL_DELETE_BTN, CP.STYLE),
@@ -742,9 +756,7 @@ def update_suggestion_edit_weight_ui(checked: bool):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def open_assertion_modal(
-    _add_clicks, _edit_clicks, questions, selected_q_index
-):
+def open_assertion_modal(_add_clicks, _edit_clicks, test_cases, selected_index):
   """Opens the assertion modal for adding or editing."""
   ctx = dash.callback_context
   if not ctx.triggered:
@@ -760,6 +772,7 @@ def open_assertion_modal(
   a_type = None
   a_val = ""
   a_yaml = ""
+  a_chart_type = None
   a_weight = True
   edit_idx = None
   title = "Add Assertion"
@@ -770,23 +783,27 @@ def open_assertion_modal(
     try:
       trigger_obj = json.loads(trigger_id)
       edit_idx = trigger_obj["index"]
-      if questions and selected_q_index is not None:
-        q = questions[selected_q_index]
-        if "asserts" in q and len(q["asserts"]) > edit_idx:
-          a = q["asserts"][edit_idx]
+      if test_cases and selected_index is not None:
+        tc = test_cases[selected_index]
+        if "asserts" in tc and len(tc["asserts"]) > edit_idx:
+          a = tc["asserts"][edit_idx]
           # 'a' could be AssertItem or dict
           a_dict = a.model_dump() if hasattr(a, "model_dump") else a
           a_type = a_dict.get("type")
           a_weight = a_dict.get("weight", 1) > 0
 
-          # Populate Value/YAML based on type
           if a_type in ["data-check-row", "looker-query-match"]:
             val = (
                 a_dict.get("columns")
                 if a_type == "data-check-row"
                 else a_dict.get("params")
             )
-            a_yaml = yaml.dump(val, default_flow_style=False) if val else ""
+            if val:
+              a_yaml = yaml.dump(clean_empty(val), default_flow_style=False)
+            else:
+              a_yaml = ""
+          elif a_type == "chart-check-type":
+            a_chart_type = str(a_dict.get("value", ""))
           else:
             a_val = str(a_dict.get("value", ""))
 
@@ -806,12 +823,27 @@ def open_assertion_modal(
       a_val,
       a_yaml,
       a_weight,
+      a_chart_type,
       edit_idx,
       title,
       display_delete,
       "",
       {"display": "none"},
   )
+
+
+# 6b. Close Assertion Modal
+@typed_callback(
+    (Ids.ASSERT_MODAL, CP.OPENED),
+    inputs=[("modal-cancel-btn-footer", CP.N_CLICKS)],
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def close_assertion_modal(n_clicks):
+  """Closes the assertion modal on Cancel."""
+  if not n_clicks:
+    return typed_callback.no_update
+  return False
 
 
 # 7. Save Assertion (Add or Update)
@@ -826,10 +858,11 @@ def open_assertion_modal(
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
-        (Ids.Q_ASSERT_TYPE, CP.VALUE),
-        (Ids.Q_ASSERT_VALUE, CP.VALUE),
-        (Ids.Q_ASSERT_YAML, CP.VALUE),
-        (Ids.Q_ASSERT_WEIGHT, CP.CHECKED),
+        (Ids.TC_ASSERT_TYPE, CP.VALUE),
+        (Ids.TC_ASSERT_VALUE, CP.VALUE),
+        (Ids.TC_ASSERT_YAML, CP.VALUE),
+        (Ids.ASSERT_CHART_TYPE, CP.VALUE),
+        (Ids.TC_ASSERT_WEIGHT, CP.CHECKED),
         (Ids.STORE_ASSERT_EDIT_INDEX, CP.DATA),
         ("url", CP.PATHNAME),  # Added pathname to state
     ],
@@ -838,11 +871,12 @@ def open_assertion_modal(
 )
 def save_assertion_from_modal(
     n_clicks,
-    questions,
+    test_cases,
     selected_index,
     assert_type,
     assert_value,
     assert_yaml_str,
+    assert_chart_type,
     assert_weight_checked,
     edit_index,
     pathname,  # Added pathname to signature
@@ -875,6 +909,8 @@ def save_assertion_from_modal(
           yaml_error,
           {"display": "block"},
       )
+  elif assert_type == "chart-check-type":
+    val = assert_chart_type
   else:
     val = assert_value
 
@@ -910,44 +946,49 @@ def save_assertion_from_modal(
         {"display": "block"},
     )
 
-  # 4. Add to Question
-  questions = questions or []
-  if selected_index is not None and len(questions) > selected_index:
-    q = questions[selected_index]
-    if "asserts" not in q:
-      q["asserts"] = []
+  # 4. Add to Test Case
+  test_cases = test_cases or []
+  if selected_index is not None and len(test_cases) > selected_index:
+    tc = test_cases[selected_index]
+    if "asserts" not in tc:
+      tc["asserts"] = []
 
-    if edit_index is not None and 0 <= edit_index < len(q["asserts"]):
-      q["asserts"][edit_index] = assertion_data
+    if edit_index is not None and 0 <= edit_index < len(tc["asserts"]):
+      # Preserve ID if it exists
+      existing_a = tc["asserts"][edit_index]
+      if isinstance(existing_a, dict) and "id" in existing_a:
+        assertion_data["id"] = existing_a["id"]
+      elif hasattr(existing_a, "id"):
+        assertion_data["id"] = existing_a.id
+      tc["asserts"][edit_index] = assertion_data
     else:
-      q["asserts"].append(assertion_data)
+      tc["asserts"].append(assertion_data)
 
     # Persist to DB
-    q_id = q.get("id")
-    if q_id:
+    tc_id = tc.get("id")
+    if tc_id:
       try:
-        # Get dataset_id from URL: /test_suites/edit/<dataset_id>
-        dataset_id = None
+        # Get suite_id from URL: /test_suites/edit/<suite_id>
+        suite_id = None
         if pathname and "/test_suites/edit/" in pathname:
           parts = pathname.split("/")
           try:
-            dataset_id = int(parts[parts.index("edit") + 1])
+            suite_id = int(parts[parts.index("edit") + 1])
           except (ValueError, IndexError):
             pass
 
-        if dataset_id:
+        if suite_id:
           client = get_client()
           # Sync the entire suite and update with returned IDs
-          questions = client.suites.sync_suite(dataset_id, questions)
+          test_cases = client.suites.sync_suite(suite_id, test_cases)
         else:
           print(
-              "Warning: Could not determine dataset_id from pathname:"
-              f" {pathname}"
+              f"Warning: Could not determine suite_id from pathname: {pathname}"
           )
       except Exception:
         traceback.print_exc()
 
-  return questions, False, "", {"display": "none"}
+  return test_cases, False, "", {"display": "none"}
 
 
 # 7b. Toggle Assertion Weight (Auto-save)
@@ -959,18 +1000,18 @@ def save_assertion_from_modal(
 # def delete_assertion... (removed)
 
 
-# 8. Update Question Text
+# 8. Update Test Case Text
 @typed_callback(
     [
-        (Ids.Q_CHANGE_ACTIONS_GROUP, CP.STYLE),
+        (Ids.TC_CHANGE_ACTIONS_GROUP, CP.STYLE),
         (Ids.VAL_MSG + "-char-count", CP.CHILDREN),
         (
-            Ids.Q_ASSERT_COUNT,
+            Ids.TC_ASSERT_COUNT,
             CP.CHILDREN,
         ),  # Also update count here as it depends on builder
     ],
     inputs=[
-        (Ids.Q_INPUT_QUESTION, CP.VALUE),
+        (Ids.TC_INPUT_TEST_CASE, CP.VALUE),
         (Ids.STORE_BUILDER, CP.DATA),
     ],
     state=[
@@ -978,33 +1019,33 @@ def save_assertion_from_modal(
     ],
     prevent_initial_call=False,
 )
-def detect_question_changes(value, questions, selected_index):
+def detect_test_case_changes(value, test_cases, selected_index):
   """Toggles Save/Revert buttons and updates char count."""
   if (
       selected_index is None
-      or not questions
-      or selected_index >= len(questions)
+      or not test_cases
+      or selected_index >= len(test_cases)
   ):
     return {"display": "none"}, "0 chars", "0"
 
-  q_data = questions[selected_index]
-  original = q_data.get("question", "")
+  tc_data = test_cases[selected_index]
+  original = tc_data.get("question", "")
   has_changed = value != original
 
   char_count = f"{len(value or '')} chars"
   style = {"display": "flex"} if has_changed else {"display": "none"}
 
   # Assert count from builder
-  assert_count = str(len(q_data.get("asserts", [])))
+  assert_count = str(len(tc_data.get("asserts", [])))
 
   return style, char_count, assert_count
 
 
 @typed_callback(
     (Ids.STORE_BUILDER, CP.DATA),
-    inputs=[(Ids.Q_SAVE_BTN, CP.N_CLICKS)],
+    inputs=[(Ids.TC_SAVE_BTN, CP.N_CLICKS)],
     state=[
-        (Ids.Q_INPUT_QUESTION, CP.VALUE),
+        (Ids.TC_INPUT_TEST_CASE, CP.VALUE),
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
         ("url", CP.PATHNAME),
@@ -1012,37 +1053,37 @@ def detect_question_changes(value, questions, selected_index):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def save_question_text(
-    n_clicks, question, current_questions, selected_index, pathname
+def save_test_case_text(
+    n_clicks, question, current_test_cases, selected_index, pathname
 ):
-  """Persists the question text to DB and local store on Save click."""
-  if not n_clicks or selected_index is None or not current_questions:
+  """Persists the test case text to DB and local store on Save click."""
+  if not n_clicks or selected_index is None or not current_test_cases:
     return typed_callback.no_update
 
-  if selected_index >= len(current_questions):
+  if selected_index >= len(current_test_cases):
     return typed_callback.no_update
 
   # Update Local
-  current_questions[selected_index]["question"] = question
+  current_test_cases[selected_index]["question"] = question
 
   # Update DB
   try:
     if pathname and "/test_suites/edit/" in pathname:
       parts = pathname.split("/")
-      dataset_id = int(parts[parts.index("edit") + 1])
+      suite_id = int(parts[parts.index("edit") + 1])
       client = get_client()
-      current_questions = client.suites.sync_suite(
-          dataset_id, current_questions
+      current_test_cases = client.suites.sync_suite(
+          suite_id, current_test_cases
       )
   except Exception:
     traceback.print_exc()
 
-  return current_questions
+  return current_test_cases
 
 
 @typed_callback(
-    (Ids.Q_INPUT_QUESTION, CP.VALUE),
-    inputs=[(Ids.Q_REVERT_BTN, CP.N_CLICKS)],
+    (Ids.TC_INPUT_TEST_CASE, CP.VALUE),
+    inputs=[(Ids.TC_REVERT_BTN, CP.N_CLICKS)],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
@@ -1050,41 +1091,51 @@ def save_question_text(
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def revert_question_text(n_clicks, questions, selected_index):
+def revert_test_case_text(n_clicks, test_cases, selected_index):
   """Reverts the editor text to the last saved value."""
-  if not n_clicks or selected_index is None or not questions:
+  if not n_clicks or selected_index is None or not test_cases:
     return typed_callback.no_update
 
-  if selected_index >= len(questions):
+  if selected_index >= len(test_cases):
     return typed_callback.no_update
 
-  return questions[selected_index].get("question", "")
+  return test_cases[selected_index].get("question", "")
 
 
-# 6. Delete Question (Modal & Action)
+# 6. Delete Test Case (Modal & Action)
 @typed_callback(
     [
         (Ids.MODAL_DELETE, CP.OPENED),
         (Ids.STORE_SELECTED_INDEX, CP.DATA),
-        (Ids.STORE_DELETE_QUESTION_INDEX, CP.DATA),
+        (Ids.STORE_DELETE_TEST_CASE_INDEX, CP.DATA),
         (Ids.STORE_DELETE_ASSERTION_INDEX, CP.DATA),
         (Ids.MODAL_DELETE_BODY, CP.CHILDREN),
+        (Ids.ASSERT_MODAL, CP.OPENED),
     ],
     inputs=[
-        ({"type": Ids.Q_REMOVE_QUESTION_BTN, "index": dash.ALL}, CP.N_CLICKS),
-        ({"type": Ids.Q_REMOVE_ASSERTION_BTN, "index": dash.ALL}, CP.N_CLICKS),
+        ({"type": Ids.TC_REMOVE_TEST_CASE_BTN, "index": dash.ALL}, CP.N_CLICKS),
+        ({"type": Ids.TC_REMOVE_ASSERTION_BTN, "index": dash.ALL}, CP.N_CLICKS),
+        (Ids.ASSERT_MODAL_DELETE_BTN, CP.N_CLICKS),
     ],
     state=[
-        ("selected-question-index", CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
+        (Ids.STORE_ASSERT_EDIT_INDEX, CP.DATA),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def open_delete_modal(_delete_q_clicks, _delete_a_clicks, selected_index):
+def open_delete_modal(
+    _delete_q_clicks,
+    _delete_a_clicks,
+    _delete_m_clicks,
+    selected_index,
+    edit_index,
+):
   """Opens the delete confirmation modal."""
   ctx = dash.callback_context
   if not ctx.triggered:
     return (
+        typed_callback.no_update,
         typed_callback.no_update,
         typed_callback.no_update,
         typed_callback.no_update,
@@ -1104,10 +1155,11 @@ def open_delete_modal(_delete_q_clicks, _delete_a_clicks, selected_index):
         typed_callback.no_update,
         typed_callback.no_update,
         typed_callback.no_update,
+        typed_callback.no_update,
     )
 
   # Check if it was a QUESTION delete button click
-  if "index" in trigger_id and Ids.Q_REMOVE_QUESTION_BTN in trigger_id:
+  if "index" in trigger_id and Ids.TC_REMOVE_TEST_CASE_BTN in trigger_id:
     try:
       trigger_obj = json.loads(trigger_id)
       idx = trigger_obj["index"]
@@ -1119,13 +1171,14 @@ def open_delete_modal(_delete_q_clicks, _delete_a_clicks, selected_index):
           idx,
           idx,
           None,
-          "Are you sure you want to delete this question?",
+          "Are you sure you want to delete this test case?",
+          typed_callback.no_update,
       )
     except (json.JSONDecodeError, KeyError, IndexError, ValueError):
       pass
 
   # Check if it was an ASSAERTION delete button click
-  if "index" in trigger_id and Ids.Q_REMOVE_ASSERTION_BTN in trigger_id:
+  if "index" in trigger_id and Ids.TC_REMOVE_ASSERTION_BTN in trigger_id:
     try:
       trigger_obj = json.loads(trigger_id)
       idx = trigger_obj["index"]
@@ -1136,11 +1189,25 @@ def open_delete_modal(_delete_q_clicks, _delete_a_clicks, selected_index):
           None,
           idx,
           "Are you sure you want to delete this assertion?",
+          typed_callback.no_update,
       )
     except (json.JSONDecodeError, KeyError, IndexError, ValueError):
       pass
 
+  # Check if it was the DELETE button inside the MANAGE ASSERTION modal
+  if trigger_id == Ids.ASSERT_MODAL_DELETE_BTN:
+    if edit_index is not None:
+      return (
+          True,
+          typed_callback.no_update,
+          None,
+          edit_index,
+          "Are you sure you want to delete this assertion?",
+          False,
+      )
+
   return (
+      typed_callback.no_update,
       typed_callback.no_update,
       typed_callback.no_update,
       typed_callback.no_update,
@@ -1164,16 +1231,16 @@ def close_delete_modal(_n_clicks):
     [
         (Ids.STORE_BUILDER, CP.DATA),
         (Ids.MODAL_DELETE, CP.OPENED),
-        ("selected-question-index", CP.DATA),
-        (Ids.STORE_DELETE_QUESTION_INDEX, CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
+        (Ids.STORE_DELETE_TEST_CASE_INDEX, CP.DATA),
         (Ids.STORE_DELETE_ASSERTION_INDEX, CP.DATA),
         (Ids.MODAL_DELETE_BODY, CP.CHILDREN),
     ],
     inputs=[(Ids.MODAL_CONFIRM_REMOVE_BTN, CP.N_CLICKS)],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
-        (Ids.STORE_DELETE_QUESTION_INDEX, CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
+        (Ids.STORE_DELETE_TEST_CASE_INDEX, CP.DATA),
         (Ids.STORE_DELETE_ASSERTION_INDEX, CP.DATA),
         ("url", CP.PATHNAME),
     ],
@@ -1182,14 +1249,14 @@ def close_delete_modal(_n_clicks):
 )
 def confirm_delete_item(
     n_clicks,
-    questions,
-    selected_q_index,
-    delete_q_index,
+    test_cases,
+    selected_index,
+    delete_tc_index,
     delete_a_index,
     pathname,
 ):
-  """Deletes a question or assertion based on which index is set."""
-  if not n_clicks or not questions:
+  """Deletes a test case or assertion based on which index is set."""
+  if not n_clicks or not test_cases:
     return (
         typed_callback.no_update,
         typed_callback.no_update,
@@ -1199,17 +1266,17 @@ def confirm_delete_item(
         typed_callback.no_update,
     )
 
-  # Get dataset_id from URL: /test_suites/edit/<dataset_id>
-  dataset_id = None
+  # Get suite_id from URL: /test_suites/edit/<suite_id>
+  suite_id = None
   if pathname and "/test_suites/edit/" in pathname:
     parts = pathname.split("/")
     try:
-      dataset_id = int(parts[parts.index("edit") + 1])
+      suite_id = int(parts[parts.index("edit") + 1])
     except (ValueError, IndexError):
       pass
 
-  if not dataset_id:
-    print(f"Error: Could not determine dataset_id from pathname: {pathname}")
+  if not suite_id:
+    print(f"Error: Could not determine suite_id from pathname: {pathname}")
     return (
         typed_callback.no_update,
         typed_callback.no_update,
@@ -1223,25 +1290,25 @@ def confirm_delete_item(
 
   client = get_client()
 
-  # Case 1: Delete Question
-  if delete_q_index is not None:
+  # Case 1: Delete Test Case
+  if delete_tc_index is not None:
     # 1. Delete from DB
-    if delete_q_index < len(questions):
-      q_id = questions[delete_q_index].get("id")
-      if q_id:
+    if delete_tc_index < len(test_cases):
+      tc_id = test_cases[delete_tc_index].get("id")
+      if tc_id:
         try:
-          client.suites.delete_example(q_id)
+          client.suites.delete_example(tc_id)
         except Exception:
           traceback.print_exc()
       # 2. Delete from Local Store
-      questions.pop(delete_q_index)
+      test_cases.pop(delete_tc_index)
       # 3. Reset Selection if needed
       new_selected = None
-      if questions:
-        new_selected = max(0, min(delete_q_index, len(questions) - 1))
+      if test_cases:
+        new_selected = max(0, min(delete_tc_index, len(test_cases) - 1))
 
       return (
-          questions,
+          test_cases,
           False,  # Close Modal
           new_selected,
           None,  # Clear Q-Index
@@ -1250,20 +1317,20 @@ def confirm_delete_item(
       )
 
   # Case 2: Delete Assertion
-  if delete_a_index is not None and selected_q_index is not None:
-    if selected_q_index < len(questions):
-      q = questions[selected_q_index]
-      if "asserts" in q and delete_a_index < len(q["asserts"]):
-        q["asserts"].pop(delete_a_index)
+  if delete_a_index is not None and selected_index is not None:
+    if selected_index < len(test_cases):
+      tc = test_cases[selected_index]
+      if "asserts" in tc and delete_a_index < len(tc["asserts"]):
+        tc["asserts"].pop(delete_a_index)
 
         # DB Persist (sync the entire suite after assertion change)
         try:
-          questions = client.suites.sync_suite(dataset_id, questions)
+          test_cases = client.suites.sync_suite(suite_id, test_cases)
         except Exception:
           traceback.print_exc()
 
       return (
-          questions,
+          test_cases,
           False,  # Close Modal
           typed_callback.no_update,
           None,  # Clear Q-Index
@@ -1327,10 +1394,10 @@ def _render_simulation_skeleton():
     [
         (Ids.STORE_START_RUN, CP.DATA),
         (Ids.SIM_CONTEXT_CONTAINER, CP.CHILDREN),
-        (Ids.Q_RUN_BTN, "loading"),
+        (Ids.TC_RUN_BTN, "loading"),
         (Ids.SUG_LIST, CP.CHILDREN),
     ],
-    inputs=[(Ids.Q_RUN_BTN, CP.N_CLICKS)],
+    inputs=[(Ids.TC_RUN_BTN, CP.N_CLICKS)],
     prevent_initial_call=True,
 )
 def start_simulation_run(n_clicks):
@@ -1373,19 +1440,21 @@ def start_simulation_run(n_clicks):
         (Ids.SIM_CONTEXT_CONTAINER, CP.CHILDREN),
         (Ids.STORE_PLAYGROUND_RESULT, CP.DATA),
         (Ids.STORE_SUGGESTIONS, CP.DATA),
-        (Ids.Q_RUN_BTN, "loading"),
+        (Ids.TC_RUN_BTN, "loading"),
     ],
     inputs=[(Ids.STORE_START_RUN, CP.DATA)],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
-        (Ids.Q_AGENT_SELECT, CP.VALUE),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
+        (Ids.TC_AGENT_SELECT, CP.VALUE),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def execute_simulation(trigger_data, questions_store, selected_index, agent_id):
-  """Executes the question against the selected agent, scores assertions, and generates suggestions."""
+def execute_simulation(
+    trigger_data, test_cases_store, selected_index, agent_id
+):
+  """Executes the test case against the selected agent, scores assertions, and generates suggestions."""
   if not trigger_data:
     return (
         typed_callback.no_update,
@@ -1396,9 +1465,9 @@ def execute_simulation(trigger_data, questions_store, selected_index, agent_id):
 
   # Extract example_id
   example_id = None
-  if questions_store and selected_index is not None:
-    if selected_index < len(questions_store):
-      example_id = questions_store[selected_index].get("id")
+  if test_cases_store and selected_index is not None:
+    if selected_index < len(test_cases_store):
+      example_id = test_cases_store[selected_index].get("id")
 
   try:
     client = get_client()
@@ -1530,7 +1599,7 @@ def execute_simulation(trigger_data, questions_store, selected_index, agent_id):
     state=[
         (Ids.STORE_SUGGESTIONS, CP.DATA),
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
@@ -1540,7 +1609,7 @@ def handle_inline_suggestion(
     _accept_clicks,
     _reject_clicks,
     suggestions,
-    questions,
+    test_cases,
     selected_index,
     pathname,
 ):
@@ -1588,16 +1657,16 @@ def handle_inline_suggestion(
 
   suggestion = suggestions[sug_idx]
 
-  # If Accepted, add to Question
-  updated_questions = typed_callback.no_update
+  # If Accepted, add to Test Case
+  updated_test_cases = typed_callback.no_update
   if action_type == Ids.INLINE_SUG_ADD_BTN:
     if (
-        questions
+        test_cases
         and selected_index is not None
-        and selected_index < len(questions)
+        and selected_index < len(test_cases)
     ):
-      q = questions[selected_index]
-      current_asserts = q.get("asserts", [])
+      tc = test_cases[selected_index]
+      current_asserts = tc.get("asserts", [])
 
       # Convert simple suggestion to assertion dict
       new_assert = _clean_assertion_for_db(suggestion)
@@ -1606,33 +1675,33 @@ def handle_inline_suggestion(
       # Add to list
       updated_asserts = current_asserts + [new_assert]
 
-      # Update question props
-      q["asserts"] = updated_asserts
-      updated_questions = list(questions)
-      updated_questions[selected_index] = q
+      # Update test case props
+      tc["asserts"] = updated_asserts
+      updated_test_cases = list(test_cases)
+      updated_test_cases[selected_index] = tc
 
       # Persist to DB immediately
-      q_id = q.get("id")
-      if q_id:
+      tc_id = tc.get("id")
+      if tc_id:
         try:
-          # Get dataset_id from URL: /test_suites/edit/<dataset_id>
-          dataset_id = None
+          # Get suite_id from URL: /test_suites/edit/<suite_id>
+          suite_id = None
           if pathname and "/test_suites/edit/" in pathname:
             parts = pathname.split("/")
             try:
-              dataset_id = int(parts[parts.index("edit") + 1])
+              suite_id = int(parts[parts.index("edit") + 1])
             except (ValueError, IndexError):
               pass
 
-          if dataset_id:
+          if suite_id:
             client = get_client()
             # Sync the entire suite and update with returned IDs
-            updated_questions = client.suites.sync_suite(
-                dataset_id, updated_questions
+            updated_test_cases = client.suites.sync_suite(
+                suite_id, updated_test_cases
             )
           else:
             print(
-                "Warning: Could not determine dataset_id from pathname:"
+                "Warning: Could not determine suite_id from pathname:"
                 f" {pathname}"
             )
         except Exception:
@@ -1641,14 +1710,14 @@ def handle_inline_suggestion(
   # Remove from Suggestions Store
   new_suggestions = [s for i, s in enumerate(suggestions) if i != sug_idx]
 
-  return updated_questions, new_suggestions
+  return updated_test_cases, new_suggestions
 
 
 # 5a. Open Suggestion Modal (Immediate)
 @typed_callback(
     (Ids.SUGGESTION_MODAL, CP.OPENED),
     inputs=[
-        (Ids.Q_HISTORY_SUGGESTIONS_BTN, CP.N_CLICKS),
+        (Ids.TC_HISTORY_SUGGESTIONS_BTN, CP.N_CLICKS),
     ],
     prevent_initial_call=True,
 )
@@ -1666,51 +1735,51 @@ def open_suggestion_modal(history_clicks):
         (Ids.VAL_MSG, "children"),
     ],
     inputs=[
-        (Ids.Q_HISTORY_SUGGESTIONS_BTN, CP.N_CLICKS),
+        (Ids.TC_HISTORY_SUGGESTIONS_BTN, CP.N_CLICKS),
     ],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
         ("url", CP.PATHNAME),  # Added pathname to state
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def show_history_suggestions(n_clicks, questions, selected_index):
+def show_history_suggestions(n_clicks, test_cases, selected_index):
   """Shows suggestions from historical trials."""
   if not n_clicks:
     return typed_callback.no_update, False, ""
 
   if (
-      not questions
+      not test_cases
       or selected_index is None
-      or selected_index >= len(questions)
+      or selected_index >= len(test_cases)
   ):
     return (
         [],
         True,
-        dmc.Alert("No question selected.", color="red"),
+        dmc.Alert("No test case selected.", color="red"),
     )
 
-  q_data = questions[selected_index]
-  q_id = q_data.get("id")
+  tc_data = test_cases[selected_index]
+  tc_id = tc_data.get("id")
 
-  if not q_id:
+  if not tc_id:
     return (
         [],
         True,
-        dmc.Alert("Question not saved yet.", color="orange"),
+        dmc.Alert("Test case not saved yet.", color="orange"),
     )
 
   client = get_client()
-  trials = client.trials.list_trials_with_suggestions(original_example_id=q_id)
+  trials = client.trials.list_trials_with_suggestions(original_example_id=tc_id)
 
   if not trials:
     return (
         [],
         True,
         dmc.Alert(
-            "No historical suggestions found for this question.",
+            "No historical suggestions found for this test case.",
             color="blue",
             variant="light",
         ),
@@ -1759,16 +1828,16 @@ def show_history_suggestions(n_clicks, questions, selected_index):
     state=[
         (Ids.SUGGESTION_LIST + "-group", CP.VALUE),
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
 def confirm_suggestions(
-    n_clicks, selected_jsons, questions, selected_index, pathname
+    n_clicks, selected_jsons, test_cases, selected_index, pathname
 ):
-  """Adds selected suggestions to the question."""
+  """Adds selected suggestions to the test case."""
   logging.info(
       "confirm_suggestions called with %s clicks, %s selected",
       n_clicks,
@@ -1784,42 +1853,42 @@ def confirm_suggestions(
 
     # Update Store
     if (
-        questions
+        test_cases
         and selected_index is not None
-        and selected_index < len(questions)
+        and selected_index < len(test_cases)
     ):
-      q = questions[selected_index]
-      current_asserts = q.get("asserts", [])
+      tc = test_cases[selected_index]
+      current_asserts = tc.get("asserts", [])
       # Append new ones
       updated_asserts = current_asserts + new_asserts
-      q["asserts"] = updated_asserts
+      tc["asserts"] = updated_asserts
 
       # Persist to DB
-      q_id = q.get("id")
-      if q_id:
+      tc_id = tc.get("id")
+      if tc_id:
         try:
-          # Get dataset_id from URL: /test_suites/edit/<dataset_id>
-          dataset_id = None
+          # Get suite_id from URL: /test_suites/edit/<suite_id>
+          suite_id = None
           if pathname and "/test_suites/edit/" in pathname:
             parts = pathname.split("/")
             try:
-              dataset_id = int(parts[parts.index("edit") + 1])
+              suite_id = int(parts[parts.index("edit") + 1])
             except (ValueError, IndexError):
               pass
 
-          if dataset_id:
+          if suite_id:
             client = get_client()
             # Sync the entire suite and update with returned IDs
-            questions = client.suites.sync_suite(dataset_id, questions)
+            test_cases = client.suites.sync_suite(suite_id, test_cases)
           else:
             print(
-                "Warning: Could not determine dataset_id from pathname:"
+                "Warning: Could not determine suite_id from pathname:"
                 f" {pathname}"
             )
         except Exception:
           traceback.print_exc()
 
-    return False, questions  # Close Modal and Update Store
+    return False, test_cases  # Close Modal and Update Store
 
   except Exception:
     traceback.print_exc()
@@ -1839,14 +1908,14 @@ def confirm_suggestions(
     ],
     state=[
         (Ids.STORE_BUILDER, CP.DATA),
-        ("selected-question-index", CP.DATA),
+        (Ids.STORE_SELECTED_INDEX, CP.DATA),
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,  # Because other methods update Store
 )
 def toggle_assertion_weight(
-    checked_values, current_questions, selected_index, pathname
+    checked_values, current_test_cases, selected_index, pathname
 ):
   """Toggles assertion weight when switch is clicked."""
   del checked_values  # Unused
@@ -1861,7 +1930,7 @@ def toggle_assertion_weight(
   except (json.JSONDecodeError, KeyError, ValueError, TypeError):
     return typed_callback.no_update
 
-  if selected_index is None or not current_questions:
+  if selected_index is None or not current_test_cases:
     return typed_callback.no_update
 
   # Get the value
@@ -1873,40 +1942,40 @@ def toggle_assertion_weight(
   new_weight = 1 if is_checked else 0
 
   # Update Store
-  # Logic: update current_questions -> selected_index -> asserts -> assert_index
+  # Logic: update current_test_cases -> selected_index -> asserts -> assert_index
   try:
-    q = current_questions[selected_index]
-    if "asserts" in q and len(q["asserts"]) > assert_index:
-      q["asserts"][assert_index]["weight"] = new_weight
+    tc = current_test_cases[selected_index]
+    if "asserts" in tc and len(tc["asserts"]) > assert_index:
+      tc["asserts"][assert_index]["weight"] = new_weight
 
       # Persist to DB
-      q_id = q.get("id")
-      if q_id:
+      tc_id = tc.get("id")
+      if tc_id:
         try:
-          # Get dataset_id from URL: /test_suites/edit/<dataset_id>
-          dataset_id = None
+          # Get suite_id from URL: /test_suites/edit/<suite_id>
+          suite_id = None
           if pathname and "/test_suites/edit/" in pathname:
             parts = pathname.split("/")
             try:
-              dataset_id = int(parts[parts.index("edit") + 1])
+              suite_id = int(parts[parts.index("edit") + 1])
             except (ValueError, IndexError):
               pass
 
-          if dataset_id:
+          if suite_id:
             client = get_client()
             # Sync the entire suite and update with returned IDs
-            current_questions = client.suites.sync_suite(
-                dataset_id, current_questions
+            current_test_cases = client.suites.sync_suite(
+                suite_id, current_test_cases
             )
           else:
             print(
-                "Warning: Could not determine dataset_id from pathname:"
+                "Warning: Could not determine suite_id from pathname:"
                 f" {pathname}"
             )
         except Exception:
           traceback.print_exc()
 
-      return current_questions
+      return current_test_cases
   except (IndexError, KeyError, TypeError):
     pass
 
@@ -1916,7 +1985,7 @@ def toggle_assertion_weight(
 @typed_callback(
     (Ids.MODAL_BULK_ADD, CP.OPENED),
     inputs=[
-        (Ids.Q_BULK_ADD_BTN, CP.N_CLICKS),
+        (Ids.TC_BULK_ADD_BTN, CP.N_CLICKS),
         (Ids.BTN_BULK_ADD_CANCEL, CP.N_CLICKS),
     ],
     prevent_initial_call=True,
@@ -1932,7 +2001,7 @@ def toggle_bulk_add_modal(open_clicks, close_clicks):
       close_clicks,
   )
 
-  if trigger_id == Ids.Q_BULK_ADD_BTN:
+  if trigger_id == Ids.TC_BULK_ADD_BTN:
     return True
   if trigger_id == Ids.BTN_BULK_ADD_CANCEL:
     return False
@@ -1949,18 +2018,18 @@ def toggle_bulk_add_modal(open_clicks, close_clicks):
     prevent_initial_call=True,
 )
 def update_bulk_preview(text_value):
-  """Updates the preview of questions to be added."""
+  """Updates the preview of test cases to be added."""
   if not text_value:
     return "", dmc.Text("No questions to preview", c="dimmed", size="sm")
 
-  questions = [line.strip() for line in text_value.split("\n") if line.strip()]
+  test_cases = [line.strip() for line in text_value.split("\n") if line.strip()]
 
-  if not questions:
-    return "", dmc.Text("No valid questions found", c="dimmed", size="sm")
+  if not test_cases:
+    return "", dmc.Text("No valid test cases found", c="dimmed", size="sm")
 
-  count_text = f"{len(questions)} questions found"
+  count_text = f"{len(test_cases)} test cases found"
   list_items = dmc.List(
-      [dmc.ListItem(q) for q in questions],
+      [dmc.ListItem(tc) for tc in test_cases],
       size="sm",
       spacing="xs",
   )
@@ -1983,8 +2052,8 @@ def update_bulk_preview(text_value):
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def confirm_bulk_add(n_clicks, text_value, current_questions, pathname):
-  """Adds the bulk questions to the list."""
+def confirm_bulk_add(n_clicks, text_value, current_test_cases, pathname):
+  """Adds the bulk test cases to the list."""
   if not n_clicks or not text_value:
     return (
         typed_callback.no_update,
@@ -1992,21 +2061,21 @@ def confirm_bulk_add(n_clicks, text_value, current_questions, pathname):
         typed_callback.no_update,
     )
 
-  new_questions_text = [
+  new_test_cases_text = [
       line.strip() for line in text_value.split("\n") if line.strip()
   ]
 
-  if not new_questions_text:
+  if not new_test_cases_text:
     return (
         typed_callback.no_update,
         typed_callback.no_update,
         typed_callback.no_update,
     )
 
-  current_questions = current_questions or []
+  current_test_cases = current_test_cases or []
 
   # 1. Add to DB
-  # Get suite_id from URL: /test_suites/edit/<dataset_id>
+  # Get suite_id from URL: /test_suites/edit/<suite_id>
   suite_id = None
   if pathname and "/test_suites/edit/" in pathname:
     try:
@@ -2014,35 +2083,35 @@ def confirm_bulk_add(n_clicks, text_value, current_questions, pathname):
     except (ValueError, IndexError):
       pass
 
-  if not suite_id and current_questions:
-    # Fallback to existing questions if URL parsing fails (unlikely)
-    suite_id = current_questions[0].get("suite_id")
+  if not suite_id and current_test_cases:
+    # Fallback to existing test cases if URL parsing fails (unlikely)
+    suite_id = current_test_cases[0].get("suite_id")
 
-  new_q_dicts = []
+  new_tc_dicts = []
 
   if suite_id:
     client = get_client()
-    for q_text in new_questions_text:
+    for tc_text in new_test_cases_text:
       # Create in DB
       example = client.suites.add_example(
-          suite_id=int(suite_id), question=q_text
+          suite_id=int(suite_id), question=tc_text
       )
-      new_q_dicts.append(example.model_dump())
+      new_tc_dicts.append(example.model_dump())
   else:
     # Fallback: Just append dicts (unsaved)
     # This matches `add_question` behavior where `id=None` until saved/refreshed?
     # WARNING: If suite_id is missing, `update_question_text` won't save it either.
     # But we assume `current_questions` is populated if we are in this view.
-    for q_text in new_questions_text:
-      new_q_dicts.append({
+    for tc_text in new_test_cases_text:
+      new_tc_dicts.append({
           "id": None,
-          "question": q_text,
+          "question": tc_text,
           "asserts": [],
       })
 
-  updated_questions = current_questions + new_q_dicts
+  updated_test_cases = current_test_cases + new_tc_dicts
 
-  return updated_questions, False, ""
+  return updated_test_cases, False, ""
 
 
 # --- Suggestion Rendering ---

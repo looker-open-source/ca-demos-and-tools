@@ -21,7 +21,7 @@ import dash_mantine_components as dmc
 from prism.ui.components import run_components
 from prism.ui.components.page_layout import render_page
 from prism.ui.components.run_modals import render_compare_run_modal
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(run_id: str = None):

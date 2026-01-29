@@ -134,3 +134,20 @@ def is_valid_looker_explore(path: str) -> bool:
   """Checks if a string is a valid-looking Looker explore (model.explore)."""
   parts = path.split(".")
   return len(parts) == 2 and all(parts)
+
+
+def clean_empty(data: Any) -> Any:
+  """Recursively removes None, empty strings, lists, and dicts from data."""
+  if isinstance(data, dict):
+    return {
+        k: v
+        for k, v in ((k, clean_empty(v)) for k, v in data.items())
+        if v is not None and v != "" and v != [] and v != {}
+    }
+  elif isinstance(data, list):
+    return [
+        v
+        for v in (clean_empty(x) for x in data)
+        if v is not None and v != "" and v != [] and v != {}
+    ]
+  return data

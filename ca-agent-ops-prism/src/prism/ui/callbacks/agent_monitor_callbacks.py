@@ -98,7 +98,6 @@ def start_discovery(n_clicks):
     state=[
         State(AgentIds.Monitor.INPUT_PROJECT, CP.VALUE),
         State(AgentIds.Monitor.INPUT_LOCATION, CP.VALUE),
-        State(AgentIds.Monitor.SELECT_ENV, CP.VALUE),
     ],
     prevent_initial_call=True,
 )
@@ -106,7 +105,6 @@ def perform_discovery(
     trigger,
     project_id,
     location,
-    env_str,
 ):
   """Fetches agents from GCP and renders a selection table."""
   if not trigger or not project_id or not location:
@@ -114,13 +112,13 @@ def perform_discovery(
 
   # Format parent log just for info (client handles logic now)
   parent = f"projects/{project_id}/locations/{location}"
-  logger.info("Fetching GCP agents for %s in %s", parent, env_str)
+  logger.info("Fetching GCP agents for %s", parent)
 
   client = get_client().agents
 
   try:
-    discovered = client.list_gda_agents(
-        project_id=project_id, location=location, env=env_str
+    discovered = client.discover_gcp_agents(
+        project_id=project_id, location=location
     )
   except Exception as e:
     logger.error("Failed to list GDA agents: %s", e)
@@ -290,14 +288,12 @@ def perform_discovery(
     allow_duplicate=True,
     state=[
         State("discovered-agents-store", "data"),
-        State(AgentIds.Monitor.SELECT_ENV, CP.VALUE),
     ],
     prevent_initial_call=True,
 )
 def monitor_selected_agent(
     n_clicks_list,
     discovered_data,
-    env_str,
 ):
   """Handles selection of a GCP agent to monitor."""
   if not any(n_clicks_list):
@@ -330,9 +326,6 @@ def monitor_selected_agent(
 
   try:
     selected = AgentBase.model_validate(selected_raw)
-    # Override environment with what was selected in the form
-    if selected.config:
-      selected.config.env = env_str
 
     client = get_client().agents
     agent = client.onboard_gcp_agent(name=selected.name, config=selected.config)

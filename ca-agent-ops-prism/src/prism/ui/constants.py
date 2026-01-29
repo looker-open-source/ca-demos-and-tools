@@ -49,6 +49,24 @@ REDIRECT_HANDLER = "redirect-handler"
 GLOBAL_PROJECT_ID_STORE = "global-project-id-store"
 
 
+CHART_TYPE_OPTIONS = [
+    {"label": "Area", "value": "area"},
+    {"label": "Bar", "value": "bar"},
+    {"label": "Circle", "value": "circle"},
+    {"label": "Line", "value": "line"},
+    {"label": "Point", "value": "point"},
+    {"label": "Rect", "value": "rect"},
+    {"label": "Rule", "value": "rule"},
+    {"label": "Square", "value": "square"},
+    {"label": "Text", "value": "text"},
+    {"label": "Tick", "value": "tick"},
+    {"label": "Geoshape", "value": "geoshape"},
+    {"label": "Boxplot", "value": "boxplot"},
+    {"label": "Error Band", "value": "errorband"},
+    {"label": "Error Bar", "value": "errorbar"},
+]
+
+
 ASSERTS_GUIDE = [
     {
         "name": "text-contains",
@@ -97,7 +115,7 @@ ASSERTS_GUIDE = [
         "name": "chart-check-type",
         "label": "Chart Type Match",
         "description": "Checks if a generated chart is of a specific type.",
-        "example": "'bar'",
+        "example": "bar",
     },
     {
         "name": "looker-query-match",

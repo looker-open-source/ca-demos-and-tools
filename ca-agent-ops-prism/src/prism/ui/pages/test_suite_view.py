@@ -12,19 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Page for viewing a dataset in read-only mode."""
+"""Page for viewing a test suite in read-only mode."""
 
 import dash
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
-from prism.ui.components import dataset_components
+from prism.ui.components import test_case_components
 from prism.ui.components.badges import render_coverage_badge
 from prism.ui.components.page_layout import render_page
+from prism.ui.ids import EvaluationIds
+from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models import ui_state
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
-from prism.ui.pages.evaluation_ids import EvaluationIds
 
 
 def _meta_item(label, value, icon=None, mono=False):
@@ -59,47 +59,47 @@ def _meta_item(label, value, icon=None, mono=False):
   )
 
 
-def layout(dataset_id: str = None):
-  """Renders the View Dataset layout (read-only)."""
-  if not dataset_id:
-    return dmc.Text("Invalid Dataset ID", c="red")
+def layout(suite_id: str = None):
+  """Renders the View Test Suite layout (read-only)."""
+  if not suite_id:
+    return dmc.Text("Invalid Test Suite ID", c="red")
 
-  dataset_id_int = int(dataset_id)
+  suite_id_int = int(suite_id)
 
   client = get_client()
-  suite = client.suites.get_suite(dataset_id_int)
-  examples = client.suites.list_examples(dataset_id_int) or []
+  suite = client.suites.get_suite(suite_id_int)
+  test_cases_data = client.suites.list_examples(suite_id_int) or []
 
-  # Convert examples to List[SuiteQuestion] for rendering
-  questions = []
-  for e in examples:
-    questions.append(
-        ui_state.SuiteQuestion(
-            id=e.id,
-            question=e.question,
+  # Convert examples to List[TestCaseState] for rendering
+  test_cases = []
+  for tc in test_cases_data:
+    test_cases.append(
+        ui_state.TestCaseState(
+            id=tc.id,
+            question=tc.question,
             asserts=[
                 (a.model_dump() if hasattr(a, "model_dump") else a)
-                for a in e.asserts or []
+                for a in tc.asserts or []
             ],
         )
     )
 
   if not suite:
     return dmc.Container(
-        dmc.Alert("Dataset not found", color="red"), size="xl", py="xl"
+        dmc.Alert("Test Suite not found", color="red"), size="xl", py="xl"
     )
 
   # Calculate Assertion Coverage
-  total_questions = len(questions)
-  questions_with_asserts = sum(1 for q in questions if q.asserts)
+  total_test_cases = len(test_cases)
+  test_cases_with_asserts = sum(1 for tc in test_cases if tc.asserts)
 
-  if total_questions == 0:
+  if total_test_cases == 0:
     coverage_status = "No Test Cases"
     coverage_color = "gray"
-  elif questions_with_asserts == total_questions:
+  elif test_cases_with_asserts == total_test_cases:
     coverage_status = "Full Coverage"
     coverage_color = "green"
-  elif questions_with_asserts > 0:
+  elif test_cases_with_asserts > 0:
     coverage_status = "Partial Coverage"
     coverage_color = "yellow"
   else:
@@ -141,7 +141,7 @@ def layout(dataset_id: str = None):
                   ),
                   _meta_item(
                       "Test Cases",
-                      str(total_questions),
+                      str(total_test_cases),
                   ),
                   _meta_item(
                       "Created At",
@@ -163,7 +163,7 @@ def layout(dataset_id: str = None):
       description=(
           suite.description
           if suite.description
-          else "View details, metadata, and test cases for this test suite."
+          else ("View details, metadata, and test cases for this test suite.")
       ),
       actions=[
           dmc.Button(
@@ -221,7 +221,7 @@ def layout(dataset_id: str = None):
                                                   variant="light",
                                                   radius="md",
                                               ),
-                                              href=f"/test_suites/edit/{dataset_id}?action=add",
+                                              href=f"/test_suites/edit/{suite_id}?action=add",
                                               underline=False,
                                           ),
                                           dmc.Anchor(
@@ -234,7 +234,7 @@ def layout(dataset_id: str = None):
                                                   variant="default",
                                                   radius="md",
                                               ),
-                                              href=f"/test_suites/edit/{dataset_id}",
+                                              href=f"/test_suites/edit/{suite_id}",
                                               underline=False,
                                           ),
                                       ],
@@ -242,9 +242,9 @@ def layout(dataset_id: str = None):
                               ],
                           ),
                           html.Div(
-                              id=Ids.QUESTION_LIST,
-                              children=render_questions_content(
-                                  questions, dataset_id_int
+                              id=Ids.TEST_CASE_LIST,
+                              children=render_test_cases_content(
+                                  test_cases, suite_id_int
                               ),
                           ),
                       ],
@@ -260,11 +260,11 @@ def layout(dataset_id: str = None):
           html.Div(id=Ids.CANCEL_NEW_BTN, style={"display": "none"}),
           html.Div(id=Ids.CANCEL_EDIT_BTN, style={"display": "none"}),
           html.Div(id=Ids.PLACEHOLDER_SAVE_BTN, style={"display": "none"}),
-          html.Div(id=Ids.MODAL_QUESTION),
+          html.Div(id=Ids.MODAL_TEST_CASE),
           html.Div(id=Ids.MODAL_BULK),
           html.Div(id=Ids.MODAL_DELETE),
-          dash.dcc.Store(id="selected-question-index", data=None),
-          html.Div(id=Ids.ADD_QUESTION_BTN, style={"display": "none"}),
+          dash.dcc.Store(id=Ids.STORE_SELECTED_INDEX, data=None),
+          html.Div(id=Ids.ADD_TEST_CASE_BTN, style={"display": "none"}),
           # Edit Configuration Modal
           render_config_edit_modal(Ids.MODAL_CONFIG_SAVE_BTN),
           # Run Evaluation Modal
@@ -273,19 +273,19 @@ def layout(dataset_id: str = None):
   )
 
 
-def render_questions_content(questions, dataset_id: int):
-  """Renders the questions content area."""
-  if not questions:
+def render_test_cases_content(test_cases, suite_id: int):
+  """Renders the test cases content area."""
+  if not test_cases:
     return []
   return [
       dmc.Anchor(
-          dataset_components.render_question_card(q, i, read_only=True),
-          href=f"/test_suites/edit/{dataset_id}?test_case_id={q.id}",
+          test_case_components.render_test_case_card(tc, i, read_only=True),
+          href=f"/test_suites/edit/{suite_id}?test_case_id={tc.id}",
           underline=False,
           c="inherit",
           style={"display": "block", "textDecoration": "none"},
       )
-      for i, q in enumerate(questions)
+      for i, tc in enumerate(test_cases)
   ]
 
 
@@ -353,7 +353,7 @@ def render_config_edit_modal(save_btn_id: str):
           dmc.Stack(
               gap="xl",
               children=[
-                  dmc.TextInput(id=Ids.NAME, label="Dataset Name"),
+                  dmc.TextInput(id=Ids.NAME, label="Test Suite Name"),
                   dmc.Textarea(id=Ids.DESC, label="Description", minRows=3),
                   dmc.Group(
                       justify="flex-end",
@@ -375,7 +375,7 @@ def render_config_edit_modal(save_btn_id: str):
 def register_page():
   dash.register_page(
       __name__,
-      path_template="/test_suites/view/<dataset_id>",
-      title="Prism | View Dataset",
+      path_template="/test_suites/view/<suite_id>",
+      title="Prism | View Test Suite",
       layout=layout,
   )

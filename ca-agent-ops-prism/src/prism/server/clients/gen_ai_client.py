@@ -22,7 +22,7 @@ from google.genai import types
 import pydantic
 
 # Default model configuration
-VERTEX_DEFAULT_MODEL = "gemini-2.5-pro"
+DEFAULT_MODEL = "gemini-2.5-pro"
 
 ResponseSchema = TypeVar("ResponseSchema", bound=pydantic.BaseModel)
 
@@ -33,16 +33,26 @@ class GenAIClient:
   This client uses the `google-genai` SDK (google.genai).
   """
 
-  def __init__(self, project: str, location: str):
+  def __init__(self, project: str, location: str, model: str | None = None):
     """Initializes the GenAIClient.
 
     Args:
         project: GCP project ID.
         location: Location for Vertex AI.
+        model: The name of the Gemini model to use. If not specified, uses the
+          default model.
     """
     try:
       self.project = project
       self.location = location
+
+      if not model:
+        logging.info(
+            "[GenAI] No model specified, using default model: %s",
+            DEFAULT_MODEL,
+        )
+        model = DEFAULT_MODEL
+      self.model = model
 
       # Use the new Google Gen AI SDK
       self.client = genai.Client(
@@ -56,20 +66,18 @@ class GenAIClient:
   def generate_text(
       self,
       prompt: str,
-      model_name: str = VERTEX_DEFAULT_MODEL,
   ) -> str | None:
     """Generates text using the specified Gemini model.
 
     Args:
         prompt: The text prompt to send to the model.
-        model_name: The name of the Gemini model to use.
 
     Returns:
         The generated text as a string, or None if failed.
     """
     try:
       response = self.client.models.generate_content(
-          model=model_name,
+          model=self.model,
           contents=prompt,
       )
 
@@ -89,14 +97,12 @@ class GenAIClient:
       self,
       prompt: str,
       response_schema: Type[ResponseSchema],
-      model_name: str = VERTEX_DEFAULT_MODEL,
   ) -> ResponseSchema | None:
     """Generates a structured response from the LLM with the given schema.
 
     Args:
         prompt: The text prompt to send to the model.
         response_schema: The Pydantic model class to use for validation.
-        model_name: The name of the Gemini model to use.
 
     Returns:
         An instance of the response_schema or None if generation failed.
@@ -112,7 +118,7 @@ class GenAIClient:
       )
 
       response = self.client.models.generate_content(
-          model=model_name,
+          model=self.model,
           contents=prompt,
           config=config,
       )

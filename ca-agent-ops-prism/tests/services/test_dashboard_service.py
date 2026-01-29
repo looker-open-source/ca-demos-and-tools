@@ -1,5 +1,4 @@
 import datetime
-from prism.common.schemas.agent import AgentEnv
 from prism.common.schemas.execution import RunStatus
 from prism.server.models.agent import Agent
 from prism.server.models.run import Run
@@ -16,7 +15,6 @@ def test_get_dashboard_stats_accuracy_history(db_session: orm.Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
   )
   db_session.add(agent)
   db_session.commit()

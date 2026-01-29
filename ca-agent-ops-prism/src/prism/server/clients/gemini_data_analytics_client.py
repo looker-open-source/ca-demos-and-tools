@@ -28,31 +28,21 @@ from google.protobuf import field_mask_pb2
 from google.protobuf import json_format
 from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.common.schemas.agent import BigQueryConfig
 from prism.common.schemas.agent import LookerConfig
 from prism.common.schemas.trace import AskQuestionResponse
 from prism.common.schemas.trace import DurationMetrics
 
 
-class ClientEnv(str, enum.Enum):
-  """Environment for the Gemini Data Analytics Client."""
-
-  PROD = "prod"
-  STAGING = "staging"
-  AUTOPUSH = "autopush"
-
-
 class GeminiDataAnalyticsClient:
   """A client for interacting with the Google Gemini Data Analytics API."""
 
-  def __init__(self, project: str, env: ClientEnv):
+  def __init__(self, project: str):
     """Initializes the GeminiDataAnalyticsClient.
 
     Args:
         project: The project and location, e.g.,
           'projects/my-project/locations/us-central1'.
-        env: The API environment to target.
     """
     try:
       _, project_id = google.auth.default()
@@ -64,18 +54,7 @@ class GeminiDataAnalyticsClient:
       logging.error("[Auth] Failed to find default credentials: %s", e)
 
     self.project = project
-    self.env = env
     options = None
-
-    match env:
-      case ClientEnv.STAGING:
-        endpoint = "staging-geminidataanalytics.sandbox.googleapis.com"
-        options = client_options.ClientOptions(api_endpoint=endpoint)
-      case ClientEnv.AUTOPUSH:
-        endpoint = "autopush-geminidataanalytics.sandbox.googleapis.com"
-        options = client_options.ClientOptions(api_endpoint=endpoint)
-      case ClientEnv.PROD:
-        pass
 
     self.chat_client = geminidataanalytics.DataChatServiceClient(
         client_options=options
@@ -99,12 +78,6 @@ class GeminiDataAnalyticsClient:
       return None
 
     project_id, location, agent_resource_id = match.groups()
-
-    # Determine Env (Best effort mapping)
-    if self.env == ClientEnv.PROD:
-      agent_env = AgentEnv.PROD
-    else:
-      agent_env = AgentEnv.STAGING
 
     # Parse Datasource
     datasource = None
@@ -143,7 +116,6 @@ class GeminiDataAnalyticsClient:
         project_id=project_id,
         location=location,
         agent_resource_id=agent_resource_id,
-        env=agent_env,
         datasource=datasource,
         system_instruction=system_instruction,
     )

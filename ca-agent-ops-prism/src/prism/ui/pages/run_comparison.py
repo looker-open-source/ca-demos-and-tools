@@ -20,7 +20,7 @@ from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.comparison_ids import ComparisonIds
+from prism.ui.ids import ComparisonIds
 
 
 def layout(**_kwargs):
@@ -344,13 +344,13 @@ def _render_select_runs_modal():
           dmc.Stack(
               children=[
                   dmc.Select(
-                      label="Evaluation Dataset",
-                      placeholder="Select a Dataset first",
-                      id=ComparisonIds.DATASET_SELECT,
+                      label="Evaluation Test Suite",
+                      placeholder="Select a Test Suite first",
+                      id=ComparisonIds.SUITE_SELECT,
                       data=[],
                       searchable=True,
                       leftSection=DashIconify(
-                          icon="material-symbols:database",
+                          icon="material-symbols:folder-open",
                           width=20,
                       ),
                   ),

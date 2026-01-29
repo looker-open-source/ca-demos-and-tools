@@ -20,12 +20,12 @@ from prism.ui.callbacks import agent_context_test_callbacks
 from prism.ui.callbacks import agent_detail_callbacks
 from prism.ui.callbacks import agent_monitor_callbacks
 from prism.ui.callbacks import agent_trace_callbacks
-from prism.ui.callbacks import dataset_callbacks
-from prism.ui.callbacks import dataset_questions_callbacks
 from prism.ui.callbacks import evaluation_callbacks
 from prism.ui.callbacks import home_callbacks
 from prism.ui.callbacks import run_comparison_callbacks
 from prism.ui.callbacks import shell_callbacks
+from prism.ui.callbacks import test_suite_callbacks
+from prism.ui.callbacks import test_suite_questions_callbacks
 
 
 def register_all_callbacks():

@@ -16,7 +16,6 @@
 
 from typing import Any
 
-from prism.common.schemas.agent import AgentEnv
 from prism.server.db import Base
 from prism.server.models.base_mixin import BaseMixin
 import sqlalchemy
@@ -40,9 +39,6 @@ class Agent(Base, BaseMixin):
   )
   agent_resource_id: orm.Mapped[str] = orm.mapped_column(
       sqlalchemy.String, nullable=False
-  )
-  env: orm.Mapped[AgentEnv] = orm.mapped_column(
-      sqlalchemy.Enum(AgentEnv), nullable=False
   )
 
   # Variable Config (Datasource) stored as JSON

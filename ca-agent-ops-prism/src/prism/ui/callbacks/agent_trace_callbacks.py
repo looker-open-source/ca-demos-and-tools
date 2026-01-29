@@ -21,7 +21,7 @@ from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
 from prism.ui.components import timeline
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 from prism.ui.utils import typed_callback
 
 

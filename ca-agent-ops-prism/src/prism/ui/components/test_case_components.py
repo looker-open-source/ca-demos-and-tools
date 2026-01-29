@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Presentational components for the Datasets UI."""
+"""Presentational components for the Test Suites UI."""
 
 import json
 from typing import Any
@@ -21,14 +21,14 @@ from dash_ace import DashAceEditor
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.common.schemas import suite
+from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models import ui_state
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
 
 
-def render_dataset_card(
-    s: suite.Suite, question_count: int = 0, run_count: int = 0
+def render_suite_card(
+    s: suite.Suite, test_case_count: int = 0, run_count: int = 0
 ):
-  """Renders a single dataset card for the dashboard."""
+  """Renders a single test suite card for the dashboard."""
   card_content = dmc.Card(
       p="lg",
       radius="md",
@@ -69,7 +69,7 @@ def render_dataset_card(
                   dmc.Stack(
                       gap=0,
                       children=[
-                          dmc.Text(str(question_count), fw=700),
+                          dmc.Text(str(test_case_count), fw=700),
                           dmc.Text("Test Cases", size="xs", c="dimmed"),
                       ],
                   ),
@@ -176,11 +176,11 @@ def render_assertion_badges(asserts: list[Any]):
   return badges
 
 
-def render_question_card(
-    question: ui_state.SuiteQuestion, index: int, read_only: bool = False
+def render_test_case_card(
+    test_case: ui_state.TestCaseState, index: int, read_only: bool = False
 ):
   """Renders a single test case card in the builder."""
-  asserts = question.asserts or []
+  asserts = test_case.asserts or []
   badges = render_assertion_badges(asserts)
 
   return dmc.Card(
@@ -222,14 +222,14 @@ def render_question_card(
                               },
                           ),
                           dmc.Text(
-                              question.question,
+                              test_case.question,
                               fw=600,
                               size="md",
                               style={"lineHeight": "1.4"},
                           ),
                       ],
                   ),
-                  _render_question_actions(index, read_only),
+                  _render_test_case_actions(index, read_only),
               ],
           ),
           dmc.Group(
@@ -240,7 +240,7 @@ def render_question_card(
   )
 
 
-def _render_question_actions(index: int, read_only: bool):
+def _render_test_case_actions(index: int, read_only: bool):
   """Renders edit/delete buttons if not read-only."""
   if read_only:
     return html.Div()
@@ -251,7 +251,7 @@ def _render_question_actions(index: int, read_only: bool):
           dmc.ActionIcon(
               DashIconify(icon="bi:pencil", width=20),
               id={
-                  "type": "edit-question-btn",
+                  "type": "edit-test-case-btn",
                   "index": index,
               },
               variant="subtle",
@@ -261,7 +261,7 @@ def _render_question_actions(index: int, read_only: bool):
           dmc.ActionIcon(
               DashIconify(icon="bi:trash", width=20),
               id={
-                  "type": Ids.Q_REMOVE_QUESTION_BTN,
+                  "type": Ids.TC_REMOVE_TEST_CASE_BTN,
                   "index": index,
               },
               variant="subtle",
@@ -275,8 +275,8 @@ def _render_question_actions(index: int, read_only: bool):
   )
 
 
-def render_question_nav_item(
-    question: ui_state.SuiteQuestion, index: int, active: bool = False
+def render_test_case_nav_item(
+    test_case: ui_state.TestCaseState, index: int, active: bool = False
 ):
   """Renders a navigation link/button for the test case playground."""
   # Colors from mockup
@@ -306,13 +306,13 @@ def render_question_nav_item(
         )
     )
 
-  assert_count = len(question.asserts)
+  assert_count = len(test_case.asserts)
   count_label = f"{assert_count} Asserts" if assert_count != 1 else "1 Assert"
   coverage_badge = dmc.Badge(
       count_label,
       size="xs",
       variant="light",
-      color="blue" if question.asserts else "orange",
+      color="blue" if test_case.asserts else "orange",
       styles={
           "root": {
               "textTransform": "none",
@@ -323,7 +323,7 @@ def render_question_nav_item(
   )
 
   return dmc.UnstyledButton(
-      id={"type": Ids.Q_LIST_ITEM, "index": index},
+      id={"type": Ids.TC_LIST_ITEM, "index": index},
       w="100%",
       mb="xs",
       children=dmc.Paper(
@@ -365,7 +365,7 @@ def render_question_nav_item(
                   ),
                   # Bottom Row: Test Case Text
                   dmc.Text(
-                      question.question or "(Empty Test Case)",
+                      test_case.question or "(Empty Test Case)",
                       size="sm",
                       fw=600 if active else 500,
                       c=text_color,
@@ -378,15 +378,15 @@ def render_question_nav_item(
   )
 
 
-def render_question_modal(ids: Any):
+def render_test_case_modal(ids: Any):
   """Renders the modal for adding/editing a test case."""
   return dmc.Modal(
-      id=ids.MODAL_QUESTION,
+      id=ids.MODAL_TEST_CASE,
       title="Add/Edit Test Case",
       size="lg",
       children=[
           dmc.Textarea(
-              id=ids.MODAL_QUESTION_TEXT,
+              id=ids.MODAL_TEST_CASE_TEXT,
               label="Test Case Text",
               placeholder="e.g. What is the total revenue for last month?",
               required=True,
@@ -600,6 +600,14 @@ def get_assertion_style(a_type: str):
         "label": "Resolution Confirmation",
         "badge": "SCRIPT",
     })
+  elif a_type == "ai-judge":
+    style.update({
+        "icon": "material-symbols:psychology",
+        "color": "grape",
+        "bg": "grape",
+        "label": "AI Judge",
+        "badge": "LLM",
+    })
 
   return style
 
@@ -754,7 +762,7 @@ def render_assertion_card(assertion: dict[str, Any], index: int):
                                   dmc.ActionIcon(
                                       DashIconify(icon="bi:trash", width=18),
                                       id={
-                                          "type": Ids.Q_REMOVE_ASSERTION_BTN,
+                                          "type": Ids.TC_REMOVE_ASSERTION_BTN,
                                           "index": index,
                                       },
                                       variant="subtle",
@@ -772,7 +780,7 @@ def render_assertion_card(assertion: dict[str, Any], index: int):
   )
 
 
-def render_add_question_placeholder(dataset_id: str):
+def render_add_test_case_placeholder(suite_id: str):
   """Renders a styled placeholder card for adding a new test case."""
   return dmc.Anchor(
       dmc.Paper(
@@ -804,7 +812,7 @@ def render_add_question_placeholder(dataset_id: str):
               )
           ],
       ),
-      href=f"/test_suites/edit/{dataset_id}?action=add",
+      href=f"/test_suites/edit/{suite_id}?action=add",
       underline=False,
       mb="lg",
       style={"display": "block"},

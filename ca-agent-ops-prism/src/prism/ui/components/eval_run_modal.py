@@ -38,8 +38,9 @@ def get_quality_badge(suite: Suite):
     return render_coverage_badge("No Coverage", "red")
 
 
-def render_dataset_card(suite: Suite | None):
-  """Renders the dataset details card."""
+def render_suite_card(suite: Suite | None):
+  """Renders the test suite details card."""
+
   if not suite:
     return None
 
@@ -139,9 +140,9 @@ def render_modal():
               style={"borderBottom": "1px solid #e9ecef"},
               children=[
                   html.Div([
-                      dmc.Title("Evaluate Agent on Dataset", order=3),
+                      dmc.Title("Evaluate Agent on Test Suite", order=3),
                       dmc.Text(
-                          "Select a test dataset to assess the performance of"
+                          "Select a test suite to assess the performance of"
                           " your agent.",
                           c="dimmed",
                           size="sm",
@@ -164,7 +165,7 @@ def render_modal():
               children=[
                   # Validation Alert
                   html.Div(id=AgentIds.Detail.EvalModal.ALERT_VALIDATION),
-                  # Select Dataset
+                  # Select Test Suite
                   dmc.Stack(
                       gap=4,  # Close gap between label and select
                       children=[
@@ -172,7 +173,7 @@ def render_modal():
                               justify="space-between",
                               children=[
                                   dmc.Text(
-                                      "Select a Dataset", fw=500, size="sm"
+                                      "Select a Test Suite", fw=500, size="sm"
                                   ),
                                   dmc.Anchor(
                                       "Manage Test Suites",
@@ -184,24 +185,24 @@ def render_modal():
                               ],
                           ),
                           dmc.Select(
-                              id=AgentIds.Detail.EvalModal.SELECT_DATASET,
-                              placeholder="Search or select a dataset...",
+                              id=AgentIds.Detail.EvalModal.SELECT_SUITE,
+                              placeholder="Search or select a test suite...",
                               data=[],  # Populated via callback
                               searchable=True,
                               nothingFoundMessage=(
-                                  "No compatible datasets found"
+                                  "No compatible test suites found"
                               ),
                               leftSection=DashIconify(
-                                  icon="material-symbols:dataset"
+                                  icon="material-symbols:folder-open"
                               ),
                           ),
                       ],
                   ),
-                  # Dataset Details
+                  # Suite Details
                   html.Div(
-                      id=AgentIds.Detail.EvalModal.DATASET_DETAILS,
+                      id=AgentIds.Detail.EvalModal.SUITE_DETAILS,
                       children=dmc.Alert(
-                          "Select a dataset to view details.",
+                          "Select a test suite to view details.",
                           color="blue",
                           variant="light",
                       ),

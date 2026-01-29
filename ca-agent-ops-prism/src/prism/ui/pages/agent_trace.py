@@ -18,7 +18,7 @@ import dash
 from dash import html
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(**_kwargs):

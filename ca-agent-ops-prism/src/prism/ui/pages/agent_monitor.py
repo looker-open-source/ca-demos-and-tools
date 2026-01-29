@@ -18,7 +18,6 @@ import dash
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.common.schemas.agent import AgentEnv
 from prism.ui.components.page_layout import render_page
 from prism.ui.pages.agent_ids import AgentIds
 
@@ -65,30 +64,6 @@ def _discovery_form():
                               size="md",
                           ),
                       ],
-                  ),
-                  dmc.Select(
-                      label="GDA Environment",
-                      description=(
-                          "The Gemini Data Analytics environment where this"
-                          " agent is hosted."
-                      ),
-                      data=[
-                          {
-                              "label": (
-                                  "production"
-                                  if e == AgentEnv.PROD
-                                  else e.name.lower()
-                              ),
-                              "value": e.value,
-                          }
-                          for e in AgentEnv
-                      ],
-                      value=AgentEnv.PROD.value,
-                      id=AgentIds.Monitor.SELECT_ENV,
-                      required=True,
-                      withAsterisk=True,
-                      size="md",
-                      mt="md",
                   ),
                   dmc.Button(
                       "Discover Agents",

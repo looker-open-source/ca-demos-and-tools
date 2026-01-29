@@ -28,8 +28,9 @@ from prism.client import get_client
 from prism.common.schemas import agent as agent_schemas
 from prism.ui.components import eval_run_modal
 from prism.ui.components.cards import render_detail_card
-from prism.ui.components.dashboard_components import get_dataset_color
+from prism.ui.components.dashboard_components import get_suite_color
 from prism.ui.components.dashboard_components import render_duration_chart
+from prism.ui.components.dashboard_components import render_empty_evaluations_placeholder
 from prism.ui.components.dashboard_components import render_evaluation_chart
 from prism.ui.components.dashboard_components import render_recent_evals_table
 from prism.ui.constants import CP
@@ -127,14 +128,6 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       else "N/A"
   )
 
-  env_display = "N/A"
-  if agent.config and agent.config.env:
-    env_display = (
-        "production"
-        if agent.config.env == agent_schemas.AgentEnv.PROD
-        else agent.config.env.value
-    )
-
   unified_header_card = dmc.Paper(
       withBorder=True,
       radius="md",  # rounded-xl
@@ -143,7 +136,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       children=[
           # Metadata Grid
           dmc.SimpleGrid(
-              cols={"base": 2, "md": 4},
+              cols={"base": 1, "md": 3},
               spacing="md",
               children=[
                   _meta_item(
@@ -154,10 +147,6 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
                   _meta_item(
                       "GCP Location",
                       agent.config.location if agent.config else "N/A",
-                  ),
-                  _meta_item(
-                      "GDA Environment",
-                      env_display,
                   ),
                   _meta_item(
                       "GDA Resource ID",
@@ -276,6 +265,39 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           mb="lg",
       )
 
+  # Decide what analytics/table to show
+  recent_evals = stats.get("recent_evals", [])
+  if not recent_evals:
+    evaluation_section = [render_empty_evaluations_placeholder()]
+  else:
+    evaluation_section = [
+        # Row 1: Analytics Charts
+        dmc.SimpleGrid(
+            cols={"base": 1, "lg": 2},
+            spacing="lg",
+            children=[
+                render_evaluation_chart(
+                    stats.get("daily_accuracy", []),
+                    suites=stats.get("suites"),
+                    dropdown_id=AgentIds.Detail.SELECT_EVAL_ACCURACY_DAYS,
+                    container_id=AgentIds.Detail.CHART_EVAL_ACCURACY_ROOT,
+                    selected_days="Last 30 Days",
+                ),
+                render_duration_chart(
+                    stats.get("daily_duration", []),
+                    suites=stats.get("suites"),
+                    dropdown_id=AgentIds.Detail.SELECT_DURATION_DAYS,
+                    container_id=AgentIds.Detail.CHART_DURATION_ROOT,
+                ),
+            ],
+        ),
+        # Row 2: Full-width Table
+        html.Div(
+            render_recent_evals_table(recent_evals, agent_id=agent_id),
+            style={"width": "100%"},
+        ),
+    ]
+
   # Assemble Layout
   content = dmc.Stack(
       gap="xl",
@@ -283,33 +305,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           credential_warning,
           unified_header_card,
           main_grid,
-          # Row 1: Analytics Charts
-          dmc.SimpleGrid(
-              cols={"base": 1, "lg": 2},
-              spacing="lg",
-              children=[
-                  render_evaluation_chart(
-                      stats.get("daily_accuracy", []),
-                      datasets=stats.get("datasets"),
-                      dropdown_id=AgentIds.Detail.SELECT_EVAL_ACCURACY_DAYS,
-                      container_id=AgentIds.Detail.CHART_EVAL_ACCURACY_ROOT,
-                      selected_days="Last 30 Days",
-                  ),
-                  render_duration_chart(
-                      stats.get("daily_duration", []),
-                      datasets=stats.get("datasets"),
-                      dropdown_id=AgentIds.Detail.SELECT_DURATION_DAYS,
-                      container_id=AgentIds.Detail.CHART_DURATION_ROOT,
-                  ),
-              ],
-          ),
-          # Row 2: Full-width Table
-          html.Div(
-              render_recent_evals_table(
-                  stats.get("recent_evals", []), agent_id=agent_id
-              ),
-              style={"width": "100%"},
-          ),
+          *evaluation_section,
           eval_run_modal.render_modal(),
       ],
   )
@@ -366,14 +362,14 @@ def update_accuracy_chart(days_str: str, pathname: str):
           new_item[k] = round(v * 100, 1)
       processed_data.append(new_item)
 
-  datasets = stats.get("datasets")
+  suites = stats.get("suites")
   series = []
-  if datasets:
-    sorted_datasets = sorted(datasets)
-    for i, ds in enumerate(sorted_datasets):
+  if suites:
+    sorted_suites = sorted(suites)
+    for i, ds in enumerate(sorted_suites):
       series.append({
           "name": ds,
-          "color": get_dataset_color(ds, i),
+          "color": get_suite_color(ds, i),
           "label": ds,
       })
   else:
@@ -389,7 +385,7 @@ def update_accuracy_chart(days_str: str, pathname: str):
       gridAxis="xy",
       withGradient=True,
       withDots=True,
-      withLegend=bool(datasets),
+      withLegend=bool(suites),
       unit="%",
       areaProps={
           "isAnimationActive": True,
@@ -427,15 +423,15 @@ def update_duration_chart(days_str: str, pathname: str):
     return dmc.Text("Error loading data", c="red")
 
   daily_duration = stats.get("daily_duration", [])
-  datasets = stats.get("datasets")
+  suites = stats.get("suites")
 
   series = []
-  if datasets:
-    sorted_datasets = sorted(datasets)
-    for i, ds in enumerate(sorted_datasets):
+  if suites:
+    sorted_suites = sorted(suites)
+    for i, ds in enumerate(sorted_suites):
       series.append({
           "name": ds,
-          "color": get_dataset_color(ds, i),
+          "color": get_suite_color(ds, i),
           "label": ds,
       })
   else:
@@ -451,7 +447,7 @@ def update_duration_chart(days_str: str, pathname: str):
       gridAxis="xy",
       withGradient=True,
       withDots=True,
-      withLegend=bool(datasets),
+      withLegend=bool(suites),
       unit="ms",
       areaProps={
           "isAnimationActive": True,
@@ -543,19 +539,22 @@ def fetch_remote_config(trigger_data):
     explores = datasource.explores or []
 
     # Instance URI
+    if instance_uri:
+      instance_uri_ui = dmc.Code(
+          instance_uri,
+          block=False,
+          style={"display": "inline-block"},
+      )
+    else:
+      instance_uri_ui = dmc.Text("-", size="sm", c="dimmed")
+
     ds_children.append(
         dmc.Stack(
             gap=4,
             align="flex-start",
             children=[
                 dmc.Text("Looker Instance URI", size="xs", c="dimmed"),
-                dmc.Code(
-                    instance_uri,
-                    block=False,
-                    style={"display": "inline-block"},
-                )
-                if instance_uri
-                else dmc.Text("-", size="sm", c="dimmed"),
+                instance_uri_ui,
             ],
             mb="sm",
         )
@@ -980,17 +979,24 @@ dash.clientside_callback(
 @typed_callback(
     [
         Output(AgentIds.Detail.EvalModal.ROOT, "opened"),
-        Output(AgentIds.Detail.EvalModal.SELECT_DATASET, "data"),
+        Output(AgentIds.Detail.EvalModal.SELECT_SUITE, "data"),
         Output(AgentIds.Detail.EvalModal.ALERT_VALIDATION, CP.CHILDREN),
-        Output(AgentIds.Detail.EvalModal.SELECT_DATASET, CP.VALUE),
+        Output(AgentIds.Detail.EvalModal.SELECT_SUITE, CP.VALUE),
     ],
-    [Input(AgentIds.Detail.BTN_RUN_EVAL, CP.N_CLICKS)],
+    [
+        Input(AgentIds.Detail.BTN_RUN_EVAL, CP.N_CLICKS),
+        Input(
+            {"type": "agent-detail-btn-run-eval", "index": dash.ALL},
+            CP.N_CLICKS,
+        ),
+    ],
     [State("url", CP.PATHNAME)],
     prevent_initial_call=True,
 )
-def open_eval_modal(n_clicks, pathname):
-  """Opens the evaluation modal and populates compatible datasets."""
-  if not n_clicks:
+def open_eval_modal(n_clicks, n_clicks_list, pathname):
+  """Opens the evaluation modal and populates compatible test suites."""
+
+  if not n_clicks and not any(n_clicks_list or []):
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
   try:
@@ -1022,19 +1028,19 @@ def open_eval_modal(n_clicks, pathname):
 
 @typed_callback(
     [
-        Output(AgentIds.Detail.EvalModal.DATASET_DETAILS, CP.CHILDREN),
+        Output(AgentIds.Detail.EvalModal.SUITE_DETAILS, CP.CHILDREN),
         Output(AgentIds.Detail.EvalModal.BTN_START, CP.DISABLED),
     ],
-    [Input(AgentIds.Detail.EvalModal.SELECT_DATASET, CP.VALUE)],
+    [Input(AgentIds.Detail.EvalModal.SELECT_SUITE, CP.VALUE)],
     [State("url", CP.PATHNAME)],
     prevent_initial_call=True,
 )
-def handle_dataset_selection(suite_id, pathname):
-  """Shows details for the selected dataset and validates start button."""
+def handle_suite_selection(suite_id, pathname):
+  """Shows details for the selected test suite and validates start button."""
   if not suite_id:
     return (
         dmc.Alert(
-            "Select a dataset to view details.",
+            "Select a test suite to view details.",
             color="blue",
             variant="light",
         ),
@@ -1050,7 +1056,10 @@ def handle_dataset_selection(suite_id, pathname):
   client = get_client()
   suite = client.suites.get_suite(s_id)
   if not suite:
-    return dmc.Alert("Dataset not found.", color="red", variant="light"), True
+    return (
+        dmc.Alert("Test Suite not found.", color="red", variant="light"),
+        True,
+    )
 
   # Validate Agent Credentials again to decide if we can enable the button
   agent = client.agents.get_agent(agent_id)
@@ -1068,7 +1077,7 @@ def handle_dataset_selection(suite_id, pathname):
     ):
       can_start = False
 
-  return eval_run_modal.render_dataset_card(suite), not can_start
+  return eval_run_modal.render_suite_card(suite), not can_start
 
 
 @typed_callback(
@@ -1081,7 +1090,7 @@ def handle_dataset_selection(suite_id, pathname):
     [Input(AgentIds.Detail.EvalModal.BTN_START, CP.N_CLICKS)],
     [
         State("url", CP.PATHNAME),
-        State(AgentIds.Detail.EvalModal.SELECT_DATASET, CP.VALUE),
+        State(AgentIds.Detail.EvalModal.SELECT_SUITE, CP.VALUE),
     ],
     prevent_initial_call=True,
 )

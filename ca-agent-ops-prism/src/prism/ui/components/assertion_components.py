@@ -21,11 +21,12 @@ from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.common.schemas.execution import Trial
-from prism.ui.constants import ASSERTS_GUIDE
+from prism.ui.constants import ASSERTS_GUIDE, CHART_TYPE_OPTIONS
+from prism.ui.ids import ComparisonIds
+from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models.ui_state import AssertionMetric
 from prism.ui.models.ui_state import AssertionSummary
-from prism.ui.pages.comparison_ids import ComparisonIds
-from prism.ui.pages.dataset_ids import DatasetIds as Ids
+from prism.ui.utils import clean_empty
 import yaml
 
 
@@ -150,6 +151,23 @@ def _render_code_editor(ids_class):
                                               }
                                           },
                                           className="font-mono",
+                                      ),
+                                      dmc.Select(
+                                          id=ids_class.ASSERT_CHART_TYPE
+                                          if hasattr(
+                                              ids_class, "ASSERT_CHART_TYPE"
+                                          )
+                                          else ids_class.TRIAL_SUG_EDIT_CHART_TYPE
+                                          if hasattr(
+                                              ids_class,
+                                              "TRIAL_SUG_EDIT_CHART_TYPE",
+                                          )
+                                          else ids_class.SUG_EDIT_CHART_TYPE,
+                                          data=CHART_TYPE_OPTIONS,
+                                          placeholder="Select chart type...",
+                                          style={"display": "none"},
+                                          searchable=True,
+                                          allowDeselect=False,
                                       ),
                                   ],
                               ),
@@ -615,7 +633,14 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
     for k, v in columns.items():
       # Key
       grid_children.append(
-          dmc.Text(f"{k}:", c="dimmed", ta="right", ff="mono", size="sm")
+          dmc.Text(
+              f"{k}:",
+              c="dimmed",
+              ta="right",
+              ff="mono",
+              size="sm",
+              style={"wordBreak": "break-all", "maxWidth": "250px"},
+          )
       )
       # Value (Styled)
       color = "teal" if isinstance(v, str) else "blue"
@@ -625,7 +650,14 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
         color = "violet"
 
       grid_children.append(
-          dmc.Text(str(v), fw=600, c=color, ff="mono", size="sm")
+          dmc.Text(
+              str(v),
+              fw=600,
+              c=color,
+              ff="mono",
+              size="sm",
+              style={"wordBreak": "break-all"},
+          )
       )
 
     return dmc.Box(
@@ -1295,7 +1327,7 @@ def render_suggestion_skeleton():
   return dmc.SimpleGrid(cols=2, spacing="lg", children=[skeleton_card] * 4)
 
 
-def render_empty_suggestions(button_id: str | dict | None = None):
+def render_empty_suggestions(button_id: str | dict[str, Any] | None = None):
   """Renders a high-fidelity empty state for assertion suggestions."""
   children = [
       dmc.ThemeIcon(
@@ -1305,10 +1337,10 @@ def render_empty_suggestions(button_id: str | dict | None = None):
           variant="light",
           color="grape",
       ),
-      dmc.Text("No suggestions yet.", fw=700, size="lg"),
+      dmc.Text("No suggested assertions.", fw=700, size="lg"),
       dmc.Text(
-          "Generate new assertion to get AI-powered insights"
-          " based on this execution's trace.",
+          "There are currently no suggested assertions for this trial"
+          " execution.",
           c="dimmed",
           size="sm",
           ta="center",
@@ -1489,7 +1521,7 @@ def _format_assertion_value(assertion: Any) -> str:
     params = assertion.get("params", {})
     if params:
       return yaml.dump(
-          params, sort_keys=False, default_flow_style=False
+          clean_empty(params), sort_keys=False, default_flow_style=False
       ).strip()
     return assertion.get("yaml_config") or ""
 
@@ -1497,12 +1529,14 @@ def _format_assertion_value(assertion: Any) -> str:
     columns = assertion.get("columns", {})
     if columns:
       return yaml.dump(
-          columns, sort_keys=False, default_flow_style=False
+          clean_empty(columns), sort_keys=False, default_flow_style=False
       ).strip()
 
   val = assertion.get("value", "")
   if isinstance(val, (dict, list)):
-    return yaml.dump(val, sort_keys=False, default_flow_style=False).strip()
+    return yaml.dump(
+        clean_empty(val), sort_keys=False, default_flow_style=False
+    ).strip()
 
   if isinstance(val, str) and val:
     return f'"{val}"'
@@ -1540,8 +1574,20 @@ def _render_assertion_value_display(
             dmc.Group(
                 gap=4,
                 children=[
-                    dmc.Text(f"{k}:", c="pink.3", ff="mono", size="xs"),
-                    dmc.Text(json.dumps(v), c="yellow.2", ff="mono", size="xs"),
+                    dmc.Text(
+                        f"{k}:",
+                        c="pink.3",
+                        ff="mono",
+                        size="xs",
+                        style={"wordBreak": "break-all", "maxWidth": "150px"},
+                    ),
+                    dmc.Text(
+                        json.dumps(v),
+                        c="yellow.2",
+                        ff="mono",
+                        size="xs",
+                        style={"wordBreak": "break-all"},
+                    ),
                 ],
             )
         )

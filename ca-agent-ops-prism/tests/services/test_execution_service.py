@@ -1,7 +1,6 @@
 import unittest.mock
 
 from prism.common.schemas.agent import AgentConfig
-from prism.common.schemas.agent import AgentEnv
 from prism.common.schemas.agent import BigQueryConfig
 from prism.server.clients.gemini_data_analytics_client import AskQuestionResponse
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
@@ -36,7 +35,6 @@ def test_create_run_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
       datasource=BigQueryConfig(tables=["t1"]),
   )
   agent = agent_repo.create(name="Execute Bot", config=config)
@@ -82,7 +80,6 @@ def test_execute_run_service(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
       datasource=BigQueryConfig(tables=["t1"]),
   )
   agent = agent_repo.create(name="Execute Bot", config=config)
@@ -132,7 +129,6 @@ def test_execute_trial_failure(db_session: Session):
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
       datasource=BigQueryConfig(tables=["t1"]),
   )
   agent = agent_repo.create(name="Fail Bot", config=config)

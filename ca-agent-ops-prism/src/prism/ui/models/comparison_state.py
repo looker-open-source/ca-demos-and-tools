@@ -20,7 +20,7 @@ import pydantic
 class RunComparisonUIState(pydantic.BaseModel):
   """State for the Run Comparison page (URL-driven)."""
 
-  dataset_id: int | None = None
+  suite_id: int | None = None
   base_run_id: int | None = None
   challenger_run_id: int | None = None
 

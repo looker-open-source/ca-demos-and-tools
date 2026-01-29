@@ -38,7 +38,6 @@ class TestClientDI(unittest.TestCase):
                 project_id="test-project",
                 location="us-central1",
                 agent_resource_id="agent-123",
-                env=agent_schemas.AgentEnv.STAGING,
             ),
             created_by="user",
             created_at="2024-01-01T00:00:00",

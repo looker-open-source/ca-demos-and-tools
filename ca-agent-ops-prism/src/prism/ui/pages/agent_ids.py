@@ -130,6 +130,7 @@ class AgentIds:
     BADGE_DATASOURCE = "agent-detail-badge-datasource"
     STORE_REMOTE_TRIGGER = "agent-detail-store-remote-trigger"
     STORE_REFRESH_TRIGGER = "agent-detail-store-refresh-trigger"
+    BTN_EMPTY_RUN_EVAL = {"type": "agent-detail-btn-run-eval", "index": "empty"}
 
     # Analytics
     SELECT_EVAL_ACCURACY_DAYS = "agent-detail-select-eval-accuracy-days"
@@ -139,8 +140,8 @@ class AgentIds:
 
     class EvalModal:
       ROOT = "agent-detail-eval-modal"
-      SELECT_DATASET = "agent-detail-eval-select-dataset"
+      SELECT_SUITE = "agent-detail-eval-select-suite"
       BTN_START = "agent-detail-eval-btn-start"
       BTN_CANCEL = "agent-detail-eval-btn-cancel"
-      DATASET_DETAILS = "agent-detail-eval-dataset-details"
+      SUITE_DETAILS = "agent-detail-eval-suite-details"
       ALERT_VALIDATION = "agent-detail-eval-alert-validation"

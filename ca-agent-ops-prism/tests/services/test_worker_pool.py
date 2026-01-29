@@ -8,7 +8,7 @@ from typing import Any
 import unittest.mock
 
 from prism.common.schemas import execution
-from prism.common.schemas.agent import AgentConfig, AgentEnv, BigQueryConfig
+from prism.common.schemas.agent import AgentConfig, BigQueryConfig
 from prism.server import db
 from prism.server.models import run as run_models
 from prism.server.repositories.agent_repository import AgentRepository
@@ -101,7 +101,6 @@ def test_worker_pool_resiliency(
           project_id="p",
           location="l",
           agent_resource_id="r",
-          env=AgentEnv.STAGING,
           datasource=BigQueryConfig(tables=["t1"]),
       )
       agent = agent_repo.create(name="Bot", config=config)
@@ -119,8 +118,11 @@ def test_worker_pool_resiliency(
       start_time = time.time()
       found = False
       while time.time() - start_time < max_wait:
+        db_session.commit()
         db_session.expire_all()
         t = db_session.get(run_models.Trial, trial_id)
+        if t:
+          print(f"DEBUG: Trial {trial_id} status: {t.status}")
         if t and t.status == execution.RunStatus.COMPLETED:
           found = True
           break
@@ -152,7 +154,6 @@ def test_stale_trial_recovery(
       project_id="p",
       location="l",
       agent_resource_id="r",
-      env=AgentEnv.STAGING,
       datasource=BigQueryConfig(tables=["t1"]),
   )
   agent = agent_repo.create(name="Stale Bot", config=config)

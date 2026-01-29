@@ -20,7 +20,9 @@ from typing import Any, Dict, List
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+from prism.ui.components import links
 from prism.ui.components.badges import render_status_badge
+from prism.ui.pages.agent_ids import AgentIds
 
 
 def render_kpi_card(
@@ -126,21 +128,21 @@ def render_kpi_card(
   )
 
 
-def get_dataset_color(dataset_name: str, index: int | None = None) -> str:
-  """Returns a consistent color for a dataset name."""
+def get_suite_color(suite_name: str, index: int | None = None) -> str:
+  """Returns a consistent color for a test suite name."""
   colors = ["violet", "blue", "teal", "lime", "orange", "red", "pink"]
   if index is not None:
     return f"{colors[index % len(colors)]}.6"
 
   # Fallback to hash-based if index not available
   # (though we usually have it from sorted list)
-  h = int(hashlib.md5(dataset_name.encode()).hexdigest(), 16)
+  h = int(hashlib.md5(suite_name.encode()).hexdigest(), 16)
   return f"{colors[h % len(colors)]}.6"
 
 
 def render_evaluation_chart(
     daily_accuracy: List[Dict[str, Any]],
-    datasets: List[str] | None = None,
+    suites: List[str] | None = None,
     dropdown_id: str | None = None,
     container_id: str | None = None,
     selected_days: str = "Last 30 Days",
@@ -155,15 +157,15 @@ def render_evaluation_chart(
         **({"id": container_id} if container_id else {}),
     )
 
-  # Generate series dynamically if datasets provided
+  # Generate series dynamically if suites provided
   series = []
-  if datasets:
-    # Sort datasets to ensure consistent indexing for colors
-    sorted_datasets = sorted(datasets)
-    for i, ds in enumerate(sorted_datasets):
+  if suites:
+    # Sort suites to ensure consistent indexing for colors
+    sorted_suites = sorted(suites)
+    for i, ds in enumerate(sorted_suites):
       series.append({
           "name": ds,
-          "color": get_dataset_color(ds, i),
+          "color": get_suite_color(ds, i),
           "label": ds,
       })
   else:
@@ -179,6 +181,16 @@ def render_evaluation_chart(
         if k != "date" and isinstance(v, (int, float)):
           new_item[k] = round(v * 100, 1)
       processed_data.append(new_item)
+
+  dropdown = None
+  if dropdown_id:
+    dropdown = dmc.Select(
+        id=dropdown_id,
+        data=["Last 30 Days", "Last 7 Days"],
+        value=selected_days,
+        size="sm",
+        w=150,
+    )
 
   return dmc.Paper(
       withBorder=True,
@@ -198,21 +210,11 @@ def render_evaluation_chart(
                               "Performance trend over time",
                               c="dimmed",
                               size="sm",
-                              mb="sm"
-                              if datasets
-                              else 0,  # Add space for legend if complex?
+                              mb="sm" if suites else 0,
                           ),
                       ],
                   ),
-                  dmc.Select(
-                      id=dropdown_id,
-                      data=["Last 30 Days", "Last 7 Days"],
-                      value=selected_days,
-                      size="sm",
-                      w=150,
-                  )
-                  if dropdown_id
-                  else None,
+                  dropdown,
               ],
           ),
           html.Div(
@@ -227,7 +229,7 @@ def render_evaluation_chart(
                       gridAxis="xy",
                       withGradient=True,
                       withDots=True,
-                      withLegend=bool(datasets),
+                      withLegend=bool(suites),
                       unit="%",
                       areaProps={
                           "isAnimationActive": True,
@@ -291,7 +293,7 @@ def render_run_volume_chart(
 
 def render_duration_chart(
     daily_duration: list[dict[str, Any]],
-    datasets: list[str] | None = None,
+    suites: list[str] | None = None,
     dropdown_id: str | None = None,
     container_id: str | None = None,
     selected_days: str = "Last 30 Days",
@@ -307,17 +309,27 @@ def render_duration_chart(
     )
 
   series = []
-  if datasets:
-    # Sort datasets to ensure consistent indexing for colors
-    sorted_datasets = sorted(datasets)
-    for i, ds in enumerate(sorted_datasets):
+  if suites:
+    # Sort suites to ensure consistent indexing for colors
+    sorted_suites = sorted(suites)
+    for i, ds in enumerate(sorted_suites):
       series.append({
           "name": ds,
-          "color": get_dataset_color(ds, i),
+          "color": get_suite_color(ds, i),
           "label": ds,
       })
   else:
     series = [{"name": "duration", "color": "teal.6", "label": "Duration (ms)"}]
+
+  dropdown = None
+  if dropdown_id:
+    dropdown = dmc.Select(
+        id=dropdown_id,
+        data=["Last 30 Days", "Last 7 Days"],
+        value=selected_days,
+        size="sm",
+        w=150,
+    )
 
   return dmc.Paper(
       withBorder=True,
@@ -334,21 +346,13 @@ def render_duration_chart(
                       children=[
                           dmc.Text("Duration Trends", fw=700, size="lg"),
                           dmc.Text(
-                              "Average execution time per dataset",
+                              "Average execution time per test suite",
                               c="dimmed",
                               size="sm",
                           ),
                       ],
                   ),
-                  dmc.Select(
-                      id=dropdown_id,
-                      data=["Last 30 Days", "Last 7 Days"],
-                      value=selected_days,
-                      size="sm",
-                      w=150,
-                  )
-                  if dropdown_id
-                  else None,
+                  dropdown,
               ],
           ),
           html.Div(
@@ -363,7 +367,7 @@ def render_duration_chart(
                       gridAxis="xy",
                       withGradient=True,
                       withDots=True,
-                      withLegend=bool(datasets),
+                      withLegend=bool(suites),
                       unit="ms",
                       areaProps={
                           "isAnimationActive": True,
@@ -400,7 +404,7 @@ def render_recent_evals_table(
     status_color = config["color"]
     status_label = config["label"]
 
-    score_pct = int(run["score"] * 100) if run["score"] is not None else None
+    score_pct = run["score"] * 100 if run["score"] is not None else None
 
     # Date formatting
     created_at = run.get("created_at")
@@ -436,13 +440,13 @@ def render_recent_evals_table(
       score_content = dmc.Group(
           [
               dmc.Progress(
-                  value=score_pct,
+                  value=int(score_pct),
                   color=score_bar_color,
                   size="sm",
                   radius="md",
                   w=60,
               ),
-              dmc.Text(f"{score_pct}%", size="sm", fw=700),
+              dmc.Text(f"{score_pct:.1f}%", size="sm", fw=700),
           ],
           gap="xs",
       )
@@ -463,24 +467,10 @@ def render_recent_evals_table(
                 ),
                 style={"padding": "16px 24px"},
             ),
-            # Dataset
+            # Test Suite Link
             html.Td(
-                dmc.Group(
-                    [
-                        dmc.ThemeIcon(
-                            DashIconify(
-                                icon="material-symbols:folder-open", width=20
-                            ),
-                            variant="light",
-                            color="blue",
-                            size="md",
-                            radius="md",
-                        ),
-                        dmc.Text(
-                            run.get("dataset_name", "N/A"), size="sm", fw=500
-                        ),
-                    ],
-                    gap="xs",
+                links.render_test_suite_link(
+                    run.get("suite_id", "N/A"), run.get("suite_name", "N/A")
                 ),
                 style={"padding": "16px 24px"},
             ),
@@ -572,7 +562,7 @@ def render_recent_evals_table(
                                           "whiteSpace": "nowrap",
                                       },
                                   ),
-                                  html.Th("DATASET", style=header_style),
+                                  html.Th("TEST SUITE", style=header_style),
                                   html.Th("STATUS", style=header_style),
                                   html.Th("ACCURACY", style=header_style),
                                   html.Th("DURATION", style=header_style),
@@ -600,4 +590,62 @@ def render_recent_evals_table(
               ),
           ),
       ],
+  )
+
+
+def render_empty_evaluations_placeholder() -> dmc.Paper:
+  """Renders a placeholder when no evaluation data is available."""
+  return dmc.Paper(
+      withBorder=True,
+      radius="md",
+      p=60,
+      shadow="sm",
+      children=dmc.Center(
+          dmc.Stack(
+              align="center",
+              gap="md",
+              children=[
+                  dmc.ThemeIcon(
+                      DashIconify(icon="bi:clipboard-x", width=40),
+                      size=80,
+                      radius=100,
+                      color="gray.1",
+                      variant="light",
+                      style={
+                          "color": "var(--mantine-color-gray-4)",
+                          "border": "2px dashed var(--mantine-color-gray-3)",
+                      },
+                  ),
+                  dmc.Stack(
+                      gap=4,
+                      align="center",
+                      children=[
+                          dmc.Text(
+                              "Agent not yet evaluated",
+                              fw=600,
+                              size="lg",
+                              c="dark",
+                          ),
+                          dmc.Text(
+                              "Data will appear once the agent has been"
+                              " evaluated on a test suite.",
+                              c="dimmed",
+                              size="sm",
+                              ta="center",
+                              style={"maxWidth": "320px"},
+                          ),
+                      ],
+                  ),
+                  dmc.Button(
+                      "Run Your First Evaluation",
+                      id=AgentIds.Detail.BTN_EMPTY_RUN_EVAL,
+                      variant="light",
+                      color="blue",
+                      radius="md",
+                      mt="md",
+                      leftSection=DashIconify(icon="bi:play-fill", width=18),
+                  ),
+              ],
+          )
+      ),
   )

@@ -28,6 +28,7 @@ def render_detail_card(
     description: str | None = None,
     action: Any = None,
     card_id: str | dict[str, Any] | None = None,
+    icon_color: str = "#94a3b8",
     **kwargs,
 ) -> dmc.Card:
   """Renders a standardized detail card with a header and content body.
@@ -39,6 +40,7 @@ def render_detail_card(
     description: Optional subtitle/description text.
     action: Optional component to display on the right side of the header.
     card_id: Optional ID for the card component.
+    icon_color: Optional color for the header icon.
     **kwargs: Additional arguments passed to dmc.Card.
 
   Returns:
@@ -53,7 +55,7 @@ def render_detail_card(
           dmc.Group(
               gap="xs",
               children=[
-                  DashIconify(icon=icon, width=20, color="#94a3b8")
+                  DashIconify(icon=icon, width=20, color=icon_color)
                   if icon
                   else None,
                   dmc.Text(title, fw=700, size="lg"),
@@ -108,17 +110,45 @@ def render_error_card(
   """
   title = f"Failed during {stage}" if stage else "Trial Execution Failed"
 
+  # Parse the message to handle escaped and real newlines
+  clean_message = message.replace("\\n", "\n")
+  parts = clean_message.split("\n")
+  summary = parts[0]
+  details = "\n".join(parts[1:]).strip() if len(parts) > 1 else None
+
   children = [
       dmc.Alert(
-          message,
-          title="Error Details",
+          summary,
+          title="Error Summary",
           color="red",
           variant="light",
           radius="md",
           icon=DashIconify(icon="bi:exclamation-triangle-fill"),
-          mb="md" if traceback_str else 0,
+          mb="md" if details or traceback_str else 0,
       )
   ]
+
+  if details:
+    children.append(
+        dmc.Stack(
+            gap=4,
+            children=[
+                dmc.Text("Details", fw=600, size="sm", c="red.9"),
+                dmc.Code(
+                    details,
+                    block=True,
+                    fz="xs",
+                    color="red.0",
+                    p="xs",
+                    style={
+                        "border": "1px solid var(--mantine-color-red-1)",
+                        "color": "var(--mantine-color-red-9)",
+                    },
+                ),
+            ],
+            mb="md" if traceback_str else 0,
+        )
+    )
 
   if traceback_str:
     children.append(

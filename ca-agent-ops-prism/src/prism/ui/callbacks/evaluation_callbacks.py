@@ -16,6 +16,7 @@
 
 import logging
 import time
+import traceback
 from typing import Any
 import urllib.parse
 
@@ -31,16 +32,16 @@ from prism.common.schemas.execution import Trial
 from prism.ui import constants
 from prism.ui.components import assertion_components
 from prism.ui.components import cards
-from prism.ui.components import dataset_components
 from prism.ui.components import run_components
 from prism.ui.components import tables
+from prism.ui.components import test_case_components as test_case_components
 from prism.ui.components import timeline
 from prism.ui.constants import CP
 from prism.ui.constants import REDIRECT_HANDLER
+from prism.ui.ids import EvaluationIds
 from prism.ui.models.ui_state import AssertionMetric
 from prism.ui.models.ui_state import AssertionSummary
 from prism.ui.models.ui_state import RunDetailPageState
-from prism.ui.pages.evaluation_ids import EvaluationIds
 from prism.ui.utils import handle_errors
 from prism.ui.utils import typed_callback
 
@@ -66,18 +67,18 @@ def render_run_list(pathname: str, search: str):
   # Parse Filters from URL
   parsed_qs = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
   agent_id = parsed_qs.get("agent_id", [None])[0]
-  dataset_id = parsed_qs.get("dataset_id", [None])[0]
+  suite_id = parsed_qs.get("suite_id", [None])[0]
   status = parsed_qs.get("status", [None])[0]
 
   # Convert types
   agent_id = int(agent_id) if agent_id else None
-  dataset_id = int(dataset_id) if dataset_id else None
+  suite_id = int(suite_id) if suite_id else None
   status_enum = RunStatus(status) if status else None
 
   client = get_client()
   runs = client.runs.list_runs(
       agent_id=agent_id,
-      original_suite_id=dataset_id,
+      original_suite_id=suite_id,
       status=status_enum,
   )
 
@@ -100,7 +101,7 @@ def render_run_list(pathname: str, search: str):
     dash.Output("url", "search", allow_duplicate=True),
     inputs=[
         (EvaluationIds.FILTER_AGENT, CP.VALUE),
-        (EvaluationIds.FILTER_DATASET, CP.VALUE),
+        (EvaluationIds.FILTER_SUITE, CP.VALUE),
         (EvaluationIds.FILTER_STATUS, CP.VALUE),
     ],
     state=[("url", CP.SEARCH)],
@@ -108,7 +109,7 @@ def render_run_list(pathname: str, search: str):
 )
 def update_eval_url_from_filters(
     agent_id: str | None,
-    dataset_id: str | None,
+    suite_id: str | None,
     status: str | None,
     current_search: str,
 ):
@@ -125,10 +126,10 @@ def update_eval_url_from_filters(
   else:
     params.pop("agent_id", None)
 
-  if dataset_id:
-    params["dataset_id"] = [dataset_id]
+  if suite_id:
+    params["suite_id"] = [suite_id]
   else:
-    params.pop("dataset_id", None)
+    params.pop("suite_id", None)
 
   if status:
     params["status"] = [status]
@@ -144,7 +145,7 @@ def update_eval_url_from_filters(
 @typed_callback(
     output=[
         (EvaluationIds.FILTER_AGENT, CP.VALUE),
-        (EvaluationIds.FILTER_DATASET, CP.VALUE),
+        (EvaluationIds.FILTER_SUITE, CP.VALUE),
         (EvaluationIds.FILTER_STATUS, CP.VALUE),
     ],
     inputs=[("url", CP.SEARCH)],
@@ -156,21 +157,22 @@ def sync_eval_filters_to_url(search: str):
 
   params = urllib.parse.parse_qs(search.lstrip("?"))
   agent_id = params.get("agent_id", [None])[0]
-  dataset_id = params.get("dataset_id", [None])[0]
+  suite_id = params.get("suite_id", [None])[0]
   status = params.get("status", [None])[0]
 
-  return agent_id, dataset_id, status
+  return agent_id, suite_id, status
 
 
 @typed_callback(
     output=[
         (EvaluationIds.FILTER_AGENT, CP.DATA),
-        (EvaluationIds.FILTER_DATASET, CP.DATA),
+        (EvaluationIds.FILTER_SUITE, CP.DATA),
     ],
     inputs=[("url", CP.PATHNAME)],
 )
 def populate_eval_filter_options(pathname: str):
-  """Populate Agent and Dataset filter options."""
+  """Populate Agent and Test Suite filter options."""
+
   if pathname != "/evaluations":
     return typed_callback.no_update, dash.no_update
 
@@ -178,13 +180,13 @@ def populate_eval_filter_options(pathname: str):
   agents = client.agents.list_agents()
   agent_data = [{"label": a.name, "value": str(a.id)} for a in agents]
 
-  # Get unique datasets based on original_suite_id from snapshots
+  # Get unique test suites based on original_suite_id from snapshots
   suites = client.runs.get_unique_suites_from_snapshots()
-  dataset_data = [
+  suite_data = [
       {"label": s["name"], "value": str(s["original_suite_id"])} for s in suites
   ]
 
-  return agent_data, dataset_data
+  return agent_data, suite_data
 
 
 # --- Comparison Modal ---
@@ -254,7 +256,7 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
   client = get_client()
 
   # If we have a preselect_run_id, we only want to show compatible runs
-  # (same dataset)
+  # (same test suite)
   filter_suite_id = None
   if preselect_run_id:
     current_run = client.runs.get_run(int(preselect_run_id))
@@ -348,7 +350,7 @@ def swap_modal_runs(n_clicks: int, base_id: str | int, chal_id: str | int):
     prevent_initial_call=True,
 )
 def filter_challenger_runs(base_run_id: str | None) -> list[dict[str, str]]:
-  """Filters challenger runs to match the dataset of the selected base run."""
+  """Filters challenger runs to match the test suite of the selected base run."""
   if not base_run_id:
     return dash.no_update
 
@@ -878,6 +880,8 @@ def _calculate_assertion_summary(
         (EvaluationIds.TRIAL_DESCRIPTION, CP.CHILDREN),
         (EvaluationIds.TRIAL_ACTIONS, CP.CHILDREN),
         (EvaluationIds.TRIAL_DETAIL_CONTAINER, CP.CHILDREN),
+        (EvaluationIds.TRIAL_SUGGESTIONS_CONTENT, CP.CHILDREN),
+        (EvaluationIds.TRIAL_SUG_ACCORDION, "style"),
     ],
     inputs=[
         ("url", CP.PATHNAME),
@@ -903,9 +907,8 @@ def render_trial_detail(
     return [dash.no_update] * 5
 
   logging.info(
-      "Rendering trial detail trial_id=%s signal=%s loading=%s",
-      trial_id,
-      update_signal,
+      "Rendering trial detail pathname=%s loading=%s",
+      pathname,
       sug_loading,
   )
 
@@ -1112,33 +1115,183 @@ def render_trial_detail(
   unique_types = sorted(list({item["type"] for item in assertion_details}))
   type_options = [{"label": "All Types", "value": "all"}]
   for ut in unique_types:
-    style = dataset_components.get_assertion_style(ut)
+    style = test_case_components.get_assertion_style(ut)
     type_options.append({"label": style["label"], "value": ut})
 
-  assertion_cards = []
-  for item in assertion_details:
-    weight = item["weight"]
-    category = "Accuracy" if weight > 0 else "Diagnostic"
-    a_type = item["type"]
+  # --- Assertions Section ---
+  if trial.status == RunStatus.FAILED:
+    render_assertions = dmc.Alert(
+        "Assertions were not evaluated because the trial failed.",
+        color="gray",
+        variant="light",
+        radius="md",
+        icon=DashIconify(icon="bi:info-circle"),
+    )
+    assertions_header = dmc.Group(
+        [
+            dmc.Text("Assertions", fw=700, size="xl"),
+            dmc.Badge(
+                "Not Evaluated",
+                variant="light",
+                color="gray",
+                size="xs",
+                radius="sm",
+            ),
+        ],
+        gap="sm",
+        mb="md",
+    )
+  else:
+    # Get all possible types for the filter
+    unique_types = sorted(list({item["type"] for item in assertion_details}))
+    type_options = [{"label": "All Types", "value": "all"}]
+    for ut in unique_types:
+      style = test_case_components.get_assertion_style(ut)
+      type_options.append({"label": style["label"], "value": ut})
 
-    if filter_cat != "all" and category.lower() != filter_cat:
-      continue
-    if filter_stat != "all":
-      item_passed = item.get("passed", False)
-      if filter_stat == "passed" and not item_passed:
+    assertion_cards = []
+    for item in assertion_details:
+      weight = item["weight"]
+      category = "Accuracy" if weight > 0 else "Diagnostic"
+      a_type = item["type"]
+
+      if filter_cat != "all" and category.lower() != filter_cat:
         continue
-      if filter_stat == "failed" and item_passed:
+      if filter_stat != "all":
+        item_passed = item.get("passed", False)
+        if filter_stat == "passed" and not item_passed:
+          continue
+        if filter_stat == "failed" and item_passed:
+          continue
+      if filter_type != "all" and a_type != filter_type:
         continue
-    if filter_type != "all" and a_type != filter_type:
-      continue
 
-    assertion_cards.append(item)
+      assertion_cards.append(item)
 
-  render_assertions = (
-      assertion_components.render_assertion_results_table(assertion_cards)
-      if assertion_cards
-      else assertion_components.render_assertion_empty()
-  )
+    render_assertions = (
+        assertion_components.render_assertion_results_table(assertion_cards)
+        if assertion_cards
+        else assertion_components.render_assertion_empty()
+    )
+
+    assertions_header = dmc.Group(
+        [
+            dmc.Group(
+                [
+                    dmc.Text(
+                        "Assertions",
+                        fw=700,
+                        size="xl",
+                    ),
+                    dmc.Badge(
+                        f"{len(assertion_details)} Total",
+                        variant="light",
+                        color="gray",
+                        size="xs",
+                        radius="sm",
+                    ),
+                    dmc.Group(
+                        gap="xs",
+                        children=test_case_components.render_assertion_badges(
+                            [ar.assertion for ar in trial.assertion_results]
+                            if trial.assertion_results
+                            else []
+                        ),
+                    ),
+                ],
+                gap="sm",
+            ),
+            dmc.Group(
+                gap="xs",
+                children=[
+                    dmc.Select(
+                        id=(EvaluationIds.ASSERT_FILTER_STATUS),
+                        value=filter_stat,
+                        data=[
+                            {
+                                "label": "All Statuses",
+                                "value": "all",
+                            },
+                            {
+                                "label": "Passed",
+                                "value": "passed",
+                            },
+                            {
+                                "label": "Failed",
+                                "value": "failed",
+                            },
+                        ],
+                        size="xs",
+                        w=120,
+                    ),
+                    dmc.Select(
+                        id=(EvaluationIds.ASSERT_FILTER_CATEGORY),
+                        value=filter_cat,
+                        data=[
+                            {
+                                "label": "All Categories",
+                                "value": "all",
+                            },
+                            {
+                                "label": "Accuracy",
+                                "value": "accuracy",
+                            },
+                            {
+                                "label": "Diagnostic",
+                                "value": "diagnostic",
+                            },
+                        ],
+                        size="xs",
+                        w=130,
+                    ),
+                    dmc.Select(
+                        id=EvaluationIds.ASSERT_FILTER_TYPE,
+                        value=filter_type,
+                        data=type_options,
+                        size="xs",
+                        w=160,
+                    ),
+                ],
+            ),
+        ],
+        justify="space-between",
+        mb="md",
+    )
+
+  # --- Suggestions Section ---
+  accordion_style = {}
+  if trial.status == RunStatus.FAILED:
+    accordion_style = {"display": "none"}
+    suggestions_content = dash.no_update
+  elif sug_loading:
+    logging.warning("!!! CALLBACK: sug_loading is True, returning skeleton")
+    suggestions_content = assertion_components.render_suggestion_skeleton()
+  else:
+    suggestion_cards = []
+    if trial.suggested_asserts:
+      for i, sa in enumerate(trial.suggested_asserts):
+        try:
+          item = sa.model_dump()
+          card = assertion_components.render_suggested_assertion_card(
+              item, item.get("id") or i, ids_class=EvaluationIds
+          )
+          suggestion_cards.append(card)
+        except Exception as e:  # pylint: disable=broad-exception-caught
+          logging.error("Failed to render suggestion card %d: %s", i, e)
+          logging.error(traceback.format_exc())
+
+    if not suggestion_cards:
+      logging.warning("!!! CALLBACK: No suggestion cards rendered")
+      suggestions_content = assertion_components.render_empty_suggestions(
+          {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
+      )
+    else:
+      logging.warning(
+          "!!! CALLBACK: Returning %d suggestion cards", len(suggestion_cards)
+      )
+      suggestions_content = dmc.SimpleGrid(
+          cols=2, spacing="lg", children=suggestion_cards
+      )
 
   # Layout
   header_actions = [
@@ -1199,101 +1352,16 @@ def render_trial_detail(
                       children=dmc.Stack([
                           # Assertions Section
                           dmc.Box([
-                              dmc.Group(
-                                  [
-                                      dmc.Group(
-                                          [
-                                              dmc.Text(
-                                                  "Assertions",
-                                                  fw=700,
-                                                  size="xl",
-                                              ),
-                                              dmc.Badge(
-                                                  f"{len(assertion_details)}"
-                                                  " Total",
-                                                  variant="light",
-                                                  color="gray",
-                                                  size="xs",
-                                                  radius="sm",
-                                              ),
-                                              dmc.Group(
-                                                  gap="xs",
-                                                  children=dataset_components.render_assertion_badges(
-                                                      assertion_details
-                                                  ),
-                                              ),
-                                          ],
-                                          gap="sm",
-                                      ),
-                                      dmc.Group(
-                                          gap="xs",
-                                          children=[
-                                              dmc.Select(
-                                                  id=(
-                                                      EvaluationIds.ASSERT_FILTER_STATUS
-                                                  ),
-                                                  value=filter_stat,
-                                                  data=[
-                                                      {
-                                                          "label": (
-                                                              "All Statuses"
-                                                          ),
-                                                          "value": "all",
-                                                      },
-                                                      {
-                                                          "label": "Passed",
-                                                          "value": "passed",
-                                                      },
-                                                      {
-                                                          "label": "Failed",
-                                                          "value": "failed",
-                                                      },
-                                                  ],
-                                                  size="xs",
-                                                  w=120,
-                                              ),
-                                              dmc.Select(
-                                                  id=(
-                                                      EvaluationIds.ASSERT_FILTER_CATEGORY
-                                                  ),
-                                                  value=filter_cat,
-                                                  data=[
-                                                      {
-                                                          "label": (
-                                                              "All Categories"
-                                                          ),
-                                                          "value": "all",
-                                                      },
-                                                      {
-                                                          "label": "Accuracy",
-                                                          "value": "accuracy",
-                                                      },
-                                                      {
-                                                          "label": "Diagnostic",
-                                                          "value": "diagnostic",
-                                                      },
-                                                  ],
-                                                  size="xs",
-                                                  w=130,
-                                              ),
-                                              dmc.Select(
-                                                  id=EvaluationIds.ASSERT_FILTER_TYPE,
-                                                  value=filter_type,
-                                                  data=type_options,
-                                                  size="xs",
-                                                  w=160,
-                                              ),
-                                          ],
-                                      ),
-                                  ],
-                                  justify="space-between",
-                                  mb="md",
-                              ),
+                              assertions_header,
                               # Assertion Metrics Visualizations
-                              assertion_components.render_assertion_summary(
-                                  _calculate_assertion_summary(
-                                      assertion_details
+                              (
+                                  assertion_components.render_assertion_summary(
+                                      _calculate_assertion_summary(
+                                          assertion_details
+                                      )
                                   )
+                                  if trial.status != RunStatus.FAILED
+                                  else None
                               ),
                               dmc.Space(h="lg"),
                               render_assertions,
@@ -1303,6 +1371,8 @@ def render_trial_detail(
               ],
           ),
       ]),
+      suggestions_content,
+      accordion_style,
   ]
 
 
@@ -1323,9 +1393,22 @@ def sync_assertion_filter_to_url(cat_val, type_val, stat_val, current_search):
       if current_search
       else {}
   )
-  params["assertion_category"] = [cat_val or "all"]
-  params["assertion_type"] = [type_val or "all"]
-  params["assertion_status"] = [stat_val or "all"]
+
+  new_cat = cat_val or "all"
+  new_type = type_val or "all"
+  new_stat = stat_val or "all"
+
+  # Avoid redundant updates causing loops
+  if (
+      params.get("assertion_category") == [new_cat]
+      and params.get("assertion_type") == [new_type]
+      and params.get("assertion_status") == [new_stat]
+  ):
+    return dash.no_update
+
+  params["assertion_category"] = [new_cat]
+  params["assertion_type"] = [new_type]
+  params["assertion_status"] = [new_stat]
   return "?" + urllib.parse.urlencode(params, doseq=True)
 
 
@@ -1391,60 +1474,18 @@ def curate_trial_suggestion(accept_clicks, reject_clicks):
 
 
 @typed_callback(
-    [
-        (EvaluationIds.TRIAL_SUGGESTIONS_CONTENT, CP.CHILDREN),
-        (EvaluationIds.TRIAL_SUG_ACCORDION, "style"),
-    ],
-    inputs=[
-        ("url", CP.PATHNAME),
-        (EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL, CP.DATA),
-        (EvaluationIds.TRIAL_SUG_LOADING_STORE, CP.DATA),
-    ],
+    dash.Output(
+        EvaluationIds.TRIAL_SUG_LOADING_STORE, CP.DATA, allow_duplicate=True
+    ),
+    inputs=[dash.Input("url", CP.PATHNAME)],
+    prevent_initial_call=True,
 )
-def render_suggested_assertions_content(pathname, signal, is_loading):
-  """Renders ONLY the suggested assertions grid."""
-  # pylint: disable=unused-argument
-  if not pathname or not pathname.startswith("/evaluations/trials/"):
-    return dash.no_update, dash.no_update
-
-  if is_loading:
-    return assertion_components.render_suggestion_skeleton(), {
-        "display": "block"
-    }
-
-  try:
-    trial_id = int(pathname.split("/")[-1])
-  except ValueError:
-    return dash.no_update, dash.no_update
-
-  client = get_client()
-  trial = client.runs.get_trial(trial_id)
-  if not trial:
-    return dmc.Alert("Trial not found", color="red"), dash.no_update
-
-  suggestion_cards = []
-  if trial.suggested_asserts:
-    for sa in trial.suggested_asserts:
-      # Pydantic schema Mapping
-      item = sa.model_dump()
-
-      card = assertion_components.render_suggested_assertion_card(
-          item, item["id"], ids_class=EvaluationIds
-      )
-      suggestion_cards.append(card)
-
-  if not suggestion_cards:
-    return (
-        assertion_components.render_empty_suggestions(
-            {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
-        ),
-        {"display": "block"},
-    )
-
-  return (
-      dmc.SimpleGrid(cols=2, spacing="lg", children=suggestion_cards),
-      {"display": "block"},
+def reset_trial_suggestions_state(pathname):
+  """Resets the loading state when navigating to a new trial."""
+  logging.warning(
+      "!!! CALLBACK: reset_trial_suggestions_state pathname=%s", pathname
   )
+  return False
 
 
 dash.clientside_callback(
@@ -1613,7 +1654,7 @@ def poll_suggestion_results(
   )
 
 
-# --- Dataset View Run Modal ---
+# --- Test Suite View Run Modal ---
 
 
 @typed_callback(
@@ -1659,16 +1700,16 @@ def toggle_run_eval_modal(open_clicks, cancel_clicks):
     allow_duplicate=True,
 )
 def start_run_eval(n_clicks, agent_id, pathname):
-  """Starts a new evaluation run from the Dataset View."""
+  """Starts a new evaluation run from the Test Suite View."""
   if not n_clicks or not agent_id:
     return dash.no_update
 
-  # Extract Dataset ID from URL
+  # Extract Test Suite ID from URL
   if not pathname or "/test_suites/view/" not in pathname:
     return dash.no_update
 
   try:
-    dataset_id = int(pathname.split("/")[-1])
+    suite_id = int(pathname.split("/")[-1])
   except ValueError:
     return dash.no_update
 
@@ -1702,7 +1743,7 @@ def start_run_eval(n_clicks, agent_id, pathname):
 
   run = client.runs.create_run(
       agent_id=int(agent_id),
-      test_suite_id=dataset_id,
+      test_suite_id=suite_id,
   )
   run_id = run.id
 
@@ -1720,7 +1761,7 @@ def start_run_eval(n_clicks, agent_id, pathname):
     output=[
         dash.Output(EvaluationIds.MODAL_NEW_EVAL, "opened"),
         dash.Output(EvaluationIds.NEW_EVAL_AGENT_SELECT, "data"),
-        dash.Output(EvaluationIds.NEW_EVAL_DATASET_SELECT, "data"),
+        dash.Output(EvaluationIds.NEW_EVAL_SUITE_SELECT, "data"),
     ],
     inputs=[
         dash.Input(EvaluationIds.BTN_NEW_EVAL, "n_clicks"),
@@ -1758,14 +1799,14 @@ def toggle_new_eval_modal(open_clicks, cancel_clicks):
     inputs=[dash.Input(EvaluationIds.BTN_START_NEW_EVAL, "n_clicks")],
     state=[
         dash.State(EvaluationIds.NEW_EVAL_AGENT_SELECT, "value"),
-        dash.State(EvaluationIds.NEW_EVAL_DATASET_SELECT, "value"),
+        dash.State(EvaluationIds.NEW_EVAL_SUITE_SELECT, "value"),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def start_new_eval(n_clicks, agent_id, dataset_id):
+def start_new_eval(n_clicks, agent_id, suite_id):
   """Starts a new evaluation run from the Global Modal."""
-  if not n_clicks or not agent_id or not dataset_id:
+  if not n_clicks or not agent_id or not suite_id:
     return dash.no_update
 
   client = get_client()
@@ -1798,7 +1839,7 @@ def start_new_eval(n_clicks, agent_id, dataset_id):
 
   run = client.runs.create_run(
       agent_id=int(agent_id),
-      test_suite_id=int(dataset_id),
+      test_suite_id=int(suite_id),
   )
   run_id = run.id
 
@@ -1821,6 +1862,7 @@ def start_new_eval(n_clicks, agent_id, dataset_id):
         (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_VALUE, CP.STYLE),
         (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_YAML, CP.STYLE),
         (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_CONTAINER, CP.STYLE),
+        (EvaluationIds.TRIAL_SUG_EDIT_CHART_TYPE, CP.STYLE),
         (EvaluationIds.TRIAL_SUG_VAL_MSG, CP.STYLE),
     ],
     inputs=[(EvaluationIds.TRIAL_SUG_EDIT_TYPE, CP.VALUE)],
@@ -1869,6 +1911,7 @@ def update_trial_suggestion_edit_ui(assert_type: str | None):
         {"display": "none"},
         {"display": "none"},
         {"display": "none"},
+        {"display": "none"},
     )
 
   if is_yaml:
@@ -1884,18 +1927,22 @@ def update_trial_suggestion_edit_ui(assert_type: str | None):
         {"display": "block"},
         container_style,
         {"display": "none"},
+        {"display": "none"},
     )
+
+  is_chart = assert_type == "chart-check-type"
   return (
-      {"display": "block"},
+      {"display": "none" if is_chart else "block"},
       {"display": "none"},
       style_to_use,
       title,
       desc,
-      example,
+      example if not is_chart else "",
       "",
-      {"display": "block"},
+      {"display": "block" if not is_chart else "none"},
       {"display": "none"},
-      container_style,
+      container_style if not is_chart else {"display": "none"},
+      {"display": "block" if is_chart else "none"},
       {"display": "none"},
   )
 

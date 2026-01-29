@@ -16,7 +16,7 @@
 
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.ui.pages.evaluation_ids import EvaluationIds as Ids
+from prism.ui.ids import EvaluationIds as Ids
 
 
 def render_compare_run_modal():

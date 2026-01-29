@@ -45,7 +45,6 @@ class AgentRepository:
         project_id=config.project_id,
         location=config.location,
         agent_resource_id=config.agent_resource_id,
-        env=config.env,
         datasource_config=datasource_config,
         looker_client_id=config.looker_client_id,
         looker_client_secret=config.looker_client_secret,
@@ -85,7 +84,6 @@ class AgentRepository:
       agent.project_id = config.project_id
       agent.location = config.location
       agent.agent_resource_id = config.agent_resource_id
-      agent.env = config.env
       if config.datasource:
         agent.datasource_config = config.datasource.model_dump()
       else:

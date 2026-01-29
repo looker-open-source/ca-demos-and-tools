@@ -21,13 +21,6 @@ from typing import Union
 import pydantic
 
 
-class AgentEnv(str, enum.Enum):
-  """Environment for the agent."""
-
-  STAGING = "staging"
-  PUBLISHED = "published"
-
-
 class BigQueryConfig(pydantic.BaseModel):
   """Configuration for BigQuery datasource."""
 
@@ -49,7 +42,6 @@ class AgentConfig(pydantic.BaseModel):
   project_id: str
   location: str
   agent_resource_id: str
-  env: AgentEnv
   datasource: Union[BigQueryConfig, LookerConfig, None] = None
   system_instruction: str | None = None
 

@@ -21,7 +21,8 @@ from typing import Any
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.ui.pages.evaluation_ids import EvaluationIds
+from prism.common.schemas.execution import RunStatus
+from prism.ui.ids import EvaluationIds
 
 
 def render_run_context(
@@ -563,20 +564,27 @@ def render_trial_card(
   """Renders a simplified trial results card matching the comparison view."""
   actions = []
 
-  # Always show Trace link
-  actions.append(
-      dmc.Anchor(
-          "View Trace",
-          href=f"/evaluations/trials/{trial.id}/trace",
-          size="10px",
-          fw=700,
-          underline=True,
-          c="blue.6",
-      )
+  is_terminal = getattr(trial, "status", None) in (
+      RunStatus.COMPLETED,
+      RunStatus.FAILED,
+      RunStatus.CANCELLED,
   )
 
-  # Optional Details link (hide on Trial Detail page)
-  if show_details_link:
+  # Always show Trace link if terminal
+  if is_terminal:
+    actions.append(
+        dmc.Anchor(
+            "View Trace",
+            href=f"/evaluations/trials/{trial.id}/trace",
+            size="10px",
+            fw=700,
+            underline=True,
+            c="blue.6",
+        )
+    )
+
+  # Optional Details link (hide on Trial Detail page) if terminal
+  if show_details_link and is_terminal:
     actions.append(
         dmc.Anchor(
             "View Details",
@@ -603,12 +611,12 @@ def render_trial_card(
 
   sections = []
 
-  # 1. Header: Question
+  # 1. Header: Test Case
   sections.append(
       dmc.Box(
           p="lg",
           children=dmc.Text(
-              f'"{trial.question}"' if trial.question else "(No Question)",
+              f'"{trial.question}"' if trial.question else "(No Test Case)",
               fw=700,
               size="lg",
               style={"letterSpacing": "-0.01em"},

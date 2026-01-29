@@ -23,7 +23,6 @@ from typing import Sequence
 from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import UniqueDatasources
-from prism.server.clients.gemini_data_analytics_client import ClientEnv
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 from prism.server.config import settings
 from prism.server.models.agent import Agent
@@ -69,9 +68,7 @@ class AgentService:
   def register_gcp_agent(self, name: str, config: AgentConfig) -> Agent:
     """Creates an agent on GCP and then persists it locally."""
     parent = f"projects/{config.project_id}/locations/{config.location}"
-    client = GeminiDataAnalyticsClient(
-        project=parent, env=ClientEnv(config.env)
-    )
+    client = GeminiDataAnalyticsClient(project=parent)
 
     # 1. Create on GCP
     gcp_agent_base = client.create_agent(display_name=name, config=config)
@@ -121,7 +118,7 @@ class AgentService:
       return None
 
     parent = f"projects/{agent.project_id}/locations/{agent.location}"
-    client = GeminiDataAnalyticsClient(project=parent, env=ClientEnv(agent.env))
+    client = GeminiDataAnalyticsClient(project=parent)
 
     agent_name = f"{parent}/dataAgents/{agent.agent_resource_id}"
     gcp_agent = client.get_agent(agent_name)
@@ -142,7 +139,7 @@ class AgentService:
       return None
 
     parent = f"projects/{agent.project_id}/locations/{agent.location}"
-    client = GeminiDataAnalyticsClient(project=parent, env=ClientEnv(agent.env))
+    client = GeminiDataAnalyticsClient(project=parent)
 
     agent_name = f"{parent}/dataAgents/{agent.agent_resource_id}"
     return client.get_agent_context(agent_name, context_target="published")
@@ -162,9 +159,7 @@ class AgentService:
     system_instruction = config.system_instruction if config else None
     if system_instruction is not None:
       parent = f"projects/{agent.project_id}/locations/{agent.location}"
-      client = GeminiDataAnalyticsClient(
-          project=parent, env=ClientEnv(agent.env)
-      )
+      client = GeminiDataAnalyticsClient(project=parent)
       agent_name = f"{parent}/dataAgents/{agent.agent_resource_id}"
       client.update_agent(
           agent_name=agent_name,
@@ -228,11 +223,11 @@ class AgentService:
       return None
 
   def discover_gcp_agents(
-      self, project_id: str, location: str, env: str
+      self, project_id: str, location: str
   ) -> Sequence[AgentBase]:
     """Lists available agents from GCP."""
     parent = f"projects/{project_id}/locations/{location}"
-    client = GeminiDataAnalyticsClient(project=parent, env=ClientEnv(env))
+    client = GeminiDataAnalyticsClient(project=parent)
     return client.list_agents()
 
   def is_looker_agent(self, agent_id: int) -> bool:
