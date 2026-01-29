@@ -266,18 +266,15 @@ def _build_search(
         Input(ComparisonIds.FILTER_UNCHANGED, "n_clicks"),
     ],
     output=[
-        Output(ComparisonIds.SUITE_SELECT, "value"),
-        Output(ComparisonIds.BASE_RUN_SELECT, "value"),
-        Output(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
         Output(ComparisonIds.LOC_URL, "search", allow_duplicate=True),
     ],
     prevent_initial_call="initial_duplicate",
 )
-def synchronize_state(
+def synchronize_filters(
     current_search: str | None,
     *_args,  # Sink unused n_clicks
-) -> tuple[Any, ...]:
-  """Synchronizes UI state and URL."""
+) -> tuple[str] | Any:
+  """Synchronizes filters in URL."""
   ctx = dash.callback_context
   trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
 
@@ -296,26 +293,16 @@ def synchronize_state(
     elif ComparisonIds.FILTER_ALL in trigger:
       new_filter = None
 
-    new_search = _build_search(
-        url_state.base_run_id,
-        url_state.challenger_run_id,
-        url_state.suite_id,
-        new_filter,
-    )
     return (
-        dash.no_update,
-        dash.no_update,
-        dash.no_update,
-        new_search,
+        _build_search(
+            url_state.base_run_id,
+            url_state.challenger_run_id,
+            url_state.suite_id,
+            new_filter,
+        ),
     )
 
-  # Otherwise (URL change), update UI selects
-  return (
-      str(url_state.suite_id) if url_state.suite_id else None,
-      str(url_state.base_run_id) if url_state.base_run_id else None,
-      str(url_state.challenger_run_id) if url_state.challenger_run_id else None,
-      dash.no_update,
-  )
+  return dash.no_update
 
 
 # 2. Modal Callbacks
@@ -327,6 +314,7 @@ def synchronize_state(
         Input(ComparisonIds.BTN_APPLY_SELECT_RUNS, "n_clicks"),
     ],
     state=[
+        State(ComparisonIds.LOC_URL, "search"),
         State(ComparisonIds.SUITE_SELECT, "value"),
         State(ComparisonIds.BASE_RUN_SELECT, "value"),
         State(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
@@ -334,6 +322,9 @@ def synchronize_state(
     output=[
         Output(ComparisonIds.SELECT_RUNS_MODAL, "opened"),
         Output(ComparisonIds.LOC_URL, "search", allow_duplicate=True),
+        Output(ComparisonIds.SUITE_SELECT, "value"),
+        Output(ComparisonIds.BASE_RUN_SELECT, "value"),
+        Output(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
     ],
     prevent_initial_call=True,
 )
@@ -342,6 +333,7 @@ def handle_select_runs_modal(
     unused_empty_clicks,
     unused_close_clicks,
     unused_apply_clicks,
+    current_search,
     suite_id,
     base_id,
     chal_id,
@@ -359,13 +351,34 @@ def handle_select_runs_modal(
     new_search = _build_search(
         int(base_id), int(chal_id), int(suite_id) if suite_id else None
     )
-    return False, new_search
+    return False, new_search, dash.no_update, dash.no_update, dash.no_update
 
   if ComparisonIds.BTN_CLOSE_SELECT_RUNS in trigger:
-    return False, dash.no_update
+    return False, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-  # OPEN triggered
-  return True, dash.no_update
+  # OPEN triggered - Pre-populate from URL
+  url_state = _parse_search(current_search)
+  suite_id = url_state.suite_id
+  base_id = url_state.base_run_id
+  chal_id = url_state.challenger_run_id
+
+  if not suite_id and (base_id or chal_id):
+    # Try to infer suite ID from runs
+    client = get_client()
+    for rid in [base_id, chal_id]:
+      if rid:
+        run = client.runs.get_run(rid)
+        if run and run.original_suite_id:
+          suite_id = run.original_suite_id
+          break
+
+  return (
+      True,
+      dash.no_update,
+      str(suite_id) if suite_id else dash.no_update,
+      str(base_id) if base_id else dash.no_update,
+      str(chal_id) if chal_id else dash.no_update,
+  )
 
 
 # 3. URL -> Content (Metrics & List)
@@ -843,10 +856,12 @@ def populate_run_selects(
   )
 
   if not suite_to_use and required_ids:
-    # Try to infer test suite from the first required run
-    first_run = client.runs.get_run(next(iter(required_ids)))
-    if first_run and first_run.original_suite_id:
-      suite_to_use = str(first_run.original_suite_id)
+    # Try to infer test suite from either required run
+    for run_id in required_ids:
+      run = client.runs.get_run(run_id)
+      if run and run.original_suite_id:
+        suite_to_use = str(run.original_suite_id)
+        break
 
   # 3. Populate Run Options
   if not suite_to_use:
@@ -880,19 +895,21 @@ def populate_run_selects(
 # 5. Swap Runs
 @typed_callback(
     inputs=[Input(ComparisonIds.BTN_SWAP_RUNS, "n_clicks")],
-    state=[State(ComparisonIds.LOC_URL, "search")],
-    output=Output(ComparisonIds.LOC_URL, "search", allow_duplicate=True),
+    state=[
+        State(ComparisonIds.BASE_RUN_SELECT, "value"),
+        State(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
+    ],
+    output=[
+        Output(ComparisonIds.BASE_RUN_SELECT, "value", allow_duplicate=True),
+        Output(
+            ComparisonIds.CHALLENGE_RUN_SELECT, "value", allow_duplicate=True
+        ),
+    ],
     prevent_initial_call=True,
 )
-def swap_runs(_: int, current_search: str | None) -> str | Any:
-  """Swaps base and challenger runs."""
-  state = _parse_search(current_search)
-  if not state.base_run_id or not state.challenger_run_id:
-    return dash.no_update
-
-  return _build_search(
-      state.challenger_run_id, state.base_run_id, state.filter_status
-  )
+def swap_runs(_: int, base_id: str | None, chal_id: str | None):
+  """Swaps base and challenger runs in the modal."""
+  return chal_id, base_id
 
 
 # 6. Populate Run Nav Links
@@ -1348,6 +1365,27 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
 
 def _render_trial_summary(trial, is_base: bool):
   """Renders a summary of a single trial for side-by-side comparison."""
+  error_alert = None
+  if trial.error_message:
+    error_alert = dmc.Alert(
+        dmc.Code(
+            trial.error_message,
+            block=True,
+            style={
+                "backgroundColor": "transparent",
+                "padding": 0,
+                "color": "inherit",
+                "whiteSpace": "pre-wrap",
+                "wordBreak": "break-all",
+            },
+        ),
+        color="red",
+        title="Trial Error",
+        icon=DashIconify(icon="material-symbols:error-outline", width=18),
+        mt="xs",
+        styles={"message": {"paddingTop": 0}},
+    )
+
   return dmc.Paper(
       p="md",
       radius="md",
@@ -1366,29 +1404,6 @@ def _render_trial_summary(trial, is_base: bool):
                   "whiteSpace": "pre-wrap",
               },
           ),
-          (
-              dmc.Alert(
-                  dmc.Code(
-                      trial.error_message,
-                      block=True,
-                      style={
-                          "backgroundColor": "transparent",
-                          "padding": 0,
-                          "color": "inherit",
-                          "whiteSpace": "pre-wrap",
-                          "wordBreak": "break-all",
-                      },
-                  ),
-                  color="red",
-                  title="Trial Error",
-                  icon=DashIconify(
-                      icon="material-symbols:error-outline", width=18
-                  ),
-                  mt="xs",
-                  styles={"message": {"paddingTop": 0}},
-              )
-              if trial.error_message
-              else None
-          ),
+          error_alert,
       ],
   )

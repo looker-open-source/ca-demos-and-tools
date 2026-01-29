@@ -34,7 +34,7 @@ from prism.ui.components import assertion_components
 from prism.ui.components import cards
 from prism.ui.components import run_components
 from prism.ui.components import tables
-from prism.ui.components import test_case_components as test_case_components
+from prism.ui.components import test_case_components
 from prism.ui.components import timeline
 from prism.ui.constants import CP
 from prism.ui.constants import REDIRECT_HANDLER
@@ -279,8 +279,8 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
     data.append({"value": str(r.id), "label": label})
 
   # Preselect
-  base_val = preselect_run_id if preselect_run_id else None
-  chal_val = None  # Default empty
+  base_val = None  # Default empty
+  chal_val = preselect_run_id if preselect_run_id else None
 
   return True, data, data, base_val, chal_val
 
@@ -880,8 +880,6 @@ def _calculate_assertion_summary(
         (EvaluationIds.TRIAL_DESCRIPTION, CP.CHILDREN),
         (EvaluationIds.TRIAL_ACTIONS, CP.CHILDREN),
         (EvaluationIds.TRIAL_DETAIL_CONTAINER, CP.CHILDREN),
-        (EvaluationIds.TRIAL_SUGGESTIONS_CONTENT, CP.CHILDREN),
-        (EvaluationIds.TRIAL_SUG_ACCORDION, "style"),
     ],
     inputs=[
         ("url", CP.PATHNAME),
@@ -902,8 +900,10 @@ def render_trial_detail(
     return [dash.no_update] * 5
 
   try:
-    trial_id = int(pathname.split("/")[-1])
-  except ValueError:
+    # Handle possible trailing slashes robustly
+    path_parts = pathname.rstrip("/").split("/")
+    trial_id = int(path_parts[-1])
+  except (ValueError, IndexError):
     return [dash.no_update] * 5
 
   logging.info(
@@ -1262,10 +1262,7 @@ def render_trial_detail(
   accordion_style = {}
   if trial.status == RunStatus.FAILED:
     accordion_style = {"display": "none"}
-    suggestions_content = dash.no_update
-  elif sug_loading:
-    logging.warning("!!! CALLBACK: sug_loading is True, returning skeleton")
-    suggestions_content = assertion_components.render_suggestion_skeleton()
+    suggestions_content_div = html.Div()
   else:
     suggestion_cards = []
     if trial.suggested_asserts:
@@ -1280,18 +1277,91 @@ def render_trial_detail(
           logging.error("Failed to render suggestion card %d: %s", i, e)
           logging.error(traceback.format_exc())
 
-    if not suggestion_cards:
-      logging.warning("!!! CALLBACK: No suggestion cards rendered")
-      suggestions_content = assertion_components.render_empty_suggestions(
-          {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
+    if sug_loading:
+      suggestions_content_div = (
+          assertion_components.render_suggestion_skeleton()
       )
-    else:
-      logging.warning(
-          "!!! CALLBACK: Returning %d suggestion cards", len(suggestion_cards)
-      )
-      suggestions_content = dmc.SimpleGrid(
+    elif suggestion_cards:
+      suggestions_content_div = dmc.SimpleGrid(
           cols=2, spacing="lg", children=suggestion_cards
       )
+    else:
+      suggestions_content_div = assertion_components.render_empty_suggestions(
+          {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
+      )
+  suggestions_accordion = dmc.Accordion(
+      id=EvaluationIds.TRIAL_SUG_ACCORDION,
+      mb="lg",
+      variant="contained",
+      radius="md",
+      styles={
+          "control": {
+              "padding": "8px 16px",
+              "&:hover": {"backgroundColor": "var(--mantine-color-grape-0)"},
+          },
+          "item": {
+              "border": "1px solid var(--mantine-color-grape-2)",
+              "backgroundColor": "var(--mantine-color-grape-0)",
+          },
+      },
+      style=accordion_style,
+      children=[
+          dmc.AccordionItem(
+              value="suggestions",
+              children=[
+                  dmc.AccordionControl(
+                      children=dmc.Group(
+                          gap="xs",
+                          children=[
+                              DashIconify(
+                                  icon="bi:lightbulb",
+                                  width=20,
+                                  color="var(--mantine-color-grape-6)",
+                              ),
+                              dmc.Text(
+                                  "Suggested Assertions",
+                                  fw=700,
+                                  size="lg",
+                              ),
+                          ],
+                      )
+                  ),
+                  dmc.AccordionPanel(
+                      p="md",
+                      children=dmc.Stack(
+                          children=[
+                              dmc.Group(
+                                  gap="xs",
+                                  children=[
+                                      DashIconify(
+                                          icon="material-symbols:info-outline",
+                                          width=20,
+                                          color="var(--mantine-color-grape-6)",
+                                      ),
+                                      dmc.Text(
+                                          "Accepted suggestions are"
+                                          " added to the test suite"
+                                          " for future runs. They"
+                                          " do not affect current"
+                                          " results.",
+                                          size="xs",
+                                          c="dimmed",
+                                          fw=500,
+                                      ),
+                                  ],
+                              ),
+                              html.Div(
+                                  id=EvaluationIds.TRIAL_SUGGESTIONS_CONTENT,
+                                  children=suggestions_content_div,
+                              ),
+                          ]
+                      ),
+                      bg="white",
+                  ),
+              ],
+          )
+      ],
+  )
 
   # Layout
   header_actions = [
@@ -1370,9 +1440,9 @@ def render_trial_detail(
                   ),
               ],
           ),
+          # --- Suggestions Section (Consolidated) ---
+          suggestions_accordion,
       ]),
-      suggestions_content,
-      accordion_style,
   ]
 
 

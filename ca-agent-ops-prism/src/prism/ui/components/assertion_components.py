@@ -1727,7 +1727,11 @@ def render_assertion_diagnostic_table(
                             dmc.Text(style["label"], size="sm", fw=500),
                         ],
                     ),
-                    style={"padding": "16px 24px"},
+                    style={
+                        "padding": "16px 24px",
+                        "whiteSpace": "nowrap",
+                        "minWidth": "150px",
+                    },
                 ),
                 # Value
                 html.Td(
@@ -1745,7 +1749,7 @@ def render_assertion_diagnostic_table(
                             "whiteSpace": "pre-wrap",
                         },
                     ),
-                    style={"padding": "16px 24px"},
+                    style={"padding": "16px 24px", "minWidth": "250px"},
                 ),
                 # Status
                 html.Td(
@@ -1757,7 +1761,11 @@ def render_assertion_diagnostic_table(
                         radius="xs",
                         fw=700,
                     ),
-                    style={"padding": "16px 24px"},
+                    style={
+                        "padding": "16px 24px",
+                        "whiteSpace": "nowrap",
+                        "minWidth": "120px",
+                    },
                 ),
                 # Baseline Reason
                 html.Td(
@@ -1790,7 +1798,7 @@ def render_assertion_diagnostic_table(
                     )
                     if base_ar
                     else dmc.Text("N/A", size="xs", c="dimmed", lh=1.5),
-                    style={"padding": "16px 24px"},
+                    style={"padding": "16px 24px", "minWidth": "350px"},
                 ),
                 # Candidate Reason
                 html.Td(
@@ -1827,7 +1835,7 @@ def render_assertion_diagnostic_table(
                     )
                     if chal_ar
                     else dmc.Text("N/A", size="xs", c="dimmed", lh=1.5),
-                    style={"padding": "16px 24px"},
+                    style={"padding": "16px 24px", "minWidth": "350px"},
                 ),
             ]
         )
@@ -1849,6 +1857,8 @@ def render_assertion_diagnostic_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "width": "1%",
+                                      "whiteSpace": "nowrap",
                                   },
                               ),
                               html.Th(
@@ -1860,6 +1870,7 @@ def render_assertion_diagnostic_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "250px",
                                   },
                               ),
                               html.Th(
@@ -1871,6 +1882,8 @@ def render_assertion_diagnostic_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "width": "1%",
+                                      "whiteSpace": "nowrap",
                                   },
                               ),
                               html.Th(
@@ -1882,6 +1895,7 @@ def render_assertion_diagnostic_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "300px",
                                   },
                               ),
                               html.Th(
@@ -1893,6 +1907,7 @@ def render_assertion_diagnostic_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "300px",
                                   },
                               ),
                           ],
@@ -2030,9 +2045,13 @@ def render_assertion_results_table(
                         radius="xs",
                         fw=700,
                     ),
-                    style={"padding": "16px 24px", "width": "100px"},
+                    style={
+                        "padding": "16px 24px",
+                        "minWidth": "120px",
+                        "whiteSpace": "nowrap",
+                    },
                 ),
-                # Kind
+                # Category
                 html.Td(
                     dmc.Tooltip(
                         label=(
@@ -2049,7 +2068,11 @@ def render_assertion_results_table(
                             size="sm",
                         ),
                     ),
-                    style={"padding": "16px 24px", "width": "120px"},
+                    style={
+                        "padding": "16px 24px",
+                        "minWidth": "150px",
+                        "whiteSpace": "nowrap",
+                    },
                 ),
                 # Type
                 html.Td(
@@ -2066,14 +2089,18 @@ def render_assertion_results_table(
                             dmc.Text(style["label"], size="sm", fw=500),
                         ],
                     ),
-                    style={"padding": "16px 24px", "whiteSpace": "nowrap"},
+                    style={
+                        "padding": "16px 24px",
+                        "whiteSpace": "nowrap",
+                        "minWidth": "150px",
+                    },
                 ),
                 # Value
                 html.Td(
                     _render_assertion_value_display(
                         a_type, item, is_table=True
                     ),
-                    style={"padding": "16px 24px"},
+                    style={"padding": "16px 24px", "minWidth": "250px"},
                 ),
                 # Reasoning
                 html.Td(
@@ -2085,7 +2112,7 @@ def render_assertion_results_table(
                         c="dimmed",
                         lh=1.5,
                     ),
-                    style={"padding": "16px 24px"},
+                    style={"padding": "16px 24px", "minWidth": "350px"},
                 ),
             ]
         )
@@ -2107,6 +2134,8 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "120px",
+                                      "whiteSpace": "nowrap",
                                   },
                               ),
                               html.Th(
@@ -2118,6 +2147,8 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "150px",
+                                      "whiteSpace": "nowrap",
                                   },
                               ),
                               html.Th(
@@ -2129,6 +2160,8 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "150px",
+                                      "whiteSpace": "nowrap",
                                   },
                               ),
                               html.Th(
@@ -2140,6 +2173,7 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "250px",
                                   },
                               ),
                               html.Th(
@@ -2151,6 +2185,7 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
+                                      "minWidth": "350px",
                                   },
                               ),
                           ],

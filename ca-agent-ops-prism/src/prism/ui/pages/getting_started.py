@@ -427,6 +427,14 @@ def layout():
                                                       " to the final score."
                                                   ),
                                                   (
+                                                      "Failed Trials: Any trial"
+                                                      " that fails during"
+                                                      " execution or evaluation"
+                                                      " is excluded from"
+                                                      " aggregate accuracy and"
+                                                      " latency calculations."
+                                                  ),
+                                                  (
                                                       "Diagnostic: Useful for"
                                                       " debugging (e.g.,"
                                                       " latency) without"
