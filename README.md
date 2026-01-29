@@ -39,3 +39,12 @@ A generic, configurable web frontend designed to interact with any ADK API Serve
 
 - Built with React, TypeScript, and Material UI, this application provides a polished chat experience designed for CA API agents.
 - Use this as a custom frontend to pair with the ADK examples in this repo or any ADK API server.
+
+### [Prism](/ca-agent-ops-prism/README.md)
+
+This project provides a comprehensive platform for monitoring and evaluating Gemini Data Analytics Agents. It offers a structured way to run test suites, capture traces, and evaluate agent performance via a dedicated diagnostic UI. Features include:
+
+- Test Suite Management: Enables organizing and running complex evaluations for GDA agents.
+- Trace Capture: Provides detailed visibility into agent execution steps and tool calls.
+- Assertion Engine: Automates the validation of agent responses using structured assertions.
+- Diagnostic UI: Offers high-density tables and comparison dashboards for deep-dive analysis.

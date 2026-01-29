@@ -1,0 +1,48 @@
+[
+  {
+    "system_message": {
+      "text": {
+        "text_type": "RESPONSE",
+        "parts": ["The revenue is $5M."]
+      }
+    }
+  },
+  {
+    "system_message": {
+      "data": {
+        "generated_sql": "SELECT * FROM revenue",
+        "query": {
+            "looker": {
+                "model": "the_model",
+                "explore": "the_explore",
+                "fields": ["revenue"],
+                "limit": 500
+            }
+        },
+        "result": {
+          "data": [
+            {
+              "values": ["5000000"],
+              "col": "val"
+            },
+            {
+              "values": ["6000000"],
+              "col": "val2"
+            }
+          ]
+        }
+      }
+    }
+  },
+  {
+      "system_message": {
+          "chart": {
+              "result": {
+                  "vega_config": {
+                      "mark": {"type": "bar"}
+                  }
+              }
+          }
+      }
+  }
+]
