@@ -150,15 +150,8 @@ gcloud run deploy prism-app \
   --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"
 ```
 
-For Google-internal developers, a comprehensive `deploy.sh` script is available
-in the repository root to automate this process.
-
 ## Testing
 Run the test suite using the provided script:
 ```bash
 ./scripts/run_tests.sh
 ```
-
----
-
-For architectural guidelines and internal patterns, see [GEMINI.md](GEMINI.md).
