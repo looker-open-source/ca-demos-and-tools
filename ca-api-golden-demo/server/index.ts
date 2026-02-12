@@ -288,35 +288,41 @@ const startServer = async () => {
     }
   });
 
-  // Serve static files from the React app
-  const buildPath = path.join(__dirname, "../client/build");
+  // Serve static files from the React app only in production
+  const isDevelopment = process.env.NODE_ENV === "development";
 
-  const setCustomCacheControl = (res: Response, filePath: string) => {
-    // For HTML files, always revalidate to get the latest version
-    if (path.extname(filePath) === ".html") {
-      res.setHeader("Cache-Control", "no-cache, must-revalidate");
-    } else {
-      // For all other static assets (JS, CSS, images), cache for a long time
-      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    }
-  };
+  if (!isDevelopment) {
+    const buildPath = path.join(__dirname, "../client/build");
 
-  app.use(
-    express.static(buildPath, {
-      setHeaders: setCustomCacheControl,
-      etag: true,
-    })
-  );
+    const setCustomCacheControl = (res: Response, filePath: string) => {
+      // For HTML files, always revalidate to get the latest version
+      if (path.extname(filePath) === ".html") {
+        res.setHeader("Cache-Control", "no-cache, must-revalidate");
+      } else {
+        // For all other static assets (JS, CSS, images), cache for a long time
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      }
+    };
 
-  // Catch-all handler for React routing
-  app.get("*", (req: Request, res: Response) => {
-    const indexPath = path.join(buildPath, "index.html");
-    res.setHeader(
-      "Cache-Control",
-      "no-store, no-cache, must-revalidate, proxy-revalidate"
+    app.use(
+      express.static(buildPath, {
+        setHeaders: setCustomCacheControl,
+        etag: true,
+      })
     );
-    res.sendFile(indexPath);
-  });
+
+    // Catch-all handler for React routing
+    app.get("*", (req: Request, res: Response) => {
+      const indexPath = path.join(buildPath, "index.html");
+      res.setHeader(
+        "Cache-Control",
+        "no-store, no-cache, must-revalidate, proxy-revalidate"
+      );
+      res.sendFile(indexPath);
+    });
+  } else {
+    logger.info("Development mode: static files will be served by webpack-dev-server on port 3000");
+  }
 
   app.listen(PORT, () => {
     logger.info(`Server listening on port ${PORT}`);
