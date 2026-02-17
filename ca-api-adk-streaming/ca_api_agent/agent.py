@@ -1,7 +1,8 @@
 import asyncio
-from typing import AsyncGenerator, Optional
-from google.adk.agents import LlmAgent, BaseAgent
+from typing import AsyncGenerator
+from google.adk.agents import LlmAgent, BaseAgent, SequentialAgent
 from google.adk.agents.invocation_context import InvocationContext
+from google.adk.code_executors import BuiltInCodeExecutor
 from google.adk.events import Event
 from google.adk.planners.built_in_planner import BuiltInPlanner
 from google.genai.types import ThinkingConfig
@@ -11,21 +12,15 @@ import logging
 import os
 from dotenv import load_dotenv
 from google.genai import types
-import httpx
-
-
-from google.auth import default
-from google.auth.credentials import Credentials
-from google.auth.transport.requests import Request as gRequest
+from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
+from google.api_core import exceptions as api_exceptions
 
 load_dotenv()
 
 # --- Configure Logging ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
-
+ 
 async def tool_intercept(question: str) -> None:
     """
     Executes a query against the Looker analytics platform to retrieve specific data or metadata.
@@ -43,7 +38,7 @@ async def tool_intercept(question: str) -> None:
     """
     return
 
-async def nlq(question: str, token: str, ctx: InvocationContext) -> AsyncGenerator:
+async def nlq(question: str, ctx: InvocationContext) -> AsyncGenerator:
     """
     Executes a query against the Looker analytics platform to retrieve specific data or metadata.
 
@@ -59,117 +54,76 @@ async def nlq(question: str, token: str, ctx: InvocationContext) -> AsyncGenerat
         question (str): The user's natural language question to be answered
                         using data (e.g., "What were the total sales last week?",
                         "List all available columns in the 'users' table").
-        token (str): valid GCP auth token
         ctx (InvocationContext): ADK invocation context object
 
     Returns:
         Dict: A dictionary containing the structured query results (e.g., the data,
             metadata, or statistics) retrieved from Looker.
     """
-    logging.info({"request": question})
-    print(question)
-    payload = {
-        "project": f"projects/{os.getenv("GOOGLE_CLOUD_PROJECT")}/locations/{os.getenv("GOOGLE_CLOUD_LOCATION")}",
-        "messages": [
-            {
-                "userMessage": {
-                    "text": question
-                }
-            }
-        ],
-        "inlineContext": {
-            "systemInstruction": f"""Answer User Questions to the best of your ability. Don't return any viz response. Just the raw data""",
-            "datasourceReferences": {
-                "looker": {
-                    "exploreReferences": [
-                        {
-                            "lookerInstanceUri": os.getenv("LOOKERSDK_BASE_URL"),
-                            "lookmlModel": os.getenv("LOOKML_MODEL"),
-                            "explore": os.getenv("LOOKML_EXPLORE"),
-                        }
-                    ],
-                    "credentials": {
-                        "oauth": {
-                            "secret": {
-                                "client_id": os.getenv("LOOKERSDK_CLIENT_ID"),
-                                "client_secret": os.getenv("LOOKERSDK_CLIENT_SECRET")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream"
-    }
-    url = f"https://geminidataanalytics.googleapis.com/v1beta/projects/{os.getenv("GOOGLE_CLOUD_PROJECT")}/locations/{os.getenv("GOOGLE_CLOUD_LOCATION")}:chat"
+    logger.info({"request": question})
+
+    project = f"projects/{os.getenv('GOOGLE_CLOUD_PROJECT')}/locations/{os.getenv('GOOGLE_CLOUD_LOCATION')}"
+
+    inline_context = geminidataanalytics.Context(
+        system_instruction="Answer user questions to the best of your ability",
+        datasource_references=geminidataanalytics.DatasourceReferences(
+            looker=geminidataanalytics.LookerExploreReferences(
+                explore_references=[
+                    geminidataanalytics.LookerExploreReference(
+                        looker_instance_uri=os.getenv("LOOKERSDK_BASE_URL"),
+                        lookml_model=os.getenv("LOOKML_MODEL"),
+                        explore=os.getenv("LOOKML_EXPLORE"),
+                    )
+                ],
+                credentials=geminidataanalytics.Credentials(
+                    oauth=geminidataanalytics.OAuthCredentials(
+                        secret=geminidataanalytics.OAuthCredentials.SecretBased(
+                            client_id=os.getenv("LOOKERSDK_CLIENT_ID"),
+                            client_secret=os.getenv("LOOKERSDK_CLIENT_SECRET"),
+                        )
+                    )
+                )
+            )
+        )
+    )
+
+    chat_request = geminidataanalytics.ChatRequest(
+        parent=project,
+        messages=[geminidataanalytics.Message(user_message=geminidataanalytics.UserMessage(text=question))],
+        inline_context=inline_context,
+    )
+
     try:
-        async with httpx.AsyncClient() as client:
-            async with client.stream("POST", url, json=payload, headers=headers, timeout=None) as response:
-                if response.status_code == 200:
-                    buffer = ''
-                    decoder = json.JSONDecoder()
-                    in_array = False
-                    async for chunk in response.aiter_bytes():
-                        if not chunk:
-                            continue
-                        
-                        buffer += chunk.decode('utf-8')
+        client = geminidataanalytics.DataChatServiceAsyncClient()
+        stream = await client.chat(request=chat_request)
 
-                        if not in_array:
-                            # Find start of array
-                            start_array_idx = buffer.find('[')
-                            if start_array_idx != -1:
-                                buffer = buffer[start_array_idx + 1:]
-                                in_array = True
-                        
-                        if in_array:
-                            while buffer:
-                                try:
-                                    # Find start of object
-                                    start_obj_idx = buffer.find('{')
-                                    if start_obj_idx == -1:
-                                        break
-                                    
-                                    obj_buffer = buffer[start_obj_idx:]
-                                    chunk_data, end = decoder.raw_decode(obj_buffer)
+        async for response in stream:
+            if not response.system_message:
+                continue
 
-                                    if chunk_data.get('systemMessage'):
-                                        message_dict = dict(chunk_data['systemMessage'])
-                                    if 'data' in message_dict and message_dict['data']:
-                                        data_node = message_dict['data']
-                                        if 'query' in data_node and 'question' in data_node['query']:
-                                            yield f"Analyzing your question: {data_node['query']['question']}\n"
-                                            await asyncio.sleep(0)
-                                        elif 'result' in data_node and 'data' in data_node['result'] and isinstance(data_node['result']['data'], list):
-                                            ctx.session.state['temp:data_result'] = data_node['result']['data']
-                                            yield f"The query returned {len(data_node['result']['data'])} row(s)\n"
-                                            await asyncio.sleep(0)
-                                    elif 'text' in message_dict and 'parts' in message_dict['text'] and message_dict['text']['parts']:
-                                        # add to state for later access by agents, only cached for current invocation context
-                                        print(ctx.session.state)
-                                        ctx.session.state['temp:summary_data'] = message_dict['text']['parts'][0] 
-                                        yield message_dict['text']['parts'][0] + "\n"
-                                        await asyncio.sleep(0)
-                                    buffer = buffer[start_obj_idx + end:]
+            system_message = response.system_message
+            if system_message.data:
+                data_node = system_message.data
+                if data_node.query.question:
+                    yield f"Analyzing your question: {data_node.query.question}\n"
+                    await asyncio.sleep(0)
+                elif data_node.result.data:
+                    result_data = list(data_node.result.data)
+                    ctx.session.state['temp:data_result'] = result_data
+                    yield f"The query returned {len(result_data)} row(s)\n"
+                    await asyncio.sleep(0)
+            elif system_message.text and system_message.text.parts:
+                summary = system_message.text.parts[0]
+                ctx.session.state['temp:summary_data'] = summary
+                yield summary + "\n"
+                await asyncio.sleep(0)
 
-                                except json.JSONDecodeError:
-                                    break
-                                except Exception as e:
-                                    logging.error(f"Error processing chunk: {e}, buffer: {buffer}")
-                                    break
-                else:
-                    # format json object error message that can be parsed in the frontend
-                    error_text = await response.aread()
-                    logging.error(f"Error from server: {response.status_code} - {error_text}")
-                    yield str(json.dumps({"error": error_text.decode('utf-8'), "code": response.status_code}))
+    except api_exceptions.GoogleAPICallError as e:
+        logger.error(f"Error from server: {e.code()} - {e.message}")
+        yield str(json.dumps({"error": e.message, "code": e.code().value[0]}))
     except Exception as e:
-        print(e)
-        logging.error({"error": e})
-
+        logger.error({"error": e})
+        yield str(json.dumps({"error": str(e)}))
 
 class CaApiAgent(BaseAgent):
     """
@@ -194,7 +148,6 @@ class CaApiAgent(BaseAgent):
     instruction: str
     model: str
     ca_agent: LlmAgent = None
-    _credentials: Optional[Credentials] = None
 
     def __init__(
         self,
@@ -216,8 +169,6 @@ class CaApiAgent(BaseAgent):
             instruction=instruction,
             model=model
         )
-        
-        self._credentials = None  # Cache for credentials
 
         self.ca_agent = LlmAgent(
             name=name,
@@ -228,18 +179,6 @@ class CaApiAgent(BaseAgent):
                 thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)
             )
         )
-        
-    def _get_auth_token(self) -> str:
-        """Basic usage of the Google Auth library fetching GCP tokens using the environment
-        Returns:
-        str: The API token.
-        """
-        if self._credentials is None or not self._credentials.valid or self._credentials.expired:
-            self._credentials, _ = default(scopes=SCOPES)
-            self._credentials.refresh(gRequest())
-        return self._credentials.token
-        
-        
 
     @override
     async def _run_async_impl(
@@ -261,9 +200,7 @@ class CaApiAgent(BaseAgent):
                         ]
                     )
                 yield Event(author=self.name, partial=False, turn_complete=False, invocation_id=event.invocation_id, content=status_message_content)
-                # fetch gcp token from cache
-                token = self._get_auth_token()
-                async for data in nlq(event.content.parts[0].function_call.args['question'],token, ctx):
+                async for data in nlq(event.content.parts[0].function_call.args['question'], ctx):
                     ca_api_content = types.Content(
                         role='model',
                         parts=[
@@ -294,7 +231,44 @@ root_agent = CaApiAgent(
     When the tool returns information, it will be a JSON object. Your response to the user MUST follow these rules:
 
     * **USE THIS:** Base your *entire* answer **exclusively** on the raw JSON data found within the `data` property of the tool's response.
-    * **IGNORE THIS:** You MUST **ignore** all other properties, such as `summary` or `viz`, that may be present in the response.
     * **SYNTHESIZE:** Your job is to translate the raw `data` (which might be a list or dictionary) into a clear, human-readable, natural-language answer.
     * **DO NOT** output the raw JSON to the user."""
+)
+
+visualization_agent = LlmAgent(
+    name='visualization_agent',
+    model="gemini-2.5-flash",
+    description='A visualization agent that creates plots from data using Python, pandas, and matplotlib.',
+    instruction="""You are a data visualization expert. Your primary purpose is to create insightful and clear plots from data.
+            When you receive a request with data, your task is to:
+            1.  Understand the data and the user's request for visualization.
+            2.  Write Python code using pandas to prepare the data and matplotlib to generate a plot.
+            3.  Ensure your code is self-contained and generates a visual output. For example, by calling `plt.show()`.
+            4.  Along with the code that generates the plot, provide a brief, one-sentence summary of what the plot shows.
+
+            The code will be executed, and the resulting plot will be displayed. Here is the data {temp:data_result}""",
+    code_executor=BuiltInCodeExecutor(),
+    planner=BuiltInPlanner(
+                thinking_config=ThinkingConfig(
+                    include_thoughts=False, thinking_budget=0)
+    )
+)
+
+code_executor_agent = LlmAgent(
+    name='python_agent',
+    model="gemini-2.5-flash",
+    description='Agent that analyzes text and clusters and labels the results',
+    instruction="""Run a further python analysis on the data to: identify anomalies, detect outliers, run forecasting if the result is time series and has suffecient rows OR cluster and label for cohort style analysis.
+              Always be concise with your summarized responses. Here is the data : {temp:data_result}""",
+    code_executor=BuiltInCodeExecutor(),
+    planner=BuiltInPlanner(
+                thinking_config=ThinkingConfig(
+                    include_thoughts=False, thinking_budget=0)
+    )
+)
+
+sequential_agent = SequentialAgent(
+    name="TopLevelAgent",
+    description="Executes a pipeline of agents. The first being a data agent that can answer any question about data. The second being an agent that takes the data result from prior output and performs advanced analysis on it. And the third, a visualization agent that visualizes the raw data intiutively based on the structure and records returned.",
+    sub_agents=[root_agent, code_executor_agent, visualization_agent]
 )
