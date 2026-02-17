@@ -1,5 +1,5 @@
 import asyncio
-from typing import AsyncGenerator
+from typing import Any, AsyncGenerator
 from google.adk.agents import LlmAgent, BaseAgent, SequentialAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.code_executors import BuiltInCodeExecutor
@@ -38,7 +38,7 @@ async def tool_intercept(question: str) -> None:
     """
     return
 
-async def nlq(question: str, ctx: InvocationContext) -> AsyncGenerator:
+async def nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[str, None]:
     """
     Executes a query against the Looker analytics platform to retrieve specific data or metadata.
 
@@ -104,26 +104,35 @@ async def nlq(question: str, ctx: InvocationContext) -> AsyncGenerator:
             system_message = response.system_message
             if system_message.data:
                 data_node = system_message.data
-                if data_node.query.question:
-                    yield f"Analyzing your question: {data_node.query.question}\n"
+                query = getattr(data_node, "query", None)
+                result = getattr(data_node, "result", None)
+
+                if query and query.question:
+                    yield f"Analyzing your question: {query.question}\n"
                     await asyncio.sleep(0)
-                elif data_node.result.data:
-                    result_data = list(data_node.result.data)
+                elif result and result.data:
+                    result_data = list(result.data)
                     ctx.session.state['temp:data_result'] = result_data
                     yield f"The query returned {len(result_data)} row(s)\n"
                     await asyncio.sleep(0)
             elif system_message.text and system_message.text.parts:
-                summary = system_message.text.parts[0]
-                ctx.session.state['temp:summary_data'] = summary
-                yield summary + "\n"
-                await asyncio.sleep(0)
+                summary_part = system_message.text.parts[0]
+                summary_text = getattr(summary_part, "text", None) or ""
+                if summary_text:
+                    ctx.session.state['temp:summary_data'] = summary_text
+                    yield summary_text + "\n"
+                    await asyncio.sleep(0)
 
     except api_exceptions.GoogleAPICallError as e:
-        logger.error(f"Error from server: {e.code()} - {e.message}")
-        yield str(json.dumps({"error": e.message, "code": e.code().value[0]}))
+        code_fn = getattr(e, "code", None)
+        code = code_fn() if callable(code_fn) else None
+        error_code = str(getattr(code, "name", "UNKNOWN"))
+        error_message = str(getattr(e, "message", str(e)))
+        logger.error("Error from server: %s - %s", error_code, error_message)
+        yield json.dumps({"error": error_message, "code": error_code})
     except Exception as e:
-        logger.error({"error": e})
-        yield str(json.dumps({"error": str(e)}))
+        logger.exception("Unexpected error from CA API")
+        yield json.dumps({"error": str(e)})
 
 class CaApiAgent(BaseAgent):
     """
@@ -147,13 +156,13 @@ class CaApiAgent(BaseAgent):
     name: str
     instruction: str
     model: str
-    ca_agent: LlmAgent = None
+    ca_agent: LlmAgent | None = None
 
     def __init__(
         self,
         name: str,
         instruction: str,
-        model: str = 'gemini-2.0.flash-lite',
+        model: str = 'gemini-2.0-flash-lite',
     ):
         """
         Initializes the CaApiAgent.
@@ -164,11 +173,12 @@ class CaApiAgent(BaseAgent):
         """
     
         # Pydantic will validate and assign thssem based on the class annotations.
-        super().__init__(
-            name=name,
-            instruction=instruction,
-            model=model
-        )
+        init_data: dict[str, Any] = {
+            "name": name,
+            "instruction": instruction,
+            "model": model,
+        }
+        super().__init__(**init_data)
 
         self.ca_agent = LlmAgent(
             name=name,
@@ -187,12 +197,28 @@ class CaApiAgent(BaseAgent):
         """
         Implements the custom orchestration logic for the CA API
         """
+        if self.ca_agent is None:
+            raise RuntimeError("ca_agent is not initialized.")
+
         async for event in self.ca_agent.run_async(ctx):
             logger.info(f"{event.model_dump_json(indent=2, exclude_none=True)}")
             # We intercept the function call event and route the request to the streamable NLQ function
             # We do this because ADK doesn't yet support automtic function calling with tools that return AsyncGenerators
             # So we give it a synchronous function that passes and emtpy response and then invoke the actual function overriding this method
-            if event.content.parts[0].function_call:
+            if not event.content or not event.content.parts:
+                yield Event(
+                    author=self.name,
+                    partial=False,
+                    turn_complete=True,
+                    invocation_id=event.invocation_id,
+                    content=event.content,
+                )
+                break
+
+            first_part = event.content.parts[0]
+            function_call = first_part.function_call
+
+            if function_call:
                 status_message_content = types.Content(
                         role='model',
                         parts=[
@@ -200,7 +226,26 @@ class CaApiAgent(BaseAgent):
                         ]
                     )
                 yield Event(author=self.name, partial=False, turn_complete=False, invocation_id=event.invocation_id, content=status_message_content)
-                async for data in nlq(event.content.parts[0].function_call.args['question'], ctx):
+
+                args: Any = function_call.args
+                question = args.get('question') if isinstance(args, dict) else None
+                if not isinstance(question, str) or not question.strip():
+                    error_content = types.Content(
+                        role='model',
+                        parts=[
+                            types.Part(text='I could not find a valid question argument for the query tool.')
+                        ],
+                    )
+                    yield Event(
+                        author=self.name,
+                        partial=False,
+                        turn_complete=True,
+                        invocation_id=event.invocation_id,
+                        content=error_content,
+                    )
+                    break
+
+                async for data in nlq(question, ctx):
                     ca_api_content = types.Content(
                         role='model',
                         parts=[
