@@ -106,7 +106,10 @@ class RootAgent(BaseAgent):
                     b64_data = base64.b64encode(inline_data.data).decode("ascii")
                     sanitized_parts.append(
                         types.Part(
-                            text=f"![chart](data:{mime_type};base64,{b64_data})"
+                            text=(
+                                f'<img alt="chart" src="data:{mime_type};base64,{b64_data}" '
+                                'style="max-width: 100%; height: auto; display: block;" />'
+                            )
                         )
                     )
                     continue
