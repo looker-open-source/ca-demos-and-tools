@@ -108,7 +108,7 @@ class RootAgent(BaseAgent):
                         types.Part(
                             text=(
                                 f'<img alt="chart" src="data:{mime_type};base64,{b64_data}" '
-                                'style="max-width: 100%; height: auto; display: block;" />'
+                                'style="max-width: 800px; width: 100%; height: auto; display: block;" />'
                             )
                         )
                     )

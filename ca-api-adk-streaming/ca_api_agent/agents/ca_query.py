@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, cast
 
 from dotenv import load_dotenv
 from google.adk.agents import BaseAgent, LlmAgent
@@ -16,6 +16,7 @@ from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
 from google.genai import types
 from google.genai.types import ThinkingConfig
 from google.protobuf import json_format
+from google.protobuf.message import Message as ProtoMessage
 from typing_extensions import override
 
 load_dotenv()
@@ -26,6 +27,7 @@ SUMMARY_STATE_KEY = "temp:summary_data"
 CHART_RESULT_VEGA_CONFIG_STATE_KEY = "temp:chart_result_vega_config"
 CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY = "temp:chart_result_image_mime_type"
 CHART_RESULT_IMAGE_PRESENT_STATE_KEY = "temp:chart_result_image_present"
+CA_MESSAGE_HISTORY_STATE_KEY = "temp:ca_message_history"
 DATA_MESSAGE_DISPLAY_MAX_ROWS = 5
 DATA_TABLE_DISPLAY_MAX_ROWS = 50
 
@@ -162,6 +164,41 @@ def _format_simple_markdown_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join([header_line, separator_line, *body_lines]) + "\n"
 
 
+def _load_ca_message_history(
+    ctx: InvocationContext,
+) -> list[geminidataanalytics.Message]:
+    """Loads CA message history from session state and reconstructs Message protos."""
+    history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
+    if not isinstance(history, list):
+        return []
+
+    messages: list[geminidataanalytics.Message] = []
+    for entry in history:
+        if not isinstance(entry, dict):
+            continue
+        message = geminidataanalytics.Message()
+        try:
+            proto_message = cast(ProtoMessage, getattr(message, "_pb"))
+            json_format.ParseDict(entry, proto_message)
+        except Exception:
+            logger.warning("Skipping invalid CA history message entry.")
+            continue
+        messages.append(message)
+    return messages
+
+
+def _append_ca_message_history(
+    ctx: InvocationContext,
+    message: geminidataanalytics.Message,
+) -> None:
+    """Appends one CA Message to session history as a serializable dict."""
+    history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
+    if not isinstance(history, list):
+        history = []
+    history.append(_message_to_dict(message))
+    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
+
+
 def _clear_response_shape_state(ctx: InvocationContext) -> None:
     """Clears routing-related state to avoid stale data across turns."""
     keys_to_clear = (
@@ -213,13 +250,16 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         f"/locations/{os.getenv('GOOGLE_CLOUD_LOCATION')}"
     )
 
+    history_messages = _load_ca_message_history(ctx)
+    user_message = geminidataanalytics.Message(
+        user_message=geminidataanalytics.UserMessage(text=question)
+    )
+    request_messages = [*history_messages, user_message]
+    _append_ca_message_history(ctx, user_message)
+
     chat_request = geminidataanalytics.ChatRequest(
         parent=project,
-        messages=[
-            geminidataanalytics.Message(
-                user_message=geminidataanalytics.UserMessage(text=question)
-            )
-        ],
+        messages=request_messages,
         inline_context=_build_inline_context(),
     )
 
@@ -231,6 +271,7 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
             if not response.system_message:
                 continue
 
+            _append_ca_message_history(ctx, response)
             system_message = response.system_message
             if system_message.data:
                 data_node = system_message.data
