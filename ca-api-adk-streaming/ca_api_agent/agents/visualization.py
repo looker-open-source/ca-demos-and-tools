@@ -12,18 +12,17 @@ def build_visualization_agent() -> LlmAgent:
         name="visualization_render_agent",
         model="gemini-2.5-flash",
         description=(
-            "Renders visualizations from CA API chart output using executable Python."
+            "Creates plots from query data using Python, pandas, and matplotlib."
         ),
-        instruction="""You are a data visualization expert.
-Use only the CA API Vega config at {temp:chart_result_vega_config}.
+        instruction="""You are a data visualization expert. Your primary purpose is to create insightful and clear plots from data.
+When you receive a request with data, your task is to:
+1. Understand the data and the user's request for visualization.
+2. Write Python code using pandas to prepare the data and matplotlib to generate a plot.
+3. Ensure your code is self-contained and generates a visual output, for example by calling plt.show().
+4. Along with the code that generates the plot, provide a brief, one-sentence summary of what the plot shows.
 
-Requirements:
-1. Write self-contained Python with pandas + matplotlib.
-2. Recreate a chart that matches the Vega config intent as closely as practical.
-3. Ensure the code renders output (for example, via plt.show()).
-4. Return a one-sentence interpretation after the code output.
-
-Do not invent data; only use the provided Vega config.""",
+The code will be executed and the resulting plot will be displayed.
+Here is the data: {temp:data_result}""",
         code_executor=BuiltInCodeExecutor(),
         planner=BuiltInPlanner(
             thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)

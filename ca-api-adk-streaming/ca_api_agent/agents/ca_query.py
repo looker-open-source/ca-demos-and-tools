@@ -177,7 +177,10 @@ def _clear_response_shape_state(ctx: InvocationContext) -> None:
 
 def _build_inline_context() -> geminidataanalytics.Context:
     return geminidataanalytics.Context(
-        system_instruction="Answer user questions to the best of your ability",
+        system_instruction=(
+            "Answer user questions to the best of your ability. "
+            "Do not return charts or visualization output."
+        ),
         datasource_references=geminidataanalytics.DatasourceReferences(
             looker=geminidataanalytics.LookerExploreReferences(
                 explore_references=[
@@ -303,8 +306,6 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
                     ctx.session.state[CHART_RESULT_VEGA_CONFIG_STATE_KEY] = (
                         vega_config_dict
                     )
-                    yield "Chart spec (vega config) is available.\n"
-                    await asyncio.sleep(0)
                 else:
                     logger.warning(
                         "Chart message received but vega config could not be parsed."

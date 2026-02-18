@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable
+from typing import Any, AsyncGenerator, Callable, cast
 
 from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
@@ -12,7 +12,7 @@ from pydantic import PrivateAttr
 from typing_extensions import override
 
 from ca_api_agent.agents import (
-    CHART_RESULT_VEGA_CONFIG_STATE_KEY,
+    DATA_RESULT_STATE_KEY,
     build_conversational_analytics_query_agent,
     build_visualization_agent,
 )
@@ -80,7 +80,7 @@ class RootAgent(BaseAgent):
             return event
         copy_fn = getattr(event, "model_copy", None)
         if callable(copy_fn):
-            return copy_fn(update={"turn_complete": False})
+            return cast(Event, copy_fn(update={"turn_complete": False}))
         event.turn_complete = False
         return event
 
@@ -152,10 +152,10 @@ visualization_agent = build_visualization_agent()
 optional_sub_agents = [
     OptionalSubAgentSpec(
         key="visualization",
-        description="vega-config-driven visualization rendering",
+        description="data-result-driven visualization rendering",
         agent=visualization_agent,
         run_when=lambda ctx: RootAgent._has_non_empty_state(
-            ctx, CHART_RESULT_VEGA_CONFIG_STATE_KEY
+            ctx, DATA_RESULT_STATE_KEY
         ),
     ),
 ]

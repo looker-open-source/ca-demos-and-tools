@@ -10,7 +10,7 @@ The same `root_agent` is defined in `ca_api_agent/root_agent.py`.
 Execution flow:
 
 1. Root agent always runs the CA query agent first.
-2. Query/chart results are stored in session state (`temp:data_result`, `temp:summary_data`, `temp:chart_result_vega_config`).
+2. Query results are stored in session state (`temp:data_result`, `temp:summary_data`), with optional chart metadata captured when present.
 3. Optional sub-agents run only when deterministic response-shape rules match.
 
 ## Folder Structure
@@ -40,7 +40,7 @@ Each entry includes:
 
 Current built-in rules:
 
-- Visualization agent runs when CA API returned `system_message.chart.result.vega_config`, persisted as `temp:chart_result_vega_config`.
+- Visualization agent runs only when query rows exist in `temp:data_result` (non-empty list).
 
 ## Add a New Sub-Agent
 
