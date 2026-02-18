@@ -18,8 +18,9 @@ def build_visualization_agent() -> LlmAgent:
 When you receive a request with data, your task is to:
 1. Understand the data and the user's request for visualization.
 2. Write Python code using pandas to prepare the data and matplotlib to generate a plot.
-3. Ensure your code is self-contained and generates a visual output, for example by calling plt.show().
-4. Along with the code that generates the plot, provide a brief, one-sentence summary of what the plot shows.
+3. Keep chart size constrained to fit chat UI: use matplotlib figure width <= 8 inches and dpi <= 100.
+4. Ensure your code is self-contained and generates a visual output, for example by calling plt.show().
+5. Along with the code that generates the plot, provide a brief, one-sentence summary of what the plot shows.
 
 The code will be executed and the resulting plot will be displayed.
 Here is the data: {temp:data_result}""",

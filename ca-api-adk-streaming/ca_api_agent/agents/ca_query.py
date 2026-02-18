@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import os
-from typing import Any, AsyncGenerator, cast
+from typing import Any, AsyncGenerator
 
 from dotenv import load_dotenv
 from google.adk.agents import BaseAgent, LlmAgent
@@ -16,7 +16,6 @@ from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
 from google.genai import types
 from google.genai.types import ThinkingConfig
 from google.protobuf import json_format
-from google.protobuf.message import Message as ProtoMessage
 from typing_extensions import override
 
 load_dotenv()
@@ -167,7 +166,7 @@ def _format_simple_markdown_table(rows: list[dict[str, Any]]) -> str:
 def _load_ca_message_history(
     ctx: InvocationContext,
 ) -> list[geminidataanalytics.Message]:
-    """Loads CA message history from session state and reconstructs Message protos."""
+    """Loads sanitized CA text-only history from session state."""
     history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
     if not isinstance(history, list):
         return []
@@ -176,13 +175,33 @@ def _load_ca_message_history(
     for entry in history:
         if not isinstance(entry, dict):
             continue
-        message = geminidataanalytics.Message()
-        try:
-            proto_message = cast(ProtoMessage, getattr(message, "_pb"))
-            json_format.ParseDict(entry, proto_message)
-        except Exception:
-            logger.warning("Skipping invalid CA history message entry.")
+
+        user_message = entry.get("user_message")
+        if isinstance(user_message, dict):
+            user_text = user_message.get("text")
+            if isinstance(user_text, str) and user_text.strip():
+                messages.append(
+                    geminidataanalytics.Message(
+                        user_message=geminidataanalytics.UserMessage(text=user_text)
+                    )
+                )
+                continue
+
+        system_message = entry.get("system_message")
+        if not isinstance(system_message, dict):
             continue
+        text_node = system_message.get("text")
+        if not isinstance(text_node, dict):
+            continue
+        parts = text_node.get("parts")
+        if not isinstance(parts, list):
+            continue
+        string_parts = [part for part in parts if isinstance(part, str) and part.strip()]
+        if not string_parts:
+            continue
+
+        message = geminidataanalytics.Message()
+        message.system_message.text.parts.extend(string_parts)
         messages.append(message)
     return messages
 
@@ -197,6 +216,12 @@ def _append_ca_message_history(
         history = []
     history.append(_message_to_dict(message))
     ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
+
+
+def _build_system_text_message(text: str) -> geminidataanalytics.Message:
+    message = geminidataanalytics.Message()
+    message.system_message.text.parts.append(text)
+    return message
 
 
 def _clear_response_shape_state(ctx: InvocationContext) -> None:
@@ -266,12 +291,12 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
     try:
         client = geminidataanalytics.DataChatServiceAsyncClient()
         stream = await client.chat(request=chat_request)
+        last_system_text_for_history: str | None = None
 
         async for response in stream:
             if not response.system_message:
                 continue
 
-            _append_ca_message_history(ctx, response)
             system_message = response.system_message
             if system_message.data:
                 data_node = system_message.data
@@ -385,13 +410,21 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
                 summary_text = getattr(summary_part, "text", None) or ""
                 if summary_text:
                     ctx.session.state[SUMMARY_STATE_KEY] = summary_text
+                    last_system_text_for_history = summary_text
                     yield summary_text + "\n"
                     await asyncio.sleep(0)
+        if last_system_text_for_history:
+            _append_ca_message_history(
+                ctx, _build_system_text_message(last_system_text_for_history)
+            )
     except api_exceptions.GoogleAPICallError as err:
         code_fn = getattr(err, "code", None)
         code = code_fn() if callable(code_fn) else None
         error_code = str(getattr(code, "name", "UNKNOWN"))
         error_message = str(getattr(err, "message", str(err)))
+        if "MALFORMED_FUNCTION_CALL" in error_message:
+            ctx.session.state.pop(CA_MESSAGE_HISTORY_STATE_KEY, None)
+            logger.warning("Reset CA message history due malformed function call response.")
         logger.error("Error from CA API: %s - %s", error_code, error_message)
         yield json.dumps({"error": error_message, "code": error_code})
     except Exception as err:  # pragma: no cover - defensive catch for service errors

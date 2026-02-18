@@ -105,12 +105,7 @@ class RootAgent(BaseAgent):
                 if mime_type.startswith("image/"):
                     b64_data = base64.b64encode(inline_data.data).decode("ascii")
                     sanitized_parts.append(
-                        types.Part(
-                            text=(
-                                f'<img alt="chart" src="data:{mime_type};base64,{b64_data}" '
-                                'style="max-width: 800px; width: 100%; height: auto; display: block;" />'
-                            )
-                        )
+                        types.Part(text=f"![chart](data:{mime_type};base64,{b64_data})")
                     )
                     continue
 
