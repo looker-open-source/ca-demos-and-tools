@@ -26,7 +26,7 @@ SUMMARY_STATE_KEY = "temp:summary_data"
 CHART_RESULT_VEGA_CONFIG_STATE_KEY = "temp:chart_result_vega_config"
 CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY = "temp:chart_result_image_mime_type"
 CHART_RESULT_IMAGE_PRESENT_STATE_KEY = "temp:chart_result_image_present"
-DATA_MESSAGE_DISPLAY_MAX_ROWS = 20
+DATA_MESSAGE_DISPLAY_MAX_ROWS = 5
 DATA_TABLE_DISPLAY_MAX_ROWS = 50
 
 
@@ -79,16 +79,44 @@ def _truncate_data_message_for_display(data_message: dict[str, Any]) -> dict[str
     if not isinstance(result, dict):
         return data_message
 
-    rows = result.get("data")
-    if not isinstance(rows, list) or len(rows) <= DATA_MESSAGE_DISPLAY_MAX_ROWS:
-        return data_message
-
     display_data_message = dict(data_message)
     display_result = dict(result)
-    display_result["data"] = rows[:DATA_MESSAGE_DISPLAY_MAX_ROWS]
-    display_result["display_truncated_row_count"] = len(rows) - DATA_MESSAGE_DISPLAY_MAX_ROWS
+    trimmed_row_counts: dict[str, int] = {}
+
+    for field_name in ("data", "formatted_data"):
+        rows = result.get(field_name)
+        if not isinstance(rows, list):
+            continue
+        if len(rows) <= DATA_MESSAGE_DISPLAY_MAX_ROWS:
+            continue
+        display_result[field_name] = rows[:DATA_MESSAGE_DISPLAY_MAX_ROWS]
+        trimmed_row_counts[field_name] = len(rows) - DATA_MESSAGE_DISPLAY_MAX_ROWS
+
+    if not trimmed_row_counts:
+        return data_message
+
+    display_result["display_trimmed_row_counts"] = trimmed_row_counts
     display_data_message["result"] = display_result
     return display_data_message
+
+
+def _build_data_message_trim_notice(display_data_message: dict[str, Any]) -> str | None:
+    result = display_data_message.get("result")
+    if not isinstance(result, dict):
+        return None
+
+    trimmed_row_counts = result.get("display_trimmed_row_counts")
+    if not isinstance(trimmed_row_counts, dict) or not trimmed_row_counts:
+        return None
+
+    trimmed_fields = ", ".join(
+        f"{field}: {count} row(s) omitted"
+        for field, count in trimmed_row_counts.items()
+    )
+    return (
+        f"_DataMessage JSON was trimmed to {DATA_MESSAGE_DISPLAY_MAX_ROWS} rows per field "
+        f"({trimmed_fields})._\n"
+    )
 
 
 def _format_code_block_json(payload: dict[str, Any]) -> str:
@@ -204,9 +232,11 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
             if system_message.data:
                 data_node = system_message.data
                 data_message = _message_to_dict(data_node)
-                yield _format_code_block_json(
-                    _truncate_data_message_for_display(data_message)
-                )
+                display_data_message = _truncate_data_message_for_display(data_message)
+                yield _format_code_block_json(display_data_message)
+                trim_notice = _build_data_message_trim_notice(display_data_message)
+                if trim_notice:
+                    yield trim_notice
                 await asyncio.sleep(0)
 
                 query_payload = data_message.get("query")

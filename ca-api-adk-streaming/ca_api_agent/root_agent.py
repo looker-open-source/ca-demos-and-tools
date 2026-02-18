@@ -73,13 +73,23 @@ class RootAgent(BaseAgent):
                 logger.exception("Failed while evaluating routing rule for '%s'.", spec.key)
         return selected
 
+    @staticmethod
+    def _as_non_terminal(event: Event) -> Event:
+        """Returns a copy of the event marked as non-terminal for orchestration streaming."""
+        if not event.turn_complete:
+            return event
+        copy_fn = getattr(event, "model_copy", None)
+        if callable(copy_fn):
+            return copy_fn(update={"turn_complete": False})
+        event.turn_complete = False
+        return event
+
     @override
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
         async for event in self.query_agent.run_async(ctx):
-            event.turn_complete = False
-            yield event
+            yield self._as_non_terminal(event)
 
         selected_agents = self._select_optional_sub_agents(ctx)
         if selected_agents:
@@ -105,8 +115,7 @@ class RootAgent(BaseAgent):
 
             try:
                 async for event in spec.agent.run_async(ctx):
-                    event.turn_complete = False
-                    yield event
+                    yield self._as_non_terminal(event)
             except Exception as err:  # pragma: no cover - defensive runtime guard
                 logger.exception("Optional sub-agent '%s' failed.", spec.key)
                 error_content = types.Content(
