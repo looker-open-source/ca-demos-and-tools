@@ -50,11 +50,27 @@ def _to_plain_rows(rows: list[Any]) -> list[dict[str, Any]]:
         if isinstance(row, dict):
             plain_rows.append(row)
             continue
+        if hasattr(row, "items"):
+            try:
+                item_dict = dict(row.items())
+                if item_dict:
+                    plain_rows.append(item_dict)
+                    continue
+            except Exception:
+                pass
         try:
             row_dict = _message_to_dict(row)
         except Exception:
             row_dict = {}
-        plain_rows.append(row_dict if isinstance(row_dict, dict) else {"value": str(row)})
+        if isinstance(row_dict, dict):
+            if set(row_dict.keys()) == {"fields"} and isinstance(
+                row_dict["fields"], dict
+            ):
+                row_dict = row_dict["fields"]
+            if row_dict:
+                plain_rows.append(row_dict)
+                continue
+        plain_rows.append({"value": str(row)})
     return plain_rows
 
 
@@ -193,15 +209,28 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
                 )
                 await asyncio.sleep(0)
 
-                query = getattr(data_node, "query", None)
-                result = getattr(data_node, "result", None)
+                query_payload = data_message.get("query")
+                result_payload = data_message.get("result")
+                query_question = (
+                    query_payload.get("question")
+                    if isinstance(query_payload, dict)
+                    else None
+                )
 
-                if query and query.question:
-                    yield f"Analyzing your question: {query.question}\n"
+                if isinstance(query_question, str) and query_question:
+                    yield f"Analyzing your question: {query_question}\n"
                     await asyncio.sleep(0)
-                elif result and result.data:
-                    raw_rows = list(result.data)
-                    plain_rows = _to_plain_rows(raw_rows)
+                elif isinstance(result_payload, dict):
+                    payload_rows = result_payload.get("data")
+                    plain_rows = (
+                        _to_plain_rows(payload_rows)
+                        if isinstance(payload_rows, list)
+                        else []
+                    )
+                    if not plain_rows:
+                        result = getattr(data_node, "result", None)
+                        raw_rows = list(result.data) if result and result.data else []
+                        plain_rows = _to_plain_rows(raw_rows)
                     ctx.session.state[DATA_RESULT_STATE_KEY] = plain_rows
                     yield f"The query returned {len(plain_rows)} row(s)\n"
                     yield _format_simple_markdown_table(
@@ -216,25 +245,68 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
 
             if system_message.chart:
                 chart_node = system_message.chart
-                chart_result = getattr(chart_node, "result", None)
-                if chart_result:
-                    vega_config = getattr(chart_result, "vega_config", None)
-                    if vega_config and getattr(vega_config, "fields", None):
-                        vega_config_dict = json_format.MessageToDict(vega_config)
-                        if vega_config_dict:
-                            ctx.session.state[
-                                CHART_RESULT_VEGA_CONFIG_STATE_KEY
-                            ] = vega_config_dict
-                            yield "Chart spec (vega config) is available.\n"
-                            await asyncio.sleep(0)
+                try:
+                    chart_message = _message_to_dict(chart_node)
+                except Exception:
+                    chart_message = {}
+                chart_result_payload = chart_message.get("result")
 
-                    image_blob = getattr(chart_result, "image", None)
+                vega_config_dict: dict[str, Any] = {}
+                if isinstance(chart_result_payload, dict):
+                    payload_vega_config = chart_result_payload.get("vega_config")
+                    if isinstance(payload_vega_config, dict):
+                        vega_config_dict = payload_vega_config
+
+                if not vega_config_dict:
+                    chart_result = getattr(chart_node, "result", None)
+                    if chart_result:
+                        vega_config = getattr(chart_result, "vega_config", None)
+                        if vega_config is not None:
+                            try:
+                                parsed_vega_config = _message_to_dict(vega_config)
+                            except Exception:
+                                parsed_vega_config = {}
+                            if isinstance(parsed_vega_config, dict):
+                                vega_config_dict = parsed_vega_config
+
+                if vega_config_dict:
+                    ctx.session.state[CHART_RESULT_VEGA_CONFIG_STATE_KEY] = (
+                        vega_config_dict
+                    )
+                    yield "Chart spec (vega config) is available.\n"
+                    await asyncio.sleep(0)
+                else:
+                    logger.warning(
+                        "Chart message received but vega config could not be parsed."
+                    )
+
+                image_payload = (
+                    chart_result_payload.get("image")
+                    if isinstance(chart_result_payload, dict)
+                    else None
+                )
+                image_data = (
+                    image_payload.get("data")
+                    if isinstance(image_payload, dict)
+                    else None
+                )
+                image_mime_type = (
+                    image_payload.get("mime_type")
+                    if isinstance(image_payload, dict)
+                    else None
+                )
+
+                if not image_data:
+                    chart_result = getattr(chart_node, "result", None)
+                    image_blob = getattr(chart_result, "image", None) if chart_result else None
                     image_data = getattr(image_blob, "data", b"") if image_blob else b""
-                    if image_data:
-                        ctx.session.state[CHART_RESULT_IMAGE_PRESENT_STATE_KEY] = True
-                        ctx.session.state[CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY] = (
-                            getattr(image_blob, "mime_type", "") or ""
-                        )
+                    image_mime_type = getattr(image_blob, "mime_type", "") if image_blob else ""
+
+                if image_data:
+                    ctx.session.state[CHART_RESULT_IMAGE_PRESENT_STATE_KEY] = True
+                    ctx.session.state[CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY] = (
+                        image_mime_type or ""
+                    )
 
             if system_message.text and system_message.text.parts:
                 summary_part = system_message.text.parts[0]
