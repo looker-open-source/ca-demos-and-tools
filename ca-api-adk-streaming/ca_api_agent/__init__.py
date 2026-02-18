@@ -1,3 +1,5 @@
-from . import agent
+"""Package exports for the CA API ADK agent."""
 
-__all__ = ["agent"]
+from .agent import root_agent
+
+__all__ = ["root_agent"]

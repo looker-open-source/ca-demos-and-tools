@@ -1,158 +1,111 @@
 # Conversational Analytics API Agent
 
-This agent leverages the Gemini Conversational Analytics API to answer questions about business analytics. It can be run locally or deployed to Agent Engine.
+This project uses the Gemini Conversational Analytics API as the primary data interface, with a root orchestration agent that can optionally run additional specialized sub-agents.
+
+## Architecture
+
+The runtime entrypoint is `root_agent` in `ca_api_agent/agent.py`.
+The same `root_agent` is defined in `ca_api_agent/root_agent.py`.
+
+Execution flow:
+
+1. Root agent always runs the CA query agent first.
+2. Query/chart results are stored in session state (`temp:data_result`, `temp:summary_data`, `temp:chart_result_vega_config`).
+3. Optional sub-agents run only when deterministic response-shape rules match.
 
 ## Folder Structure
 
-- `ca_api_agent/`: This folder contains the core agent logic.
-  - `agent.py`: This file defines the `CaApiAgent` and the `root_agent`. The `CaApiAgent` is a custom agent class that inherits from the ADK's `BaseAgent`. It overrides the `_run_async_impl` method to support tool streaming, which allows the agent to process data from the Conversational Analytics API in real-time. The agent uses a simple client ID and secret for Looker authentication. It also saves the summary and raw data results to the agent's temporary session, which makes them accessible to subsequent agents in the same invocation.
-- `deployment/`: This folder contains the deployment script and the wheel file for the agent.
-  - `deploy.py`: This script handles the deployment of the agent to Agent Engine. It can create or delete an agent.
-  - `ca_api_agent-0.1.0-py3-none-any.whl`: The wheel file for the agent. This is created by running `uv build --format=wheel --output-dir=deployment`.
+- `ca_api_agent/agent.py`
+  - Canonical ADK entrypoint (`root_agent`).
+- `ca_api_agent/root_agent.py`
+  - Defines `RootAgent` and the optional sub-agent registry.
+  - Exposes `root_agent`.
+- `ca_api_agent/agents/ca_query.py`
+  - Defines `ConversationalAnalyticsQueryAgent` and CA API streaming bridge.
+- `ca_api_agent/agents/visualization.py`
+  - Defines factory for visualization sub-agent.
+- `deployment/deploy.py`
+  - Deployment script for Agent Engine.
 
-## Running the Agent Locally
+## How Optional Routing Works
 
-1.  **Install the dependencies:**
+Optional sub-agents are configured in `optional_sub_agents` in `ca_api_agent/root_agent.py`.
 
-    ```bash
-    uv sync --frozen
-    ```
+Each entry includes:
 
-2.  **Enter virtual environment:**
+- `key`: stable id for logs/routing
+- `description`: human-readable step name
+- `agent`: sub-agent instance
+- `run_when`: callable predicate receiving `InvocationContext`
 
-    ```bash
-    source .venv/bin/activate
-    ```
+Current built-in rules:
 
-3.  **Set the environment variables:**
-    Create a `.env` file in the root of the `ca-api-agent` directory and add the following environment variables:
+- Visualization agent runs when CA API returned `system_message.chart.result.vega_config`, persisted as `temp:chart_result_vega_config`.
 
-    ```
-    GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
-    GOOGLE_CLOUD_LOCATION=<your-gcp-location>
-    GOOGLE_GENAI_USE_VERTEXAI=1
-    LOOKERSDK_CLIENT_ID=<your-looker-client-id>
-    LOOKERSDK_CLIENT_SECRET=<your-looker-client-secret>
-    LOOKERSDK_BASE_URL=<your-looker-base-url>
-    LOOKML_MODEL=<your-lookml-model>
-    LOOKML_EXPLORE=<your-lookml-explore>
-    ```
+## Add a New Sub-Agent
 
-4.  **Run the agent:**
-    ```bash
-    adk web
-    ```
+1. Add a new agent factory module under `ca_api_agent/agents/` (for example `my_new_agent.py`).
+2. Import and instantiate it in `ca_api_agent/root_agent.py`.
+3. Append an `OptionalSubAgentSpec` entry to `optional_sub_agents`.
 
-## Building and Deploying to Agent Engine
-
-This agent can be deployed to Agent Engine using the provided `deploy.sh` script.
-
-### Prerequisites
-
-- [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
-- [uv](https://github.com/astral-sh/uv)
-
-### Deployment Steps
-
-1.  **Configure the `.env` file:**
-    Make sure the `.env` file in the root of the `ca-api-agent` directory contains the correct values for your environment.
-
-2.  **Run the deployment script:**
-    ```bash
-    ./deploy.sh
-    ```
-
-The script will then:
-
-1.  Build the wheel file for the agent.
-2.  Run the `deployment/deploy.py` script to deploy the agent to Agent Engine.
-
-The script will output the resource name of the deployed agent, which you can use to interact with it.
-
-## Multi-Agent Workflow Examples
-
-The following code blocks demonstrate how to create a multi-agent workflow using the `CaApiAgent`.
-
-### Translation Agent
-
-This agent translates the summary from the `CaApiAgent` to Japanese.
+Example:
 
 ```python
-from google.adk.agents import LlmAgent
-from google.adk.planners.built_in_planner import BuiltInPlanner
-from google.genai.types import ThinkingConfig
+from ca_api_agent.agents.my_new_agent import build_my_new_agent
 
-translation_agent = LlmAgent(
-            name="TranslationAgent",
-            instruction="Take the summary in the generated output: {temp:summary_data} and translate it to japanese.",
-            model="gemini-2.5-flash",
-            planner = BuiltInPlanner(
-                thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)
-            )
-        )
+my_new_agent = build_my_new_agent()
+
+optional_sub_agents = [
+    # existing entries...
+    OptionalSubAgentSpec(
+        key="my_new_step",
+        description="custom post-processing",
+        agent=my_new_agent,
+        run_when=lambda ctx: bool(ctx.session.state.get("temp:data_result")),
+    ),
+]
 ```
 
-### Code Executor Agent
+## Running Locally
 
-This agent performs further analysis on the data from the `CaApiAgent`.
+1. Install dependencies:
 
-```python
-from google.adk.agents import LlmAgent
-from google.adk.code_executors import BuiltInCodeExecutor
-from google.adk.planners.built_in_planner import BuiltInPlanner
-from google.genai.types import ThinkingConfig
-
-code_executor_agent = LlmAgent(
-            name='python_agent',
-            model="gemini-2.5-flash",
-            description='Agent that analyzes text and clusters and labels the results',
-            instruction="""Run a further python analysis on the data to: identify anomalies, detect outliers, run forecasting if the result is time series and has suffecient rows OR cluster and label for cohort style analysis.
-              Always be concise with your summarized responses. Here is the data : {temp:data_result}""",
-            code_executor=BuiltInCodeExecutor(),
-            planner = BuiltInPlanner(
-                thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)
-            )
-        )
+```bash
+uv sync --frozen
 ```
 
-### Visualization Agent
+2. Activate virtualenv:
 
-This agent creates a visualization of the data from the `CaApiAgent`.
-
-```python
-from google.adk.agents import LlmAgent
-from google.adk.code_executors import BuiltInCodeExecutor
-from google.adk.planners.built_in_planner import BuiltInPlanner
-from google.genai.types import ThinkingConfig
-
-visualization_agent = LlmAgent(
-            name='visualization_agent',
-            model="gemini-2.5-flash",
-            description='A visualization agent that creates plots from data using Python, pandas, and matplotlib.',
-            instruction="""You are a data visualization expert. Your primary purpose is to create insightful and clear plots from data.
-            When you receive a request with data, your task is to:
-            1.  Understand the data and the user's request for visualization.
-            2.  Write Python code using pandas to prepare the data and matplotlib to generate a plot.
-            3.  Ensure your code is self-contained and generates a visual output. For example, by calling `plt.show()`.
-            4.  Along with the code that generates the plot, provide a brief, one-sentence summary of what the plot shows.
-
-            The code will be executed, and the resulting plot will be displayed. Here is the data {temp:data_result}""",
-            code_executor=BuiltInCodeExecutor(),
-            planner = BuiltInPlanner(
-                thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)
-            )
-        )
+```bash
+source .venv/bin/activate
 ```
 
-### Sequential Agent
+3. Create `.env` in this folder with:
 
-This agent executes a pipeline of the above agents.
-
-```python
-from google.adk.agents import SequentialAgent
-sequential_agent = SequentialAgent(
-    name="TopLevelAgent",
-    description="Executes a pipeline of agents. The first being a data agent that can answer any question about data. The second being an agent that takes the data result from prior output and performs advanced analysis on it. And the third, a visualization agent that visualizes the raw data intiutively based on the structure and records returned.",
-    sub_agents=[root_agent,code_executor_agent,visualization_agent]
-)
+```bash
+GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
+GOOGLE_CLOUD_LOCATION=<your-gcp-location>
+GOOGLE_GENAI_USE_VERTEXAI=1
+LOOKERSDK_CLIENT_ID=<your-looker-client-id>
+LOOKERSDK_CLIENT_SECRET=<your-looker-client-secret>
+LOOKERSDK_BASE_URL=<your-looker-base-url>
+LOOKML_MODEL=<your-lookml-model>
+LOOKML_EXPLORE=<your-lookml-explore>
 ```
+
+4. Start ADK web:
+
+```bash
+adk web
+```
+
+## Deploying to Agent Engine
+
+1. Ensure `.env` values are set.
+2. Run:
+
+```bash
+./deploy.sh
+```
+
+The script builds the wheel and runs `deployment/deploy.py`.
