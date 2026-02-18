@@ -163,65 +163,28 @@ def _format_simple_markdown_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join([header_line, separator_line, *body_lines]) + "\n"
 
 
-def _load_ca_message_history(
-    ctx: InvocationContext,
-) -> list[geminidataanalytics.Message]:
-    """Loads sanitized CA text-only history from session state."""
+def _get_ca_message_history(ctx: InvocationContext) -> list[Any]:
+    """Returns the CA conversation history as-is from session state."""
     history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
-    if not isinstance(history, list):
-        return []
-
-    messages: list[geminidataanalytics.Message] = []
-    for entry in history:
-        if not isinstance(entry, dict):
-            continue
-
-        user_message = entry.get("user_message")
-        if isinstance(user_message, dict):
-            user_text = user_message.get("text")
-            if isinstance(user_text, str) and user_text.strip():
-                messages.append(
-                    geminidataanalytics.Message(
-                        user_message=geminidataanalytics.UserMessage(text=user_text)
-                    )
-                )
-                continue
-
-        system_message = entry.get("system_message")
-        if not isinstance(system_message, dict):
-            continue
-        text_node = system_message.get("text")
-        if not isinstance(text_node, dict):
-            continue
-        parts = text_node.get("parts")
-        if not isinstance(parts, list):
-            continue
-        string_parts = [part for part in parts if isinstance(part, str) and part.strip()]
-        if not string_parts:
-            continue
-
-        message = geminidataanalytics.Message()
-        message.system_message.text.parts.extend(string_parts)
-        messages.append(message)
-    return messages
+    if isinstance(history, list):
+        if all(isinstance(item, geminidataanalytics.Message) for item in history):
+            return history
+        logger.warning(
+            "Resetting CA message history due incompatible entry types in session state."
+        )
+    history = []
+    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
+    return history
 
 
 def _append_ca_message_history(
     ctx: InvocationContext,
-    message: geminidataanalytics.Message,
+    message: Any,
 ) -> None:
-    """Appends one CA Message to session history as a serializable dict."""
-    history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
-    if not isinstance(history, list):
-        history = []
-    history.append(_message_to_dict(message))
+    """Appends one CA message exactly as received."""
+    history = _get_ca_message_history(ctx)
+    history.append(message)
     ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
-
-
-def _build_system_text_message(text: str) -> geminidataanalytics.Message:
-    message = geminidataanalytics.Message()
-    message.system_message.text.parts.append(text)
-    return message
 
 
 def _clear_response_shape_state(ctx: InvocationContext) -> None:
@@ -275,25 +238,25 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         f"/locations/{os.getenv('GOOGLE_CLOUD_LOCATION')}"
     )
 
-    history_messages = _load_ca_message_history(ctx)
+    history_messages = _get_ca_message_history(ctx)
     user_message = geminidataanalytics.Message(
         user_message=geminidataanalytics.UserMessage(text=question)
     )
-    request_messages = [*history_messages, user_message]
-    _append_ca_message_history(ctx, user_message)
+    history_messages.append(user_message)
+    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history_messages
 
     chat_request = geminidataanalytics.ChatRequest(
         parent=project,
-        messages=request_messages,
+        messages=history_messages,
         inline_context=_build_inline_context(),
     )
 
     try:
         client = geminidataanalytics.DataChatServiceAsyncClient()
         stream = await client.chat(request=chat_request)
-        last_system_text_for_history: str | None = None
 
         async for response in stream:
+            _append_ca_message_history(ctx, response)
             if not response.system_message:
                 continue
 
@@ -410,13 +373,8 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
                 summary_text = getattr(summary_part, "text", None) or ""
                 if summary_text:
                     ctx.session.state[SUMMARY_STATE_KEY] = summary_text
-                    last_system_text_for_history = summary_text
                     yield summary_text + "\n"
                     await asyncio.sleep(0)
-        if last_system_text_for_history:
-            _append_ca_message_history(
-                ctx, _build_system_text_message(last_system_text_for_history)
-            )
     except api_exceptions.GoogleAPICallError as err:
         code_fn = getattr(err, "code", None)
         code = code_fn() if callable(code_fn) else None
