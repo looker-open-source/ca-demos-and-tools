@@ -23,9 +23,6 @@ logger = logging.getLogger(__name__)
 
 DATA_RESULT_STATE_KEY = "temp:data_result"
 SUMMARY_STATE_KEY = "temp:summary_data"
-CHART_RESULT_VEGA_CONFIG_STATE_KEY = "temp:chart_result_vega_config"
-CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY = "temp:chart_result_image_mime_type"
-CHART_RESULT_IMAGE_PRESENT_STATE_KEY = "temp:chart_result_image_present"
 CA_MESSAGE_HISTORY_STATE_KEY = "temp:ca_message_history"
 DATA_MESSAGE_DISPLAY_MAX_ROWS = 5
 DATA_TABLE_DISPLAY_MAX_ROWS = 50
@@ -167,24 +164,39 @@ def _get_ca_message_history(ctx: InvocationContext) -> list[Any]:
     """Returns the CA conversation history as-is from session state."""
     history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
     if isinstance(history, list):
-        if all(isinstance(item, geminidataanalytics.Message) for item in history):
-            return history
-        logger.warning(
-            "Resetting CA message history due incompatible entry types in session state."
-        )
+        return history
     history = []
     ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
     return history
+
+
+def _history_entry_to_message(entry: Any) -> geminidataanalytics.Message | None:
+    """Converts one history entry from session state back to a CA Message."""
+    if isinstance(entry, geminidataanalytics.Message):
+        return entry
+    if isinstance(entry, dict):
+        try:
+            return geminidataanalytics.Message(entry)
+        except Exception:
+            return None
+    proto_message = getattr(entry, "_pb", None)
+    if proto_message is not None:
+        try:
+            return geminidataanalytics.Message(proto_message)
+        except Exception:
+            return None
+    return None
 
 
 def _append_ca_message_history(
     ctx: InvocationContext,
     message: Any,
 ) -> None:
-    """Appends one CA message exactly as received."""
-    history = _get_ca_message_history(ctx)
-    history.append(message)
-    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
+    """Appends one CA message as a session-safe dictionary."""
+    history_messages = _get_ca_message_history(ctx)
+    history_messages.append(message)
+    logger.info("Appended message. History size: %d. Preview: %s", len(history_messages), str(message).replace("\n", " ")[:100])
+    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history_messages
 
 
 def _clear_response_shape_state(ctx: InvocationContext) -> None:
@@ -192,9 +204,6 @@ def _clear_response_shape_state(ctx: InvocationContext) -> None:
     keys_to_clear = (
         DATA_RESULT_STATE_KEY,
         SUMMARY_STATE_KEY,
-        CHART_RESULT_VEGA_CONFIG_STATE_KEY,
-        CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY,
-        CHART_RESULT_IMAGE_PRESENT_STATE_KEY,
     )
     for key in keys_to_clear:
         ctx.session.state.pop(key, None)
@@ -204,7 +213,7 @@ def _build_inline_context() -> geminidataanalytics.Context:
     return geminidataanalytics.Context(
         system_instruction=(
             "Answer user questions to the best of your ability. "
-            "Do not return charts or visualization output."
+            "Do not return charts."
         ),
         datasource_references=geminidataanalytics.DatasourceReferences(
             looker=geminidataanalytics.LookerExploreReferences(
@@ -238,16 +247,24 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         f"/locations/{os.getenv('GOOGLE_CLOUD_LOCATION')}"
     )
 
-    history_messages = _get_ca_message_history(ctx)
+    history_entries = _get_ca_message_history(ctx)
+    history_messages: list[geminidataanalytics.Message] = []
+    for entry in history_entries:
+        history_message = _history_entry_to_message(entry)
+        if history_message is None:
+            logger.warning("Skipping non-convertible CA history entry: %r", type(entry))
+            continue
+        history_messages.append(history_message)
+
     user_message = geminidataanalytics.Message(
         user_message=geminidataanalytics.UserMessage(text=question)
     )
-    history_messages.append(user_message)
-    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history_messages
+    request_messages = [*history_messages, user_message]
+    _append_ca_message_history(ctx, user_message)
 
     chat_request = geminidataanalytics.ChatRequest(
         parent=project,
-        messages=history_messages,
+        messages=request_messages,
         inline_context=_build_inline_context(),
     )
 
@@ -305,68 +322,9 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
                         )
                     await asyncio.sleep(0)
 
+            # chart rendering is handled by visualization sub-agent
             if system_message.chart:
-                chart_node = system_message.chart
-                try:
-                    chart_message = _message_to_dict(chart_node)
-                except Exception:
-                    chart_message = {}
-                chart_result_payload = chart_message.get("result")
-
-                vega_config_dict: dict[str, Any] = {}
-                if isinstance(chart_result_payload, dict):
-                    payload_vega_config = chart_result_payload.get("vega_config")
-                    if isinstance(payload_vega_config, dict):
-                        vega_config_dict = payload_vega_config
-
-                if not vega_config_dict:
-                    chart_result = getattr(chart_node, "result", None)
-                    if chart_result:
-                        vega_config = getattr(chart_result, "vega_config", None)
-                        if vega_config is not None:
-                            try:
-                                parsed_vega_config = _message_to_dict(vega_config)
-                            except Exception:
-                                parsed_vega_config = {}
-                            if isinstance(parsed_vega_config, dict):
-                                vega_config_dict = parsed_vega_config
-
-                if vega_config_dict:
-                    ctx.session.state[CHART_RESULT_VEGA_CONFIG_STATE_KEY] = (
-                        vega_config_dict
-                    )
-                else:
-                    logger.warning(
-                        "Chart message received but vega config could not be parsed."
-                    )
-
-                image_payload = (
-                    chart_result_payload.get("image")
-                    if isinstance(chart_result_payload, dict)
-                    else None
-                )
-                image_data = (
-                    image_payload.get("data")
-                    if isinstance(image_payload, dict)
-                    else None
-                )
-                image_mime_type = (
-                    image_payload.get("mime_type")
-                    if isinstance(image_payload, dict)
-                    else None
-                )
-
-                if not image_data:
-                    chart_result = getattr(chart_node, "result", None)
-                    image_blob = getattr(chart_result, "image", None) if chart_result else None
-                    image_data = getattr(image_blob, "data", b"") if image_blob else b""
-                    image_mime_type = getattr(image_blob, "mime_type", "") if image_blob else ""
-
-                if image_data:
-                    ctx.session.state[CHART_RESULT_IMAGE_PRESENT_STATE_KEY] = True
-                    ctx.session.state[CHART_RESULT_IMAGE_MIME_TYPE_STATE_KEY] = (
-                        image_mime_type or ""
-                    )
+                await asyncio.sleep(0)
 
             if system_message.text and system_message.text.parts:
                 summary_part = system_message.text.parts[0]
@@ -527,6 +485,13 @@ def build_conversational_analytics_query_agent() -> ConversationalAnalyticsQuery
 2. Take Action:
    - If it IS an analytics question: you MUST use the query tool to find the answer.
    - If it is NOT an analytics question: respond directly as a helpful assistant and do NOT use tools.
+
+### Tool Usage
+- Use the provided tools directly.
+- Do NOT write Python code to invoke tools (e.g. do not output `print(tool.intercept(...))`).
+- Do NOT generate JSON data representing query results.
+- Do NOT simulate the output of the query tool.
+- The JSON output you see in the conversation history is a SYSTEM LOG. You must NEVER generate it yourself.
 
 ### Handling Tool Results
 - Base your answer exclusively on the tool result.
