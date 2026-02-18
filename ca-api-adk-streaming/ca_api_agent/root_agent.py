@@ -1,6 +1,8 @@
 """Root agent for CA query + optional specialized sub-agents."""
 
+import base64
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Callable, cast
 
@@ -84,6 +86,41 @@ class RootAgent(BaseAgent):
         event.turn_complete = False
         return event
 
+    @staticmethod
+    def _strip_code_blocks(text: str) -> str:
+        return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+
+    @staticmethod
+    def _sanitize_visualization_content(
+        content: types.Content | None,
+    ) -> types.Content | None:
+        if not content or not content.parts:
+            return content
+
+        sanitized_parts: list[types.Part] = []
+        for part in content.parts:
+            inline_data = getattr(part, "inline_data", None)
+            if inline_data and inline_data.data:
+                mime_type = getattr(inline_data, "mime_type", None) or "image/png"
+                if mime_type.startswith("image/"):
+                    b64_data = base64.b64encode(inline_data.data).decode("ascii")
+                    sanitized_parts.append(
+                        types.Part(
+                            text=f"![chart](data:{mime_type};base64,{b64_data})"
+                        )
+                    )
+                    continue
+
+            text = getattr(part, "text", None)
+            if isinstance(text, str) and text.strip():
+                cleaned = RootAgent._strip_code_blocks(text).strip()
+                if cleaned:
+                    sanitized_parts.append(types.Part(text=cleaned))
+
+        if not sanitized_parts:
+            return None
+        return types.Content(role=content.role, parts=sanitized_parts)
+
     @override
     async def _run_async_impl(
         self, ctx: InvocationContext
@@ -115,7 +152,22 @@ class RootAgent(BaseAgent):
 
             try:
                 async for event in spec.agent.run_async(ctx):
-                    yield self._as_non_terminal(event)
+                    forward_event = event
+                    if spec.key == "visualization":
+                        sanitized_content = self._sanitize_visualization_content(
+                            event.content
+                        )
+                        if sanitized_content is None:
+                            continue
+                        copy_fn = getattr(event, "model_copy", None)
+                        if callable(copy_fn):
+                            forward_event = cast(
+                                Event, copy_fn(update={"content": sanitized_content})
+                            )
+                        else:
+                            event.content = sanitized_content
+                            forward_event = event
+                    yield self._as_non_terminal(forward_event)
             except Exception as err:  # pragma: no cover - defensive runtime guard
                 logger.exception("Optional sub-agent '%s' failed.", spec.key)
                 error_content = types.Content(
