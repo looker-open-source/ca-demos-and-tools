@@ -16,6 +16,7 @@
 
 import logging
 import os
+from typing import TypeAlias
 
 import vertexai
 from absl import app, flags
@@ -23,6 +24,7 @@ from ca_api_agent.agent import root_agent
 from dotenv import load_dotenv
 from google.api_core import exceptions as google_exceptions
 from google.cloud import storage
+from google.cloud.aiplatform_v1 import types as aip_types
 from vertexai import agent_engines
 from vertexai.preview.reasoning_engines import AdkApp
 
@@ -39,6 +41,8 @@ flags.DEFINE_bool("delete", False, "Delete an existing agent.")
 flags.mark_bool_flags_as_mutual_exclusive(["create", "delete"])
 
 AGENT_WHL_FILE = "ca_api_agent-0.1.0-py3-none-any.whl"
+EnvVarValue: TypeAlias = str | aip_types.SecretRef
+EnvVars: TypeAlias = dict[str, EnvVarValue]
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -122,7 +126,7 @@ def setup_staging_bucket(
     return f"gs://{bucket_name}"
 
 
-def create(env_vars: dict[str, str]) -> None:
+def create(env_vars: EnvVars) -> None:
     """Creates and deploys the agent."""
     adk_app = AdkApp(
         agent=root_agent,
@@ -140,7 +144,7 @@ def create(env_vars: dict[str, str]) -> None:
         adk_app,
         requirements=[AGENT_WHL_FILE],
         extra_packages=[AGENT_WHL_FILE],
-        env_vars=env_vars
+        env_vars=env_vars,
     )
     logger.info("Created remote agent: %s", remote_agent.resource_name)
     print(f"\nSuccessfully created agent: {remote_agent.resource_name}")
@@ -168,7 +172,7 @@ def delete(resource_id: str) -> None:
 def main(argv: list[str]) -> None:  # pylint: disable=unused-argument
     """Main execution function."""
     load_dotenv()
-    env_vars = {}
+    env_vars: EnvVars = {}
 
     project_id = (
         FLAGS.project_id
@@ -185,9 +189,15 @@ def main(argv: list[str]) -> None:  # pylint: disable=unused-argument
         if FLAGS.bucket
         else os.getenv("GOOGLE_CLOUD_STORAGE_BUCKET", default_bucket_name)
     )
-    env_vars["LOOKERSDK_CLIENT_ID"]=os.getenv("LOOKERSDK_CLIENT_ID")
-    env_vars["LOOKERSDK_CLIENT_SECRET"]=os.getenv("LOOKERSDK_CLIENT_SECRET")
-    env_vars["LOOKERSDK_BASE_URL"]=os.getenv("LOOKERSDK_BASE_URL")
+    looker_env_var_names = (
+        "LOOKERSDK_CLIENT_ID",
+        "LOOKERSDK_CLIENT_SECRET",
+        "LOOKERSDK_BASE_URL",
+    )
+    for var_name in looker_env_var_names:
+        var_value = os.getenv(var_name)
+        if var_value is not None:
+            env_vars[var_name] = var_value
 
     logger.info("Using PROJECT: %s", project_id)
     logger.info("Using LOCATION: %s", location)
@@ -224,7 +234,7 @@ def main(argv: list[str]) -> None:  # pylint: disable=unused-argument
 
     try:
         # Setup staging bucket
-        staging_bucket_uri=None
+        staging_bucket_uri = None
         if FLAGS.create:
             staging_bucket_uri = setup_staging_bucket(
                 project_id, location, bucket_name
