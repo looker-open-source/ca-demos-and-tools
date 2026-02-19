@@ -3,39 +3,36 @@
     "recommendations": [
       "dbaeumer.vscode-eslint",
       "esbenp.prettier-vscode",
-      "ms-python.python"
-    ]
+      "ms-python.python",
+    ],
   },
   "folders": [
     {
-      "path": "ca-api-golden-demo"
+      "path": "ca-api-golden-demo",
     },
     {
-      "path": "ca-api-adk"
+      "path": "ca-api-adk-streaming",
     },
     {
-      "path": "ca-api-adk-streaming"
+      "path": "ca-api-adk-react-demo",
     },
     {
-      "path": "ca-api-adk-react-demo"
-    },
-    {
-      "path": "ca-agent-ops-prism"
+      "path": "ca-agent-ops-prism",
     },
     {
       "path": ".",
-      "name": "root"
-    }
+      "name": "root",
+    },
   ],
   "settings": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "[python]": {
-      "editor.defaultFormatter": "ms-python.python"
+      "editor.defaultFormatter": "ms-python.python",
     },
     "workbench.colorCustomizations": {
       "titleBar.activeBackground": "#4285F4",
-      "titleBar.activeForeground": "#FFFFFF"
-    }
-  }
+      "titleBar.activeForeground": "#FFFFFF",
+    },
+  },
 }
