@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 DATA_RESULT_STATE_KEY = "temp:data_result"
 SUMMARY_STATE_KEY = "temp:summary_data"
-CA_MESSAGE_HISTORY_STATE_KEY = "temp:ca_message_history"
 DATA_MESSAGE_DISPLAY_MAX_ROWS = 5
 DATA_TABLE_DISPLAY_MAX_ROWS = 50
 
@@ -160,44 +159,6 @@ def _format_simple_markdown_table(rows: list[dict[str, Any]]) -> str:
     return "\n".join([header_line, separator_line, *body_lines]) + "\n"
 
 
-def _get_ca_message_history(ctx: InvocationContext) -> list[Any]:
-    """Returns the CA conversation history as-is from session state."""
-    history = ctx.session.state.get(CA_MESSAGE_HISTORY_STATE_KEY)
-    if isinstance(history, list):
-        return history
-    history = []
-    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history
-    return history
-
-
-def _history_entry_to_message(entry: Any) -> geminidataanalytics.Message | None:
-    """Converts one history entry from session state back to a CA Message."""
-    if isinstance(entry, geminidataanalytics.Message):
-        return entry
-    if isinstance(entry, dict):
-        try:
-            return geminidataanalytics.Message(entry)
-        except Exception:
-            return None
-    proto_message = getattr(entry, "_pb", None)
-    if proto_message is not None:
-        try:
-            return geminidataanalytics.Message(proto_message)
-        except Exception:
-            return None
-    return None
-
-
-def _append_ca_message_history(
-    ctx: InvocationContext,
-    message: Any,
-) -> None:
-    """Appends one CA message as a session-safe dictionary."""
-    history_messages = _get_ca_message_history(ctx)
-    history_messages.append(message)
-    logger.info("Appended message. History size: %d. Preview: %s", len(history_messages), str(message).replace("\n", " ")[:100])
-    ctx.session.state[CA_MESSAGE_HISTORY_STATE_KEY] = history_messages
-
 
 def _clear_response_shape_state(ctx: InvocationContext) -> None:
     """Clears routing-related state to avoid stale data across turns."""
@@ -247,20 +208,10 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         f"/locations/{os.getenv('GOOGLE_CLOUD_LOCATION')}"
     )
 
-    history_entries = _get_ca_message_history(ctx)
-    history_messages: list[geminidataanalytics.Message] = []
-    for entry in history_entries:
-        history_message = _history_entry_to_message(entry)
-        if history_message is None:
-            logger.warning("Skipping non-convertible CA history entry: %r", type(entry))
-            continue
-        history_messages.append(history_message)
-
     user_message = geminidataanalytics.Message(
         user_message=geminidataanalytics.UserMessage(text=question)
     )
-    request_messages = [*history_messages, user_message]
-    _append_ca_message_history(ctx, user_message)
+    request_messages = [user_message]
 
     chat_request = geminidataanalytics.ChatRequest(
         parent=project,
@@ -273,7 +224,6 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         stream = await client.chat(request=chat_request)
 
         async for response in stream:
-            _append_ca_message_history(ctx, response)
             if not response.system_message:
                 continue
 
@@ -338,9 +288,6 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         code = code_fn() if callable(code_fn) else None
         error_code = str(getattr(code, "name", "UNKNOWN"))
         error_message = str(getattr(err, "message", str(err)))
-        if "MALFORMED_FUNCTION_CALL" in error_message:
-            ctx.session.state.pop(CA_MESSAGE_HISTORY_STATE_KEY, None)
-            logger.warning("Reset CA message history due malformed function call response.")
         logger.error("Error from CA API: %s - %s", error_code, error_message)
         yield json.dumps({"error": error_message, "code": error_code})
     except Exception as err:  # pragma: no cover - defensive catch for service errors
@@ -491,7 +438,6 @@ def build_conversational_analytics_query_agent() -> ConversationalAnalyticsQuery
 - Do NOT write Python code to invoke tools (e.g. do not output `print(tool.intercept(...))`).
 - Do NOT generate JSON data representing query results.
 - Do NOT simulate the output of the query tool.
-- The JSON output you see in the conversation history is a SYSTEM LOG. You must NEVER generate it yourself.
 
 ### Handling Tool Results
 - Base your answer exclusively on the tool result.
