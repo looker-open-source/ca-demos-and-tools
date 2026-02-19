@@ -177,11 +177,23 @@ def _clear_response_shape_state(ctx: InvocationContext) -> None:
 
 
 def _build_inline_context() -> geminidataanalytics.Context:
+
     return geminidataanalytics.Context(
         system_instruction=(
             "Answer user questions to the best of your ability. "
             "Do not return charts."
         ),
+        # To use BigQuery instead of Looker, uncomment the following block and replace with your table(s)
+        # datasource_references = geminidataanalytics.DatasourceReferences(
+        #     bq=geminidataanalytics.BigQueryTableReferences(table_references=[
+        #         geminidataanalytics.BigQueryTableReference(
+        #             project_id="project-name", dataset_id="dataset-name", table_id="table-name"
+        #         ), 
+        #         geminidataanalytics.BigQueryTableReference(
+        #         project_id="project-name", dataset_id="dataset-name", table_id="table-name"
+        #         )
+        #     ])
+        # ),
         datasource_references=geminidataanalytics.DatasourceReferences(
             looker=geminidataanalytics.LookerExploreReferences(
                 explore_references=[

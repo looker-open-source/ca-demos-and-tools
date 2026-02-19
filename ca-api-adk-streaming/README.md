@@ -62,6 +62,8 @@ LOOKML_EXPLORE=<your-lookml-explore>
 adk web
 ```
 
+> **Note:** This demo was setup with a Looker datasource. Uncomment and enter table details for a BigQuery datasource reference in `_build_inline_context` in [ca_query.py](ca_api_agent/agents/ca_query.py) to switch to a BigQuery example.
+
 ## Optional Sub-Agents (Example)
 
 Default behavior is deterministic CA-first with optional sub-agent routing.
