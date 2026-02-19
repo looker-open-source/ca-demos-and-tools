@@ -7,14 +7,12 @@ import os
 from typing import Any, AsyncGenerator
 
 from dotenv import load_dotenv
-from google.adk.agents import BaseAgent, LlmAgent
+from google.adk.agents import BaseAgent
 from google.adk.agents.invocation_context import InvocationContext
 from google.adk.events import Event
-from google.adk.planners.built_in_planner import BuiltInPlanner
 from google.api_core import exceptions as api_exceptions
 from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
 from google.genai import types
-from google.genai.types import ThinkingConfig
 from google.protobuf import json_format
 from typing_extensions import override
 
@@ -25,12 +23,6 @@ DATA_RESULT_STATE_KEY = "temp:data_result"
 SUMMARY_STATE_KEY = "temp:summary_data"
 DATA_MESSAGE_DISPLAY_MAX_ROWS = 5
 DATA_TABLE_DISPLAY_MAX_ROWS = 50
-
-
-async def tool_intercept(question: str) -> None:
-    """Intercept tool used to trigger CA streaming execution."""
-    del question
-    return
 
 
 def _message_to_dict(message: Any) -> dict[str, Any]:
@@ -295,152 +287,104 @@ async def stream_nlq(question: str, ctx: InvocationContext) -> AsyncGenerator[st
         yield json.dumps({"error": str(err)})
 
 
+def _extract_user_question(ctx: InvocationContext) -> str | None:
+    """Extracts plain-text question from the invocation's user content."""
+    user_content = ctx.user_content
+    if not user_content or not user_content.parts:
+        return None
+
+    text_parts: list[str] = []
+    for part in user_content.parts:
+        text = getattr(part, "text", None)
+        if isinstance(text, str) and text.strip():
+            text_parts.append(text.strip())
+
+    if not text_parts:
+        return None
+    return "\n".join(text_parts)
+
+
 class ConversationalAnalyticsQueryAgent(BaseAgent):
     """Runs NLQ requests against CA API and streams results back into the chat."""
 
     name: str
-    instruction: str
-    model: str
-    ca_llm_agent: LlmAgent | None = None
+    description: str = ""
 
     def __init__(
         self,
         name: str,
-        instruction: str,
-        model: str = "gemini-2.5-flash-lite",
+        description: str = "",
     ) -> None:
         init_data: dict[str, Any] = {
             "name": name,
-            "instruction": instruction,
-            "model": model,
+            "description": description,
         }
         super().__init__(**init_data)
-
-        self.ca_llm_agent = LlmAgent(
-            name=name,
-            instruction=instruction,
-            model=model,
-            tools=[tool_intercept],
-            planner=BuiltInPlanner(
-                thinking_config=ThinkingConfig(include_thoughts=False, thinking_budget=0)
-            ),
-        )
 
     @override
     async def _run_async_impl(
         self, ctx: InvocationContext
     ) -> AsyncGenerator[Event, None]:
-        if self.ca_llm_agent is None:
-            raise RuntimeError("ca_llm_agent is not initialized.")
-
-        async for event in self.ca_llm_agent.run_async(ctx):
-            logger.info(event.model_dump_json(indent=2, exclude_none=True))
-
-            if not event.content or not event.content.parts:
-                yield Event(
-                    author=self.name,
-                    partial=False,
-                    turn_complete=True,
-                    invocation_id=event.invocation_id,
-                    content=event.content,
-                )
-                break
-
-            first_part = event.content.parts[0]
-            function_call = first_part.function_call
-            if not function_call:
-                yield Event(
-                    author=self.name,
-                    partial=False,
-                    turn_complete=True,
-                    invocation_id=event.invocation_id,
-                    content=event.content,
-                )
-                break
-
-            status_message = types.Content(
+        question = _extract_user_question(ctx)
+        if not question:
+            error_content = types.Content(
                 role="model",
                 parts=[
-                    types.Part(text="I'll invoke the Looker Conversational Analytics API")
+                    types.Part(
+                        text=(
+                            "I couldn't read your question. "
+                            "Please send a text prompt."
+                        )
+                    )
                 ],
             )
             yield Event(
                 author=self.name,
                 partial=False,
-                turn_complete=False,
-                invocation_id=event.invocation_id,
-                content=status_message,
+                turn_complete=True,
+                invocation_id=ctx.invocation_id,
+                content=error_content,
             )
+            return
 
-            args: Any = function_call.args
-            question = args.get("question") if isinstance(args, dict) else None
-            if not isinstance(question, str) or not question.strip():
-                error_content = types.Content(
-                    role="model",
-                    parts=[
-                        types.Part(
-                            text=(
-                                "I could not find a valid question argument for the "
-                                "query tool."
-                            )
-                        )
-                    ],
-                )
-                yield Event(
-                    author=self.name,
-                    partial=False,
-                    turn_complete=True,
-                    invocation_id=event.invocation_id,
-                    content=error_content,
-                )
-                break
+        status_message = types.Content(
+            role="model",
+            parts=[types.Part(text="Invoking the Conversational Analytics API...")],
+        )
+        yield Event(
+            author=self.name,
+            partial=False,
+            turn_complete=False,
+            invocation_id=ctx.invocation_id,
+            content=status_message,
+        )
 
-            async for data_chunk in stream_nlq(question, ctx):
-                chunk_content = types.Content(
-                    role="model",
-                    parts=[types.Part(text=data_chunk)],
-                )
-                yield Event(
-                    author=self.name,
-                    partial=False,
-                    turn_complete=False,
-                    invocation_id=event.invocation_id,
-                    content=chunk_content,
-                )
-
+        async for data_chunk in stream_nlq(question, ctx):
+            chunk_content = types.Content(
+                role="model",
+                parts=[types.Part(text=data_chunk)],
+            )
             yield Event(
                 author=self.name,
                 partial=False,
-                turn_complete=True,
-                invocation_id=event.invocation_id,
+                turn_complete=False,
+                invocation_id=ctx.invocation_id,
+                content=chunk_content,
             )
-            break
+
+        yield Event(
+            author=self.name,
+            partial=False,
+            turn_complete=True,
+            invocation_id=ctx.invocation_id,
+        )
 
 
-def build_conversational_analytics_query_agent() -> ConversationalAnalyticsQueryAgent:
+def build_conversational_analytics_query_agent(
+    name: str = "conversational_analytics_query_agent",
+) -> ConversationalAnalyticsQueryAgent:
     """Factory for the CA query sub-agent."""
     return ConversationalAnalyticsQueryAgent(
-        name="conversational_analytics_query_agent",
-        model="gemini-2.5-flash-lite",
-        instruction="""You are a specialized data analysis assistant. Your primary purpose is to answer user questions about business analytics by retrieving data using your available tools.
-
-### Core Logic
-1. Analyze the User's Request:
-   - Analytics Question: Is the user asking for metrics, KPIs, statistics, trends, or information about the dataset?
-   - General Conversation: Is the user making small talk?
-
-2. Take Action:
-   - If it IS an analytics question: you MUST use the query tool to find the answer.
-   - If it is NOT an analytics question: respond directly as a helpful assistant and do NOT use tools.
-
-### Tool Usage
-- Use the provided tools directly.
-- Do NOT write Python code to invoke tools (e.g. do not output `print(tool.intercept(...))`).
-- Do NOT generate JSON data representing query results.
-- Do NOT simulate the output of the query tool.
-
-### Handling Tool Results
-- Base your answer exclusively on the tool result.
-- Synthesize raw data into a clear, natural-language answer.
-- Do not output raw JSON unless the user explicitly asks for it.""",
+        name=name,
+        description="Always forwards each user request directly to the Conversational Analytics API.",
     )

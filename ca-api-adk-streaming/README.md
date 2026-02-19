@@ -1,70 +1,32 @@
 # Conversational Analytics API Agent
 
-This project uses the Gemini Conversational Analytics API as the primary data interface, with a root orchestration agent that can optionally run additional specialized sub-agents.
+This project uses the Conversational Analytics API as the primary data interface with optional post-processing sub-agents.
 
 ## Architecture
 
 The runtime entrypoint is `root_agent` in `ca_api_agent/agent.py`.
 The same `root_agent` is defined in `ca_api_agent/root_agent.py`.
 
-Execution flow:
+## Execution Flow
 
-1. Root agent always runs the CA query agent first.
-2. Query results are stored in session state (`temp:data_result`, `temp:summary_data`), with optional chart metadata captured when present.
-3. Optional sub-agents run only when deterministic response-shape rules match.
+1. `root_agent` always runs the CA query agent first.
+2. Query outputs are streamed back and normalized into session state (`temp:data_result`, `temp:summary_data`).
+3. Optional sub-agents are selected deterministically from `run_when` predicates and run sequentially.
+4. Optional-step failures emit warnings and the response flow continues with available results.
 
 ## Folder Structure
 
 - `ca_api_agent/agent.py`
   - Canonical ADK entrypoint (`root_agent`).
 - `ca_api_agent/root_agent.py`
-  - Defines `RootAgent` and the optional sub-agent registry.
+  - Defines deterministic CA-first orchestration (`RootAgent`) and optional sub-agent routing.
   - Exposes `root_agent`.
 - `ca_api_agent/agents/ca_query.py`
-  - Defines `ConversationalAnalyticsQueryAgent` and CA API streaming bridge.
+  - Defines `ConversationalAnalyticsQueryAgent` and the CA API streaming bridge.
 - `ca_api_agent/agents/visualization.py`
-  - Defines factory for visualization sub-agent.
+  - Visualization sub-agent factory used by the built-in optional visualization step.
 - `deployment/deploy.py`
   - Deployment script for Agent Engine.
-
-## How Optional Routing Works
-
-Optional sub-agents are configured in `optional_sub_agents` in `ca_api_agent/root_agent.py`.
-
-Each entry includes:
-
-- `key`: stable id for logs/routing
-- `description`: human-readable step name
-- `agent`: sub-agent instance
-- `run_when`: callable predicate receiving `InvocationContext`
-
-Current built-in rules:
-
-- Visualization agent runs only when query rows exist in `temp:data_result` (non-empty list).
-
-## Add a New Sub-Agent
-
-1. Add a new agent factory module under `ca_api_agent/agents/` (for example `my_new_agent.py`).
-2. Import and instantiate it in `ca_api_agent/root_agent.py`.
-3. Append an `OptionalSubAgentSpec` entry to `optional_sub_agents`.
-
-Example:
-
-```python
-from ca_api_agent.agents.my_new_agent import build_my_new_agent
-
-my_new_agent = build_my_new_agent()
-
-optional_sub_agents = [
-    # existing entries...
-    OptionalSubAgentSpec(
-        key="my_new_step",
-        description="custom post-processing",
-        agent=my_new_agent,
-        run_when=lambda ctx: bool(ctx.session.state.get("temp:data_result")),
-    ),
-]
-```
 
 ## Running Locally
 
@@ -98,6 +60,61 @@ LOOKML_EXPLORE=<your-lookml-explore>
 ```bash
 adk web
 ```
+
+## Optional Sub-Agents (Example)
+
+Default behavior is deterministic CA-first with optional sub-agent routing.
+You can extend the workflow by adding more entries in `optional_sub_agents` in
+`ca_api_agent/root_agent.py`.
+
+Example routing spec pattern:
+
+```python
+from dataclasses import dataclass
+from typing import Callable
+
+from google.adk.agents import BaseAgent
+from google.adk.agents.invocation_context import InvocationContext
+
+from ca_api_agent.agents.ca_query import build_conversational_analytics_query_agent
+from ca_api_agent.agents.my_new_agent import build_my_new_agent
+
+
+@dataclass(frozen=True)
+class OptionalSubAgentSpec:
+    key: str
+    description: str
+    agent: BaseAgent
+    run_when: Callable[[InvocationContext], bool]
+
+
+query_agent = build_conversational_analytics_query_agent(name="query_agent")
+my_new_agent = build_my_new_agent()
+
+optional_sub_agents = [
+    OptionalSubAgentSpec(
+        key="my_new_step",
+        description="custom post-processing",
+        agent=my_new_agent,
+        run_when=lambda ctx: bool(ctx.session.state.get("temp:data_result")),
+    ),
+]
+```
+
+Suggested orchestration sequence when you enable this:
+
+1. Always run the CA query agent first.
+2. Check each `run_when` predicate against `ctx.session.state`.
+3. Run only matching optional sub-agents.
+4. Stream each step's output back to the user.
+
+Current built-in optional step:
+
+- `visualization` runs when `temp:data_result` is non-empty.
+- Visualization output is sanitized in root orchestration for ADK web:
+  - inline image bytes are converted to markdown `data:` image URIs.
+  - fenced code blocks are stripped from text parts.
+- If an optional step fails, root emits a warning and continues.
 
 ## Deploying to Agent Engine
 

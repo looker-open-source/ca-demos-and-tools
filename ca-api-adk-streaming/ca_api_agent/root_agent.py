@@ -1,4 +1,4 @@
-"""Root agent for CA query + optional specialized sub-agents."""
+"""Root agent for deterministic CA-first orchestration with optional sub-agents."""
 
 import base64
 import logging
@@ -33,7 +33,7 @@ class OptionalSubAgentSpec:
 
 
 class RootAgent(BaseAgent):
-    """Runs the CA query agent first, then optional sub-agents by response shape."""
+    """Always runs CA first, then conditionally runs optional sub-agents."""
 
     name: str
     description: str = ""
@@ -64,7 +64,9 @@ class RootAgent(BaseAgent):
             return len(value) > 0
         return bool(value)
 
-    def _select_optional_sub_agents(self, ctx: InvocationContext) -> list[OptionalSubAgentSpec]:
+    def _select_optional_sub_agents(
+        self, ctx: InvocationContext
+    ) -> list[OptionalSubAgentSpec]:
         selected: list[OptionalSubAgentSpec] = []
 
         for spec in self._optional_sub_agents:
@@ -204,18 +206,18 @@ optional_sub_agents = [
         key="visualization",
         description="data-result-driven visualization rendering",
         agent=visualization_agent,
-        run_when=lambda ctx: RootAgent._has_non_empty_state(
-            ctx, DATA_RESULT_STATE_KEY
-        ),
+        run_when=lambda ctx: RootAgent._has_non_empty_state(ctx, DATA_RESULT_STATE_KEY),
     ),
 ]
 
 root_agent = RootAgent(
     name="root_agent",
     description=(
-        "Top-level root agent. It always runs the CA query agent, then "
+        "Top-level deterministic root agent. It always runs the CA query agent, then "
         "conditionally runs optional sub-agents based on response shape."
     ),
     query_agent=data_query_agent,
     optional_sub_agents=optional_sub_agents,
 )
+
+__all__ = ["root_agent"]
