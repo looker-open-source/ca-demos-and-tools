@@ -21,6 +21,11 @@ from ca_api_agent.agents import (
 
 logger = logging.getLogger(__name__)
 
+DATA_URI_IMAGE_PATTERN = re.compile(
+    r"!\[[^\]]*\]\(data:(image/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)\)",
+    flags=re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class OptionalSubAgentSpec:
@@ -93,6 +98,28 @@ class RootAgent(BaseAgent):
         return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
 
     @staticmethod
+    def _extract_data_uri_image_parts(text: str) -> list[types.Part]:
+        image_parts: list[types.Part] = []
+        for match in DATA_URI_IMAGE_PATTERN.finditer(text):
+            mime_type, b64_data = match.groups()
+            try:
+                image_bytes = base64.b64decode(
+                    re.sub(r"\s+", "", b64_data), validate=False
+                )
+            except Exception:
+                continue
+            if not image_bytes:
+                continue
+            image_parts.append(
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+            )
+        return image_parts
+
+    @staticmethod
+    def _strip_data_uri_images(text: str) -> str:
+        return DATA_URI_IMAGE_PATTERN.sub("", text)
+
+    @staticmethod
     def _sanitize_visualization_content(
         content: types.Content | None,
     ) -> types.Content | None:
@@ -105,15 +132,20 @@ class RootAgent(BaseAgent):
             if inline_data and inline_data.data:
                 mime_type = getattr(inline_data, "mime_type", None) or "image/png"
                 if mime_type.startswith("image/"):
-                    b64_data = base64.b64encode(inline_data.data).decode("ascii")
                     sanitized_parts.append(
-                        types.Part(text=f"![chart](data:{mime_type};base64,{b64_data})")
+                        types.Part.from_bytes(
+                            data=inline_data.data,
+                            mime_type=mime_type,
+                        )
                     )
                     continue
 
             text = getattr(part, "text", None)
             if isinstance(text, str) and text.strip():
-                cleaned = RootAgent._strip_code_blocks(text).strip()
+                sanitized_parts.extend(RootAgent._extract_data_uri_image_parts(text))
+                cleaned = RootAgent._strip_code_blocks(
+                    RootAgent._strip_data_uri_images(text)
+                ).strip()
                 if cleaned:
                     sanitized_parts.append(types.Part(text=cleaned))
 
@@ -153,6 +185,8 @@ class RootAgent(BaseAgent):
             try:
                 async for event in spec.agent.run_async(ctx):
                     forward_event = event
+
+                    # Add new optional sub-agents here to extend orchestration behavior.
                     if spec.key == "visualization":
                         sanitized_content = self._sanitize_visualization_content(
                             event.content
