@@ -42,11 +42,12 @@ uv sync --frozen
 source .venv/bin/activate
 ```
 
-3. Create `.env` in this folder with:
+3. Create `.env` in this folder (you can copy from `.env.example`) with:
 
 ```bash
 GOOGLE_CLOUD_PROJECT=<your-gcp-project-id>
 GOOGLE_CLOUD_LOCATION=<your-gcp-location>
+GOOGLE_CLOUD_STORAGE_BUCKET=<your-gcs-bucket-name> # Optional for deployment only. If omitted, deploy defaults to <GOOGLE_CLOUD_PROJECT>-adk-staging.
 GOOGLE_GENAI_USE_VERTEXAI=1
 LOOKERSDK_CLIENT_ID=<your-looker-client-id>
 LOOKERSDK_CLIENT_SECRET=<your-looker-client-secret>
@@ -119,6 +120,9 @@ Current built-in optional step:
 ## Deploying to Agent Engine
 
 1. Ensure `.env` values are set.
+   `GOOGLE_CLOUD_STORAGE_BUCKET` is optional and only used for deployment
+   staging. If not set, `deployment/deploy.py` uses
+   `<GOOGLE_CLOUD_PROJECT>-adk-staging`.
 2. Run:
 
 ```bash
