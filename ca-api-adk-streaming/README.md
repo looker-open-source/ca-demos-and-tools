@@ -2,6 +2,8 @@
 
 This project uses the Conversational Analytics API as the primary data interface with optional post-processing sub-agents.
 
+![ADK Streaming Demo](./ca-api-adk-streaming.gif)
+
 ## Architecture
 
 The runtime entrypoint is `root_agent` in `ca_api_agent/agent.py`.
