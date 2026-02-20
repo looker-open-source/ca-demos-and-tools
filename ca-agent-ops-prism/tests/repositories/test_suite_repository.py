@@ -32,3 +32,6 @@ def test_archive_suite(db_session: Session):
 
   repo.archive(suite.id)
   assert suite.is_archived
+
+  repo.unarchive(suite.id)
+  assert not suite.is_archived

@@ -14,8 +14,6 @@
 
 """Definitions of UI component IDs for the Prism application."""
 
-from typing import Any
-
 
 class EvaluationIds:
   """IDs for Evaluation pages."""
@@ -37,6 +35,7 @@ class EvaluationIds:
   RUN_CONTEXT_DIFF_STORE = "run-context-diff-store"
   RUN_CONTEXT_DIFF_CONTENT = "run-context-diff-content"
   RUN_CONTEXT_DIFF_TITLE = "run-context-diff-title"
+  RUN_CONTEXT_DIFF_BADGE = "run-context-diff-badge"
   BTN_DOWNLOAD_DIFF = "btn-download-diff"
   DOWNLOAD_DIFF_COMPONENT = "download-diff-component"
   RUN_BREADCRUMBS_CONTAINER = "evaluations-run-breadcrumbs"
@@ -84,6 +83,8 @@ class EvaluationIds:
   BTN_START_RUN = "btn-start-eval-run"
   BTN_CANCEL_RUN = "btn-cancel-eval-run"
   BTN_OPEN_RUN_MODAL = "btn-open-run-modal"
+  TOGGLE_SUGGESTIONS = "eval-run-toggle-suggestions"
+  INPUT_CONCURRENCY = "eval-run-input-concurrency"
 
   # Global Run Modal (Evaluations Page)
   BTN_NEW_EVAL = "btn-new-eval"
@@ -92,6 +93,7 @@ class EvaluationIds:
   NEW_EVAL_AGENT_SELECT = "new-eval-agent-select"
   BTN_START_NEW_EVAL = "btn-start-new-eval"
   BTN_CANCEL_NEW_EVAL = "btn-cancel-new-eval"
+  NEW_EVAL_INPUT_CONCURRENCY = "new-eval-input-concurrency"
 
   # Comparison Modal (Runs List)
   BTN_OPEN_COMPARE_MODAL = "btn-open-compare-modal"
@@ -123,6 +125,10 @@ class EvaluationIds:
   TRIAL_SUG_EDIT_GUIDE_CONTAINER = "trial-sug-edit-guide-container"
   TRIAL_SUG_EDIT_GUIDE_TITLE = "trial-sug-edit-guide-title"
   TRIAL_SUG_EDIT_GUIDE_DESC = "trial-sug-edit-guide-desc"
+  # Archive/Restore
+  BTN_ARCHIVE = "evaluations-run-detail-btn-archive"
+  BTN_RESTORE = "evaluations-run-detail-btn-restore"
+  SWITCH_ARCHIVED = "evaluations-run-list-switch-archived"
   TRIAL_SUGGESTIONS_CONTENT = "trial-suggestions-content"
   TRIAL_SUG_VAL_MSG = "trial-sug-val-msg"
   TRIAL_SUG_POLLING_INTERVAL = "trial-sug-polling-interval"
@@ -286,6 +292,8 @@ class TestSuiteIds:
   PREVIEW_BULK_ADD = "bulk-add-preview"
   BTN_BULK_ADD_CONFIRM = "bulk-add-confirm-btn"
   BTN_BULK_ADD_CANCEL = "bulk-add-cancel-btn"
+  BTN_BULK_FIX_AI = "bulk-fix-ai-btn"
+  TC_BULK_MODE = "bulk-add-mode-toggle"
 
   # Edit Config Modal
   BTN_CONFIG_EDIT = "test-suite-config-edit-btn"
@@ -389,6 +397,10 @@ class TestSuiteIds:
   TC_BREADCRUMB_ID = "tc-breadcrumb-id"
   TC_BREADCRUMB_SUITE_NAME = "tc-breadcrumb-suite-name"
 
+  # Archive/Restore
+  BTN_ARCHIVE = "test-suite-detail-btn-archive"
+  BTN_RESTORE = "test-suite-detail-btn-restore"
+
 
 class TestSuiteHomeIds:
   """Component IDs for the Test Suites Home page."""
@@ -397,3 +409,4 @@ class TestSuiteHomeIds:
   CREATE_BTN = "create-test-suite-btn"
   LOADING = "test-suites-loading-overlay"
   FILTER_COVERAGE = "test-suites-filter-coverage"
+  SWITCH_ARCHIVED = "test-suites-switch-archived"

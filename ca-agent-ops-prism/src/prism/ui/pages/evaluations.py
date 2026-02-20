@@ -43,36 +43,62 @@ def layout(**kwargs):  # pylint: disable=unused-argument
               gap="lg",
               children=[
                   dmc.Group(
+                      justify="space-between",
                       children=[
-                          dmc.Select(
-                              id=Ids.FILTER_AGENT,
-                              label="Filter by Agent",
-                              placeholder="All Agents",
-                              data=[],
-                              clearable=True,
-                              style={"width": 250},
-                          ),
-                          dmc.Select(
-                              id=Ids.FILTER_SUITE,
-                              label="Filter by Test Suite",
-                              placeholder="All Test Suites",
-                              data=[],
-                              clearable=True,
-                              style={"width": 250},
-                          ),
-                          dmc.Select(
-                              id=Ids.FILTER_STATUS,
-                              label="Filter by Status",
-                              placeholder="All Statuses",
-                              data=[
-                                  {"label": "Pending", "value": "PENDING"},
-                                  {"label": "Running", "value": "RUNNING"},
-                                  {"label": "Completed", "value": "COMPLETED"},
-                                  {"label": "Failed", "value": "FAILED"},
-                                  {"label": "Cancelled", "value": "CANCELLED"},
+                          dmc.Group(
+                              children=[
+                                  dmc.Select(
+                                      id=Ids.FILTER_AGENT,
+                                      label="Filter by Agent",
+                                      placeholder="All Agents",
+                                      data=[],
+                                      clearable=True,
+                                      style={"width": 250},
+                                  ),
+                                  dmc.Select(
+                                      id=Ids.FILTER_SUITE,
+                                      label="Filter by Test Suite",
+                                      placeholder="All Test Suites",
+                                      data=[],
+                                      clearable=True,
+                                      style={"width": 250},
+                                  ),
+                                  dmc.Select(
+                                      id=Ids.FILTER_STATUS,
+                                      label="Filter by Status",
+                                      placeholder="All Statuses",
+                                      data=[
+                                          {
+                                              "label": "Pending",
+                                              "value": "PENDING",
+                                          },
+                                          {
+                                              "label": "Running",
+                                              "value": "RUNNING",
+                                          },
+                                          {
+                                              "label": "Completed",
+                                              "value": "COMPLETED",
+                                          },
+                                          {
+                                              "label": "Failed",
+                                              "value": "FAILED",
+                                          },
+                                          {
+                                              "label": "Cancelled",
+                                              "value": "CANCELLED",
+                                          },
+                                      ],
+                                      clearable=True,
+                                      style={"width": 200},
+                                  ),
                               ],
-                              clearable=True,
-                              style={"width": 200},
+                          ),
+                          dmc.Switch(
+                              id=Ids.SWITCH_ARCHIVED,
+                              label="Show Archived",
+                              size="sm",
+                              checked=False,
                           ),
                       ],
                       gap="md",
@@ -131,6 +157,26 @@ def render_new_run_modal():
                       placeholder="Pick a test suite",
                       searchable=True,
                       data=[],  # Populated when agent selected
+                      mb="sm",
+                  ),
+                  dmc.Switch(
+                      id=Ids.TOGGLE_SUGGESTIONS,
+                      label="Generate Suggested Assertions",
+                      description=(
+                          "Automatically suggest new assertions based on trace"
+                          " results (Uses LLM)."
+                      ),
+                      checked=False,
+                      mb="sm",
+                  ),
+                  dmc.NumberInput(
+                      id=Ids.NEW_EVAL_INPUT_CONCURRENCY,
+                      label="Concurrency",
+                      description="Number of trials to run in parallel.",
+                      value=2,
+                      min=1,
+                      max=100,
+                      step=1,
                       mb="xl",
                   ),
                   dmc.Group(

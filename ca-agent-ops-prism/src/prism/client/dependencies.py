@@ -27,6 +27,8 @@ from prism.server.repositories import run_repository
 from prism.server.repositories import suite_repository
 from prism.server.repositories import trial_repository
 from prism.server.services import agent_service
+from prism.server.services import ai_service
+from prism.server.services import bulk_import_service
 from prism.server.services import comparison_service
 from prism.server.services import dashboard_service
 from prism.server.services import execution_service
@@ -213,6 +215,20 @@ def get_comparison_service(
 ) -> comparison_service.ComparisonService:
   """Provides a ComparisonService."""
   return comparison_service.ComparisonService(session)
+
+
+def get_bulk_import_service(
+    v_client: gen_ai_client.GenAIClient = Depends(get_gen_ai_client),
+) -> bulk_import_service.BulkImportService:
+  """Provides a BulkImportService."""
+  return bulk_import_service.BulkImportService(v_client)
+
+
+def get_ai_service(
+    v_client: gen_ai_client.GenAIClient = Depends(get_gen_ai_client),
+) -> ai_service.AIService:
+  """Provides an AIService."""
+  return ai_service.AIService(v_client)
 
 
 def get_worker_pool_service() -> worker.WorkerProcessManager:

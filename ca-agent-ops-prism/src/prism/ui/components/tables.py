@@ -29,6 +29,19 @@ from prism.ui.components import badges
 from prism.ui.components import links
 
 
+def _render_archived_badge(is_archived: bool) -> dmc.Badge | None:
+  """Renders an 'Archived' badge if the item is archived."""
+  if not is_archived:
+    return None
+  return dmc.Badge(
+      "Archived",
+      variant="filled",
+      color="gray",
+      size="xs",
+      radius="md",
+  )
+
+
 def render_run_table(
     runs: list[RunSchema],
     agent_names: dict[int, str] | None = None,
@@ -163,7 +176,17 @@ def render_run_table(
         children=[
             # Run ID
             html.Td(
-                dmc.Text(f"#{run.id}", size="sm", c="dimmed", ff="monospace"),
+                dmc.Group(
+                    gap="xs",
+                    children=[
+                        dmc.Text(
+                            f"#{run.id}", size="sm", c="dimmed", ff="monospace"
+                        ),
+                        _render_archived_badge(
+                            getattr(run, "is_archived", False)
+                        ),
+                    ],
+                ),
                 style={"padding": "16px 24px"},
             ),
             # Agent
@@ -600,7 +623,15 @@ def render_test_suite_table(
         children=[
             # Test Suite Name
             html.Td(
-                links.render_test_suite_link(s.suite.id, s.suite.name),
+                dmc.Group(
+                    gap="xs",
+                    children=[
+                        links.render_test_suite_link(s.suite.id, s.suite.name),
+                        _render_archived_badge(
+                            getattr(s.suite, "is_archived", False)
+                        ),
+                    ],
+                ),
                 style={"padding": "16px 24px"},
             ),
             # Description
@@ -864,7 +895,15 @@ def render_agent_table(
         children=[
             # Agent Name
             html.Td(
-                links.render_agent_link(agent.id, agent.name),
+                dmc.Group(
+                    gap="xs",
+                    children=[
+                        links.render_agent_link(agent.id, agent.name),
+                        _render_archived_badge(
+                            getattr(agent, "is_archived", False)
+                        ),
+                    ],
+                ),
                 style={"padding": "16px 24px"},
             ),
             # Source

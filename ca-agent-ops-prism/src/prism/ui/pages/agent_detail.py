@@ -83,6 +83,76 @@ def _edit_modal():
                               ],
                           ),
                           dmc.Divider(),
+                          # --- Golden Queries ---
+                          dmc.Stack(
+                              gap="sm",
+                              children=[
+                                  dmc.Group(
+                                      justify="space-between",
+                                      children=[
+                                          dmc.Group(
+                                              children=[
+                                                  DashIconify(
+                                                      icon="material-symbols:lightbulb",
+                                                      width=24,
+                                                      color="yellow",
+                                                  ),
+                                                  dmc.Text(
+                                                      "Golden Queries",
+                                                      fw=600,
+                                                      size="lg",
+                                                  ),
+                                                  dmc.Badge(
+                                                      "Optional",
+                                                      color="gray",
+                                                      variant="light",
+                                                  ),
+                                              ]
+                                          ),
+                                          dmc.Button(
+                                              "Fix with AI",
+                                              id=AgentIds.Detail.BTN_FIX_GOLDEN_QUERIES_AI,
+                                              leftSection=DashIconify(
+                                                  icon="material-symbols:magic-button",
+                                                  width=16,
+                                              ),
+                                              variant="light",
+                                              color="violet",
+                                              size="xs",
+                                          ),
+                                      ],
+                                  ),
+                                  dash.dcc.Loading(
+                                      id="loading-golden-queries",
+                                      children=[
+                                          dmc.Textarea(
+                                              label="Golden Queries (JSON)",
+                                              description=(
+                                                  "List of golden queries to"
+                                                  " guide the agent. Format:"
+                                                  " JSON list of objects."
+                                              ),
+                                              placeholder=(
+                                                  '[{"natural_language_questions":'
+                                                  ' ["..."], "looker_query":'
+                                                  " {...}}]"
+                                              ),
+                                              id=AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES,
+                                              radius="md",
+                                              minRows=5,
+                                              autosize=True,
+                                              maxRows=15,
+                                          ),
+                                      ],
+                                  ),
+                                  dmc.Text(
+                                      id=AgentIds.Detail.ERROR_GOLDEN_QUERIES,
+                                      c="red",
+                                      size="xs",
+                                  ),
+                              ],
+                          ),
+                          dmc.Divider(),
                           # --- Datasource Config ---
                           dmc.Stack(
                               gap="sm",
@@ -134,8 +204,8 @@ def _edit_modal():
                                                       label="BigQuery Tables",
                                                       description=(
                                                           "Enter full paths"
-                                                          " (proj.ds.tab),"
-                                                          " one per line"
+                                                          " (proj.ds.tab), one"
+                                                          " per line"
                                                       ),
                                                       placeholder="project.dataset.table_1\nproject.dataset.table_2",
                                                       id=AgentIds.Detail.INPUT_EDIT_BQ_TABLES,
@@ -189,8 +259,8 @@ def _edit_modal():
                                                   dmc.Textarea(
                                                       label="Looker Explores",
                                                       description=(
-                                                          "e.g., model.exp,"
-                                                          " one per line"
+                                                          "e.g., model.exp, one"
+                                                          " per line"
                                                       ),
                                                       placeholder="model_1.explore_1\nmodel_2.explore_2",
                                                       id=AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES,

@@ -40,6 +40,7 @@ class TestComparisonService(unittest.TestCase):
         snapshot_suite=suite1,
         agent=agent1,
         created_at=now,
+        is_archived=False,
     )
     run2 = Run(
         id=2,
@@ -49,6 +50,7 @@ class TestComparisonService(unittest.TestCase):
         snapshot_suite=suite1,
         agent=agent1,
         created_at=now,
+        is_archived=False,
     )
     self.run_repository.get_by_id.side_effect = [run1, run2]
 
@@ -157,6 +159,7 @@ class TestComparisonService(unittest.TestCase):
         snapshot_suite=suite1,
         agent=agent1,
         created_at=now,
+        is_archived=False,
     )
     run2 = Run(
         id=2,
@@ -166,6 +169,7 @@ class TestComparisonService(unittest.TestCase):
         snapshot_suite=suite1,
         agent=agent1,
         created_at=now,
+        is_archived=False,
     )
     self.run_repository.get_by_id.side_effect = [run1, run2]
 
@@ -218,6 +222,7 @@ class TestComparisonService(unittest.TestCase):
         snapshot_suite=suite1,
         agent=agent,
         created_at=now,
+        is_archived=False,
     )
     self.run_repository.get_by_id.side_effect = [run1, run1]
 

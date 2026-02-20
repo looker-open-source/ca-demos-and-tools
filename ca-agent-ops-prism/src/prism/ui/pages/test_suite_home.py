@@ -43,18 +43,32 @@ def layout():
       ],
       children=[
           dmc.Group(
+              justify="space-between",
               children=[
-                  dmc.Select(
-                      id=Ids.FILTER_COVERAGE,
-                      label="Filter by Coverage",
-                      placeholder="All Coverage",
-                      data=[
-                          {"label": "Full Coverage", "value": "FULL"},
-                          {"label": "Partial Coverage", "value": "PARTIAL"},
-                          {"label": "No Coverage", "value": "NONE"},
+                  dmc.Group(
+                      children=[
+                          dmc.Select(
+                              id=Ids.FILTER_COVERAGE,
+                              label="Filter by Coverage",
+                              placeholder="All Coverage",
+                              data=[
+                                  {"label": "Full Coverage", "value": "FULL"},
+                                  {
+                                      "label": "Partial Coverage",
+                                      "value": "PARTIAL",
+                                  },
+                                  {"label": "No Coverage", "value": "NONE"},
+                              ],
+                              clearable=True,
+                              style={"width": 200},
+                          ),
                       ],
-                      clearable=True,
-                      style={"width": 200},
+                  ),
+                  dmc.Switch(
+                      id=Ids.SWITCH_ARCHIVED,
+                      label="Show Archived",
+                      size="sm",
+                      checked=False,
                   ),
               ],
               gap="md",

@@ -32,6 +32,7 @@ from prism.common.schemas.execution import Trial
 from prism.ui import constants
 from prism.ui.components import assertion_components
 from prism.ui.components import cards
+from prism.ui.components import charts
 from prism.ui.components import run_components
 from prism.ui.components import tables
 from prism.ui.components import test_case_components
@@ -76,10 +77,12 @@ def render_run_list(pathname: str, search: str):
   status_enum = RunStatus(status) if status else None
 
   client = get_client()
+  include_archived = parsed_qs.get("archived", ["false"])[0] == "true"
   runs = client.runs.list_runs(
       agent_id=agent_id,
       original_suite_id=suite_id,
       status=status_enum,
+      include_archived=include_archived,
   )
 
   # Fetch metadata for display
@@ -136,10 +139,33 @@ def update_eval_url_from_filters(
   else:
     params.pop("status", None)
 
-  new_search = (
-      f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+
+
+@typed_callback(
+    dash.Output("url", "search", allow_duplicate=True),
+    inputs=[
+        (EvaluationIds.SWITCH_ARCHIVED, CP.CHECKED),
+    ],
+    state=[("url", CP.SEARCH)],
+    prevent_initial_call=True,
+)
+def update_eval_url_from_archived_switch(
+    include_archived: bool, current_search: str
+):
+  """Update URL search params from Evaluations Home archived switch."""
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
   )
-  return new_search
+
+  if include_archived:
+    params["archived"] = ["true"]
+  else:
+    params.pop("archived", None)
+
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
 
 
 @typed_callback(
@@ -147,20 +173,22 @@ def update_eval_url_from_filters(
         (EvaluationIds.FILTER_AGENT, CP.VALUE),
         (EvaluationIds.FILTER_SUITE, CP.VALUE),
         (EvaluationIds.FILTER_STATUS, CP.VALUE),
+        (EvaluationIds.SWITCH_ARCHIVED, CP.CHECKED),
     ],
     inputs=[("url", CP.SEARCH)],
 )
 def sync_eval_filters_to_url(search: str):
   """Sync UI filters to URL search params on load/change."""
   if not search:
-    return None, None, None
+    return None, None, None, False
 
   params = urllib.parse.parse_qs(search.lstrip("?"))
   agent_id = params.get("agent_id", [None])[0]
   suite_id = params.get("suite_id", [None])[0]
   status = params.get("status", [None])[0]
+  include_archived = params.get("archived", ["false"])[0] == "true"
 
-  return agent_id, suite_id, status
+  return agent_id, suite_id, status, include_archived
 
 
 @typed_callback(
@@ -495,6 +523,8 @@ def fetch_run_detail_data(
         (EvaluationIds.BTN_PAUSE_RUN, CP.STYLE),
         (EvaluationIds.BTN_RESUME_RUN, CP.STYLE),
         (EvaluationIds.BTN_CANCEL_RUN_EXEC, CP.STYLE),
+        (EvaluationIds.BTN_ARCHIVE, CP.STYLE),
+        (EvaluationIds.BTN_RESTORE, CP.STYLE),
         (EvaluationIds.RUN_POLLING_INTERVAL, CP.DISABLED),
         (EvaluationIds.RUN_CONTEXT_TRIGGER, CP.DATA),
     ],
@@ -508,7 +538,7 @@ def render_run_detail_components(
   """Renders the components for the Run Detail page."""
   logger.info("render_run_detail_components triggered")
   if not run_data:
-    return [dash.no_update] * 11
+    return [dash.no_update] * 13
 
   state = RunDetailPageState.model_validate(run_data)
 
@@ -539,6 +569,8 @@ def render_run_detail_components(
   show_pause = {"display": "none"}
   show_resume = {"display": "none"}
   show_cancel = {"display": "none"}
+  show_archive = {"display": "none"}
+  show_restore = {"display": "none"}
   polling_disabled = True
 
   if run.status in (
@@ -562,6 +594,12 @@ def render_run_detail_components(
     badge_color = "red"
   elif run.status == RunStatus.CANCELLED:
     badge_color = "gray"
+
+  # Archive/Restore visibility
+  if getattr(run, "is_archived", False):
+    show_restore = {"display": "block"}
+  else:
+    show_archive = {"display": "block"}
 
   # Breadcrumbs
   breadcrumbs = dmc.Breadcrumbs(
@@ -633,8 +671,13 @@ def render_run_detail_components(
       run.agent_context_snapshot, loading=False
   )
 
+  # Tool Timing Chart
+  timing_chart = charts.render_tool_timing_chart(
+      run.tool_timings or {}, title="Aggregate Tool Timing"
+  )
+
   charts_grid = dmc.SimpleGrid(
-      cols={"base": 1, "lg": 2},
+      cols={"base": 1, "lg": 3},
       spacing="xl",
       children=[
           context_card,
@@ -644,6 +687,7 @@ def render_run_detail_components(
               color="gray",
               variant="light",
           ),
+          timing_chart,
       ],
   )
 
@@ -657,9 +701,68 @@ def render_run_detail_components(
       show_pause,
       show_resume,
       show_cancel,
+      show_archive,
+      show_restore,
       polling_disabled,
       context_trigger,
   )
+
+
+@typed_callback(
+    output=[
+        (REDIRECT_HANDLER, CP.HREF),
+        (EvaluationIds.RUN_UPDATE_SIGNAL, CP.DATA),
+        ("notification-container", "sendNotifications"),
+    ],
+    inputs=[
+        (EvaluationIds.BTN_ARCHIVE, CP.N_CLICKS),
+        (EvaluationIds.BTN_RESTORE, CP.N_CLICKS),
+    ],
+    state=[("url", CP.PATHNAME)],
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def toggle_run_archive(archive_clicks, restore_clicks, pathname):
+  """Toggles archiving for an evaluation run."""
+  if not archive_clicks and not restore_clicks:
+    return dash.no_update, dash.no_update, dash.no_update
+
+  try:
+    run_id = int(pathname.rstrip("/").split("/")[-1])
+  except (ValueError, IndexError):
+    return dash.no_update, dash.no_update, dash.no_update
+
+  client = get_client()
+  trigger_id = typed_callback.triggered_id()
+
+  try:
+    if trigger_id == EvaluationIds.BTN_ARCHIVE:
+      client.runs.archive_run(run_id)
+      msg = "Evaluation run archived successfully."
+    else:
+      client.runs.unarchive_run(run_id)
+      msg = "Evaluation run restored successfully."
+
+    return (
+        pathname,
+        {"ts": time.time()},
+        {
+            "title": "Success",
+            "message": msg,
+            "color": "green",
+        },
+    )
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logger.error("Failed to toggle evaluation archive: %s", e)
+    return (
+        dash.no_update,
+        dash.no_update,
+        {
+            "title": "Error",
+            "message": f"Failed to update evaluation run: {str(e)}",
+            "color": "red",
+        },
+    )
 
 
 @typed_callback(
@@ -719,24 +822,7 @@ def toggle_config_diff_modal(n_clicks: int, diff_data: dict[str, Any]):
     # Re-render title with badge
     title_children = [
         dmc.Text("Context Diff (Snapshot vs Live)", fw=700, size="lg"),
-        (
-            dmc.Badge(
-                "Changes detected",
-                color="orange",
-                variant="light",
-                radius="sm",
-                size="xs",
-                fw=700,
-            )
-            if change_count > 0
-            else dmc.Badge(
-                "No changes detected",
-                color="gray",
-                variant="light",
-                radius="sm",
-                size="xs",
-            )
-        ),
+        _render_change_badge(change_count),
     ]
     return diff_table, True, title_children, dash.no_update
 
@@ -806,24 +892,7 @@ def fetch_live_config_for_diff(diff_data: dict[str, Any]):
   # Re-render title with badge
   title_children = [
       dmc.Text("Context Diff (Snapshot vs Live)", fw=700, size="lg"),
-      (
-          dmc.Badge(
-              "Changes detected",
-              color="orange",
-              variant="light",
-              radius="sm",
-              size="xs",
-              fw=700,
-          )
-          if change_count > 0
-          else dmc.Badge(
-              "No changes detected",
-              color="gray",
-              variant="light",
-              radius="sm",
-              size="xs",
-          )
-      ),
+      _render_change_badge(change_count),
   ]
 
   return diff_table, title_children, new_state
@@ -1392,6 +1461,17 @@ def render_trial_detail(
       ),
   ]
 
+  # Tool Timing Profiling
+  profiling_chart = charts.render_trial_profiling(
+      trial.tool_timings or {}, title="Tool Timing Profiling"
+  )
+  # Assertion Metrics Visualizations
+  assertion_summary = None
+  if trial.status != RunStatus.FAILED:
+    assertion_summary = assertion_components.render_assertion_summary(
+        _calculate_assertion_summary(assertion_details)
+    )
+
   return [
       breadcrumbs,
       f"Trial #{trial.id}",
@@ -1402,7 +1482,7 @@ def render_trial_detail(
           stats_cards,
           # Error Card (Visible only if FAILED)
           error_card,
-          # Trial Results Card with Integrated Charts
+          # Trial Results Card
           run_components.render_trial_card(
               trial,
               show_details_link=False,
@@ -1411,6 +1491,8 @@ def render_trial_detail(
                   timeline_obj.model_dump(), minimal=True
               ),
           ),
+          # Separate Profiling Card (below Output/Charts)
+          profiling_chart,
           # Two-column layout: Assertions+Suggestions (Left) vs Timeline (Right)
           dmc.Grid(
               gutter="md",
@@ -1424,15 +1506,7 @@ def render_trial_detail(
                           dmc.Box([
                               assertions_header,
                               # Assertion Metrics Visualizations
-                              (
-                                  assertion_components.render_assertion_summary(
-                                      _calculate_assertion_summary(
-                                          assertion_details
-                                      )
-                                  )
-                                  if trial.status != RunStatus.FAILED
-                                  else None
-                              ),
+                              assertion_summary,
                               dmc.Space(h="lg"),
                               render_assertions,
                           ]),
@@ -1756,7 +1830,7 @@ def toggle_run_eval_modal(open_clicks, cancel_clicks):
 
 @typed_callback(
     [
-        dash.Output(REDIRECT_HANDLER, CP.HREF),
+        dash.Output(REDIRECT_HANDLER, CP.HREF, allow_duplicate=True),
         dash.Output(
             "notification-container", "sendNotifications", allow_duplicate=True
         ),
@@ -1764,12 +1838,16 @@ def toggle_run_eval_modal(open_clicks, cancel_clicks):
     inputs=[(EvaluationIds.BTN_START_RUN, "n_clicks")],
     state=[
         (EvaluationIds.AGENT_SELECT, "value"),
+        (EvaluationIds.TOGGLE_SUGGESTIONS, "checked"),
+        (EvaluationIds.INPUT_CONCURRENCY, "value"),
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def start_run_eval(n_clicks, agent_id, pathname):
+def start_run_eval(
+    n_clicks, agent_id, generate_suggestions, concurrency, pathname
+):
   """Starts a new evaluation run from the Test Suite View."""
   if not n_clicks or not agent_id:
     return dash.no_update
@@ -1814,6 +1892,8 @@ def start_run_eval(n_clicks, agent_id, pathname):
   run = client.runs.create_run(
       agent_id=int(agent_id),
       test_suite_id=suite_id,
+      generate_suggestions=generate_suggestions,
+      concurrency=concurrency,
   )
   run_id = run.id
 
@@ -1870,11 +1950,15 @@ def toggle_new_eval_modal(open_clicks, cancel_clicks):
     state=[
         dash.State(EvaluationIds.NEW_EVAL_AGENT_SELECT, "value"),
         dash.State(EvaluationIds.NEW_EVAL_SUITE_SELECT, "value"),
+        dash.State(EvaluationIds.TOGGLE_SUGGESTIONS, "checked"),
+        dash.State(EvaluationIds.NEW_EVAL_INPUT_CONCURRENCY, "value"),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def start_new_eval(n_clicks, agent_id, suite_id):
+def start_new_eval(
+    n_clicks, agent_id, suite_id, generate_suggestions, concurrency
+):
   """Starts a new evaluation run from the Global Modal."""
   if not n_clicks or not agent_id or not suite_id:
     return dash.no_update
@@ -1910,6 +1994,8 @@ def start_new_eval(n_clicks, agent_id, suite_id):
   run = client.runs.create_run(
       agent_id=int(agent_id),
       test_suite_id=int(suite_id),
+      generate_suggestions=generate_suggestions,
+      concurrency=concurrency,
   )
   run_id = run.id
 
@@ -2076,3 +2162,25 @@ def download_diff_context(
   filename = f"context_diff_run_{run_id}.txt"
 
   return dash.dcc.send_string(diff_text, filename=filename)
+
+
+def _render_change_badge(change_count: int) -> dmc.Badge:
+  """Renders a badge indicating if changes were detected."""
+  if change_count > 0:
+    return dmc.Badge(
+        "Changes detected",
+        id=EvaluationIds.RUN_CONTEXT_DIFF_BADGE,
+        color="orange",
+        variant="light",
+        radius="sm",
+        size="xs",
+        fw=700,
+    )
+  return dmc.Badge(
+      "No changes detected",
+      id=EvaluationIds.RUN_CONTEXT_DIFF_BADGE,
+      color="gray",
+      variant="light",
+      radius="sm",
+      size="xs",
+  )

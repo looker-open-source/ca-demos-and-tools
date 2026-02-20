@@ -41,6 +41,7 @@ from prism.server.repositories.suite_repository import SuiteRepository
 from prism.server.repositories.trial_repository import TrialRepository
 from prism.server.services import assert_engine
 from prism.server.services import assertion_mappers
+from prism.server.services import timeline_service
 from prism.server.services.snapshot_service import SnapshotService
 
 
@@ -69,12 +70,20 @@ class ExecutionService:
     self.suite_repository = SuiteRepository(session)
     self.trial_repository = TrialRepository(session)
 
-  def create_run(self, agent_id: int, test_suite_id: int) -> Run:
+  def create_run(
+      self,
+      agent_id: int,
+      test_suite_id: int,
+      generate_suggestions: bool = False,
+      concurrency: int = 2,
+  ) -> Run:
     """Creates a new Run by snapshotting the suite and creating trials.
 
     Args:
       agent_id: The ID of the Agent to test.
       test_suite_id: The ID of the Test Suite to run.
+      generate_suggestions: Whether to generate suggested assertions.
+      concurrency: Number of parallel trials for this run.
 
     Returns:
       The newly created Run (in PENDING status).
@@ -110,6 +119,8 @@ class ExecutionService:
         test_suite_snapshot_id=snapshot.id,
         agent_id=agent.id,
         agent_context_snapshot=agent_context_snapshot,
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
     )
 
     # 4. Create Trials for each Example in the Snapshot
@@ -126,9 +137,23 @@ class ExecutionService:
     """Gets a Run by ID."""
     return self.run_repository.get_by_id(run_id)
 
-  def list_runs(self, limit: int = 100, offset: int = 0) -> list[Run]:
+  def list_runs(
+      self, limit: int = 100, offset: int = 0, include_archived: bool = False
+  ) -> list[Run]:
     """Lists Runs."""
-    return list(self.run_repository.list_all(limit=limit, offset=offset))
+    return list(
+        self.run_repository.list_all(
+            limit=limit, offset=offset, include_archived=include_archived
+        )
+    )
+
+  def archive_run(self, run_id: int) -> Run:
+    """Archives a run."""
+    return self.run_repository.archive(run_id=run_id)
+
+  def unarchive_run(self, run_id: int) -> Run:
+    """Unarchives a run."""
+    return self.run_repository.unarchive(run_id=run_id)
 
   def list_trials(self, run_id: int) -> list[Trial]:
     """Lists Trials for a Run."""
@@ -212,13 +237,22 @@ class ExecutionService:
       trial.completed_at = datetime.datetime.now(datetime.timezone.utc)
 
       # Save results
-      trial.trace_results = [
-          json_format.MessageToDict(
-              item._pb,  # pylint: disable=protected-access
-              preserving_proto_field_name=True,
+      trial.trace_results = []
+      for item in response.protobuf_response:
+        if isinstance(item, dict):
+          trial.trace_results.append(item)
+        elif hasattr(item, "_pb"):
+          trial.trace_results.append(
+              json_format.MessageToDict(
+                  item._pb,  # pylint: disable=protected-access
+                  preserving_proto_field_name=True,
+              )
           )
-          for item in response.protobuf_response
-      ]
+        elif hasattr(item, "to_dict"):
+          trial.trace_results.append(item.to_dict())
+        else:
+          # Fallback
+          trial.trace_results.append(dict(item))
 
       # Extract response text (Final Answer)
       response_text = ""
@@ -271,12 +305,20 @@ class ExecutionService:
         )
 
       # Generate Suggestions
-      if self.suggestion_service and trial.trace_results:
+      if (
+          self.suggestion_service
+          and trial.trace_results
+          and trial.run.generate_suggestions
+      ):
         try:
-          trace = [
-              (t if isinstance(t, dict) else json_format.MessageToDict(t))
-              for t in trial.trace_results
-          ]
+          trace = []
+          for t in trial.trace_results:
+            if isinstance(t, dict):
+              trace.append(t)
+            elif hasattr(t, "to_dict"):
+              trace.append(t.to_dict())
+            else:
+              trace.append(json_format.MessageToDict(t))
           suggestions = self.suggestion_service.suggest_assertions_from_trace(
               trace=trace,
               existing_assertions=assertions,

@@ -32,9 +32,19 @@ class TimelineEvent(pydantic.BaseModel):
   duration_ms: int = 0
   cumulative_duration_ms: int = 0
   timestamp: datetime.datetime | None = None
+  group_title: str | None = None
 
   # For internal storage of original data if needed, but not sent to UI usually
   # metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
+
+
+class TimelineGroup(pydantic.BaseModel):
+  """A group of adjacent events sharing a common theme or tool."""
+
+  title: str
+  duration_ms: int = 0
+  icon: str = "bi:circle"
+  events: list[TimelineEvent] = pydantic.Field(default_factory=list)
 
 
 class Timeline(pydantic.BaseModel):
@@ -42,3 +52,4 @@ class Timeline(pydantic.BaseModel):
 
   total_duration_ms: int
   events: list[TimelineEvent] = pydantic.Field(default_factory=list)
+  groups: list[TimelineGroup] = pydantic.Field(default_factory=list)

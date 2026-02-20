@@ -48,18 +48,30 @@ class RunSchema(pydantic.BaseModel):
   original_suite_id: int | None = None
   # Snapshot of the agent's context at the time of the run
   agent_context_snapshot: dict[str, Any] | None = None
+  generate_suggestions: bool | None = False
+  is_archived: bool = False
 
   status: RunStatus
   created_at: datetime.datetime
   completed_at: datetime.datetime | None = None
+  concurrency: int = 2
 
   # Stats
   total_examples: int = 0
   failed_examples: int = 0
   accuracy: float | None = None
   duration_ms: int | None = None
+  tool_timings: dict[str, int] | None = None
 
   model_config = pydantic.ConfigDict(from_attributes=True)
+
+  @pydantic.field_validator("concurrency", mode="before")
+  @classmethod
+  def validate_concurrency(cls, v: Any) -> int:
+    """Handles None or missing concurrency for legacy runs."""
+    if v is None:
+      return 2
+    return int(v)
 
 
 class RunHistoryPoint(pydantic.BaseModel):
@@ -107,6 +119,7 @@ class Trial(pydantic.BaseModel):
   error_traceback: str | None = None
   failed_stage: str | None = None
   trace_results: list[dict[str, Any]] | None = None
+  tool_timings: dict[str, int] | None = None
 
   # Scoring
   score: float | None = None

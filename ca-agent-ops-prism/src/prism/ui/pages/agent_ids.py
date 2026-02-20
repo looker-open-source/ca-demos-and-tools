@@ -29,6 +29,7 @@ class AgentIds:
 
     BTN_MONITOR = "agent-home-btn-monitor"
     CARD_GRID = "agent-home-card-grid"
+    SWITCH_ARCHIVED = "agent-home-switch-archived"
 
     class ChoiceModal:
       ROOT = "agent-choice-modal-root"
@@ -112,6 +113,14 @@ class AgentIds:
     INPUT_EDIT_BQ_TABLES_PREVIEW = "agent-detail-input-edit-bq-tables-preview"
     INPUT_EDIT_LOOKER_URI = "agent-detail-input-edit-looker-uri"
     INPUT_EDIT_LOOKER_EXPLORES = "agent-detail-input-edit-looker-explores"
+    INPUT_EDIT_GOLDEN_QUERIES = "agent-detail-input-edit-golden-queries"
+    BTN_FIX_GOLDEN_QUERIES_AI = "agent-detail-btn-fix-golden-queries-ai"
+    ERROR_GOLDEN_QUERIES = "agent-detail-error-golden-queries"
+    CARD_GOLDEN_QUERIES = "agent-detail-card-golden-queries"
+    SWITCH_INSTRUCTION_VIEW = "agent-detail-switch-instruction-view"
+    INSTRUCTION_MARKDOWN = "agent-detail-instruction-markdown"
+    INSTRUCTION_RAW = "agent-detail-instruction-raw"
+
     INPUT_EDIT_LOOKER_EXPLORES_PREVIEW = (
         "agent-detail-input-edit-looker-explores-preview"
     )
@@ -124,6 +133,8 @@ class AgentIds:
     INPUT_DUPLICATE_NAME = "agent-detail-input-duplicate-name"
     BTN_DUPLICATE_SUBMIT = "agent-detail-btn-duplicate-submit"
     DUPLICATE_LOADING_OVERLAY = "agent-detail-duplicate-loading-overlay"
+    BTN_ARCHIVE = "agent-detail-btn-archive"
+    BTN_RESTORE = "agent-detail-btn-restore"
 
     MAX_WIDTH = "100%"
     CONTAINER_DATASOURCE = "agent-detail-container-datasource"
@@ -145,3 +156,5 @@ class AgentIds:
       BTN_CANCEL = "agent-detail-eval-btn-cancel"
       SUITE_DETAILS = "agent-detail-eval-suite-details"
       ALERT_VALIDATION = "agent-detail-eval-alert-validation"
+      TOGGLE_SUGGESTIONS = "agent-detail-eval-toggle-suggestions"
+      INPUT_CONCURRENCY = "agent-detail-eval-input-concurrency"

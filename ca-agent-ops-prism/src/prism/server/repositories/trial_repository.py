@@ -89,20 +89,34 @@ class TrialRepository:
     )
     return self.session.scalars(stmt).unique().first()
 
-  def pick_next_pending_trial(self) -> Trial | None:
+  def pick_next_pending_trial(self, run_id: int | None = None) -> Trial | None:
     """Atomically picks and claims the next pending trial from an active run.
+
+    Args:
+      run_id: Optional ID of a specific run to pick trials from.
 
     Returns:
       The claimed Trial object, or None if no trials are available.
     """
 
-    # Subquery: Find the ID of the next pending trial from a RUNNING run
-    # Use order_by(Trial.id) or created_at for FIFO
-    subq = (
+    # Subquery: Find the ID of the next pending trial
+    # If run_id is provided, only look for trials in that run.
+    # Otherwise, look in any PENDING or RUNNING run.
+    subq_stmt = (
         sqlalchemy.select(Trial.id)
         .join(Run, Trial.run_id == Run.id)
         .where(Trial.status == RunStatus.PENDING)
-        .where(Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
+    )
+
+    if run_id is not None:
+      subq_stmt = subq_stmt.where(Trial.run_id == run_id)
+    else:
+      subq_stmt = subq_stmt.where(
+          Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING])
+      )
+
+    subq = (
+        subq_stmt.where(Run.is_archived.is_not(True))
         .order_by(Trial.id.asc())
         .limit(1)
         .scalar_subquery()
@@ -180,6 +194,7 @@ class TrialRepository:
         .where(
             Trial.example_snapshot.has(original_example_id=original_example_id)
         )
+        .where(Run.is_archived.is_not(True))
         .where(Trial.suggested_asserts.is_not(None))
         # .where(func.json_array_length(Trial.suggested_asserts) > 0)
         # SQLite/PG specific?

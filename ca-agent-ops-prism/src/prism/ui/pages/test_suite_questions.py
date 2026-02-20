@@ -24,48 +24,207 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.ids import TestSuiteIds as Ids
 
 
+def render_bulk_add_guide():
+  """Renders a collapsible guide for assertion types in bulk add."""
+  from prism.ui.constants import ASSERTS_GUIDE
+
+  items = []
+  for guide in ASSERTS_GUIDE:
+    # Build a nice example block
+    example_content = str(guide["example"])
+    is_multiline = "\n" in example_content
+
+    if guide["name"] in [
+        "looker-query-match",
+        "data-check-row",
+        "custom",
+        "json_valid",
+    ]:
+      # These expect YAML blocks, their examples are already YAML-y or just the value
+      if is_multiline:
+        code_text = (
+            f"- type: {guide['name']}\n "
+            f" {example_content.replace('\n', '\n  ')}"
+        )
+      else:
+        code_text = f"- type: {guide['name']}\n  value: {example_content}"
+    else:
+      # Simple types
+      code_text = f"- type: {guide['name']}\n  value: {example_content}"
+
+    items.append(
+        dmc.AccordionItem(
+            [
+                dmc.AccordionControl(
+                    dmc.Group(
+                        [
+                            dmc.Text(guide["label"], fw=500, size="sm"),
+                            dmc.Code(guide["name"]),
+                        ],
+                        gap="xs",
+                    )
+                ),
+                dmc.AccordionPanel(
+                    dmc.Stack(
+                        [
+                            dmc.Text(
+                                guide["description"], size="xs", c="dimmed"
+                            ),
+                            dmc.Text("YAML Example:", size="xs", fw=600, mt=4),
+                            dmc.Code(
+                                code_text,
+                                block=True,
+                            ),
+                        ],
+                        gap=4,
+                    )
+                ),
+            ],
+            value=guide["name"],
+        )
+    )
+
+  return dmc.Stack(
+      [
+          dmc.Divider(label="Advanced Mode Reference", labelPosition="center"),
+          dmc.Accordion(items, variant="separated", chevronPosition="left"),
+      ],
+      gap="xs",
+      mt="md",
+      id="bulk-add-guide-container",
+  )
+
+
 def render_bulk_add_modal():
   """Renders the bulk add modal."""
   return dmc.Modal(
       id=Ids.MODAL_BULK_ADD,
       title="Bulk Add Test Cases",
-      size="lg",
+      size="90%",
       children=[
           dmc.Stack(
               children=[
-                  dmc.Textarea(
-                      id=Ids.INPUT_BULK_TEXT,
-                      label="Paste Test Cases (one per line)",
-                      placeholder=(
-                          "Why is it raining?\nWhat is the meaning of life?"
-                      ),
-                      minRows=10,
-                      autosize=True,
+                  dmc.Center(
+                      dmc.SegmentedControl(
+                          id=Ids.TC_BULK_MODE,
+                          data=[
+                              {
+                                  "label": "Simple (Questions Only)",
+                                  "value": "simple",
+                              },
+                              {
+                                  "label": "Advanced (Structured YAML)",
+                                  "value": "advanced",
+                              },
+                          ],
+                          value="advanced",
+                          fullWidth=True,
+                      )
                   ),
-                  dmc.Text(id=Ids.VAL_MSG + "-bulk-count", fw=500, size="sm"),
-                  dmc.ScrollArea(
-                      id=Ids.PREVIEW_BULK_ADD,
-                      h=200,
-                      type="always",
-                      offsetScrollbars=True,
-                      style={
-                          "border": "1px solid #dee2e6",
-                          "borderRadius": "4px",
-                          "padding": "0.5rem",
-                      },
+                  dmc.Grid(
+                      gutter="md",
+                      children=[
+                          dmc.GridCol(
+                              span=6,
+                              children=[
+                                  dmc.Stack(
+                                      gap="xs",
+                                      children=[
+                                          dmc.Group(
+                                              justify="space-between",
+                                              children=[
+                                                  dmc.Text(
+                                                      "Input",
+                                                      id="bulk-add-input-title",
+                                                      fw=600,
+                                                      size="sm",
+                                                  ),
+                                                  dmc.Button(
+                                                      "Fix with AI",
+                                                      id=Ids.BTN_BULK_FIX_AI,
+                                                      variant="subtle",
+                                                      size="xs",
+                                                      leftSection=DashIconify(
+                                                          icon="bi:stars"
+                                                      ),
+                                                      color="grape",
+                                                  ),
+                                              ],
+                                          ),
+                                          dmc.Textarea(
+                                              id=Ids.INPUT_BULK_TEXT,
+                                              placeholder="Enter your input...",
+                                              minRows=15,
+                                              maxRows=25,
+                                              autosize=True,
+                                              styles={
+                                                  "input": {
+                                                      "fontFamily": "monospace",
+                                                      "fontSize": "13px",
+                                                  }
+                                              },
+                                          ),
+                                          html.Div(
+                                              id="bulk-add-guide-wrapper",
+                                              children=render_bulk_add_guide(),
+                                          ),
+                                      ],
+                                  )
+                              ],
+                          ),
+                          dmc.GridCol(
+                              span=6,
+                              children=[
+                                  dmc.Stack(
+                                      gap="xs",
+                                      children=[
+                                          dmc.Text(
+                                              "Live Preview", fw=600, size="sm"
+                                          ),
+                                          dmc.ScrollArea(
+                                              id=Ids.PREVIEW_BULK_ADD,
+                                              h=400,
+                                              type="always",
+                                              offsetScrollbars=True,
+                                              style={
+                                                  "border": "1px solid #dee2e6",
+                                                  "borderRadius": "4px",
+                                                  "padding": "0.5rem",
+                                                  "backgroundColor": "#f8f9fa",
+                                              },
+                                              children=dmc.Text(
+                                                  "No valid test cases found.",
+                                                  c="dimmed",
+                                                  size="sm",
+                                                  mt="md",
+                                                  ta="center",
+                                              ),
+                                          ),
+                                      ],
+                                  )
+                              ],
+                          ),
+                      ],
                   ),
                   dmc.Group(
-                      justify="flex-end",
-                      mt="md",
+                      justify="space-between",
                       children=[
-                          dmc.Button(
-                              "Cancel",
-                              id=Ids.BTN_BULK_ADD_CANCEL,
-                              variant="default",
+                          dmc.Text(
+                              id=Ids.VAL_MSG + "-bulk-count", fw=500, size="sm"
                           ),
-                          dmc.Button(
-                              "Add Test Cases",
-                              id=Ids.BTN_BULK_ADD_CONFIRM,
+                          dmc.Group(
+                              children=[
+                                  dmc.Button(
+                                      "Cancel",
+                                      id=Ids.BTN_BULK_ADD_CANCEL,
+                                      variant="default",
+                                  ),
+                                  dmc.Button(
+                                      "Import Test Cases",
+                                      id=Ids.BTN_BULK_ADD_CONFIRM,
+                                      disabled=True,
+                                  ),
+                              ]
                           ),
                       ],
                   ),
