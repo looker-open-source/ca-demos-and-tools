@@ -45,16 +45,17 @@ def toggle_choice_modal(*_args):
     Output(AgentIds.Home.CARD_GRID, CP.CHILDREN),
     [
         Input("url", CP.PATHNAME),  # Trigger on load
+        Input(AgentIds.Home.SWITCH_ARCHIVED, CP.CHECKED),
     ],
 )
-def update_agent_list(*_):
+def update_agent_list(pathname: str, include_archived: bool):
   """Updates the agent list UI with cards."""
   # Use Clients
   client = get_client()
   agents_client = client.agents
   runs_client = client.runs
 
-  agents = agents_client.list_agents()
+  agents = agents_client.list_agents(include_archived=include_archived)
 
   # Fetch Latest Runs for Cards (Schema-based)
   agent_ids = [a.id for a in agents]

@@ -3,14 +3,14 @@ name = "prism"
 version = "0.1.0"
 description = "Prism Core Backend"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "sqlalchemy>=2.0.0",
     "pydantic>=2.0.0",
     "alembic>=1.13.0",
     "absl-py>=2.0.0",
     "sqlalchemy-utils>=0.41.0",
-    "google-cloud-geminidataanalytics",
+    "google-cloud-geminidataanalytics == 0.10.0",
     "google-auth",
     "google-cloud-aiplatform",
     "google-genai",

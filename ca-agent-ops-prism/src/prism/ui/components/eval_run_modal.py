@@ -198,6 +198,30 @@ def render_modal():
                           ),
                       ],
                   ),
+                  # Options
+                  dmc.Switch(
+                      id=AgentIds.Detail.EvalModal.TOGGLE_SUGGESTIONS,
+                      label="Generate Suggested Assertions",
+                      description=(
+                          "Automatically suggest new assertions based on trace"
+                          " results (Uses LLM)."
+                      ),
+                      checked=False,  # Default to false
+                  ),
+                  # Concurrency Option
+                  dmc.NumberInput(
+                      id=AgentIds.Detail.EvalModal.INPUT_CONCURRENCY,
+                      label="Max Concurrency",
+                      description=(
+                          "Maximum number of parallel trials for this run"
+                          " (1-100)."
+                      ),
+                      value=2,
+                      min=1,
+                      max=100,
+                      step=1,
+                      radius="md",
+                  ),
                   # Suite Details
                   html.Div(
                       id=AgentIds.Detail.EvalModal.SUITE_DETAILS,

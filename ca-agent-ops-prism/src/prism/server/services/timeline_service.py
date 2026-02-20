@@ -22,10 +22,52 @@ from typing import Any, Dict, List, Tuple
 
 from prism.common.schemas.timeline import Timeline
 from prism.common.schemas.timeline import TimelineEvent
+from prism.common.schemas.timeline import TimelineGroup
 
 
 class TimelineService:
   """Service for transforming raw agent traces into a structured timeline."""
+
+  PHASE_CONFIG = {
+      "SCHEMA": {
+          "reasoning_titles": ["Schema Query"],
+          "action_titles": ["Schema Result"],
+          "reasoning_label": "Agent Reasoning - Schema Fetch",
+          "action_label": "Schema Fetch",
+      },
+      "DATA": {
+          "reasoning_titles": [
+              "Data Query",
+              "Generated SQL",
+              "BigQuery Execution",
+          ],
+          "action_titles": ["Query Result"],
+          "reasoning_label": "Agent Reasoning - Data Query",
+          "action_label": "Data Query",
+      },
+      "CHART": {
+          "reasoning_titles": ["Chart Request"],
+          "action_titles": ["Chart Generated"],
+          "reasoning_label": "Agent Reasoning - Chart Generation",
+          "action_label": "Chart Generation",
+      },
+      "ANALYSIS": {
+          "reasoning_titles": ["Analysis Request"],
+          "action_titles": ["Data Analysis"],
+          "reasoning_label": "Agent Reasoning - Data Analysis",
+          "action_label": "Data Analysis",
+      },
+      "ADVANCED": {
+          "reasoning_titles": [
+              "Key Driver Analysis",
+              "Outlier Detection",
+              "Period Comparison",
+          ],
+          "action_titles": ["Advanced Insight"],
+          "reasoning_label": "Agent Reasoning - Advanced Insight",
+          "action_label": "Advanced Insight",
+      },
+  }
 
   def _parse_event(
       self, event: Dict[str, Any], hide_query_schema: bool = False
@@ -231,6 +273,27 @@ class TimelineService:
           "json",
       )
 
+    # ClarificationMessage
+    if "clarification" in message:
+      return (
+          "bi:question-circle-fill",
+          "Clarification Question",
+          json.dumps(message["clarification"], indent=2),
+          "json",
+      )
+
+    # AdvancedInsightMessage
+    if "advanced_insight" in message or "advancedInsight" in message:
+      content = message.get("advanced_insight") or message.get(
+          "advancedInsight"
+      )
+      return (
+          "bi:journal-text",
+          "Advanced Insight",
+          json.dumps(content, indent=2),
+          "json",
+      )
+
     # ErrorMessage
     if "error" in message:
       return (
@@ -292,6 +355,7 @@ class TimelineService:
 
     for event_data in parsed_events:
       current_time = event_data["timestamp"]
+      raw_data = event_data["data"]
 
       if is_first_event:
         if start_time_baseline:
@@ -306,8 +370,15 @@ class TimelineService:
 
       cumulative_duration += duration_ms
       icon, title, content, content_type = self._parse_event(
-          event_data["data"], hide_query_schema=hide_query_schema
+          raw_data, hide_query_schema=hide_query_schema
       )
+
+      # Check for group_id in system_message
+      message = (
+          raw_data.get("system_message") or raw_data.get("systemMessage") or {}
+      )
+      group_id = message.get("group_id") or message.get("groupId")
+      group_title = f"Group {group_id}" if group_id is not None else None
 
       timeline_events.append(
           TimelineEvent(
@@ -318,9 +389,75 @@ class TimelineService:
               duration_ms=duration_ms,
               cumulative_duration_ms=cumulative_duration,
               timestamp=current_time,
+              group_title=group_title,
           )
       )
       prev_time = current_time
+
+    # Apply grouping heuristic for events without an explicit group_title
+    current_phase = None
+    for i, event in enumerate(timeline_events):
+      if event.group_title:
+        # Respect group_id if already set
+        continue
+
+      if event.title == "Agent Thought":
+        # Look ahead for the next non-thought action to determine group
+        for j in range(i + 1, len(timeline_events)):
+          next_event = timeline_events[j]
+          found_phase = False
+          for phase_key, phase in self.PHASE_CONFIG.items():
+            if (
+                next_event.title in phase["reasoning_titles"]
+                or next_event.title in phase["action_titles"]
+            ):
+              event.group_title = phase["reasoning_label"]
+              current_phase = phase_key
+              found_phase = True
+              break
+          if found_phase:
+            break
+          elif next_event.title != "Agent Thought":
+            break
+
+        if not event.group_title and current_phase:
+          event.group_title = self.PHASE_CONFIG[current_phase][
+              "reasoning_label"
+          ]
+
+      elif current_phase:
+        phase = self.PHASE_CONFIG[current_phase]
+        if event.title in phase["reasoning_titles"]:
+          event.group_title = phase["reasoning_label"]
+        elif event.title in phase["action_titles"]:
+          event.group_title = phase["action_label"]
+          current_phase = None  # Reset after action result
+        else:
+          # Check if it's a new phase starting without a thought
+          for phase_key, p in self.PHASE_CONFIG.items():
+            if event.title in p["reasoning_titles"]:
+              event.group_title = p["reasoning_label"]
+              current_phase = phase_key
+              break
+            elif event.title in p["action_titles"]:
+              event.group_title = p["action_label"]
+              current_phase = None
+              break
+          else:
+            # Not a known action, keep current group or reset?
+            # Assign to current reasoning group if we are in one
+            event.group_title = phase["reasoning_label"]
+
+      else:
+        # No active phase, check if this event starts one
+        for phase_key, phase in self.PHASE_CONFIG.items():
+          if event.title in phase["reasoning_titles"]:
+            event.group_title = phase["reasoning_label"]
+            current_phase = phase_key
+            break
+          elif event.title in phase["action_titles"]:
+            event.group_title = phase["action_label"]
+            break
 
     # Ensure total_duration_ms is at least cumulative duration of last event.
     # This renders the timeline correctly even if trial's duration_ms is 0.
@@ -333,4 +470,81 @@ class TimelineService:
       # If reported latency is less than trace sum, clamp to trace sum.
       total_duration_ms = last_cumulative
 
-    return Timeline(total_duration_ms=total_duration_ms, events=timeline_events)
+    timeline = Timeline(
+        total_duration_ms=total_duration_ms, events=timeline_events
+    )
+    timeline.groups = self._group_events(timeline.events, total_duration_ms)
+    return timeline
+
+  def _group_events(
+      self,
+      events: list[TimelineEvent],
+      total_duration_ms: int,
+  ) -> list[TimelineGroup]:
+    """Groups sequential events with the same group_title."""
+    timeline_groups = []
+    if not events:
+      return timeline_groups
+
+    current_group_title = events[0].group_title or events[0].title
+    current_events = []
+    group_duration = 0
+
+    for i, event in enumerate(events):
+      title = event.group_title or event.title
+      if title != current_group_title:
+        # Finish current group
+        timeline_groups.append(
+            TimelineGroup(
+                title=current_group_title,
+                duration_ms=group_duration,
+                icon=current_events[0].icon if current_events else "bi:circle",
+                events=current_events,
+            )
+        )
+        current_group_title = title
+        current_events = []
+        group_duration = 0
+
+      current_events.append(event)
+      group_duration += event.duration_ms
+
+    # Final group: add duration from last event to total_duration_ms
+    if current_events:
+      last_event = current_events[-1]
+      final_gap = total_duration_ms - last_event.cumulative_duration_ms
+      if final_gap > 0:
+        group_duration += final_gap
+      else:
+        # Give at least some padding if it's the very last thing
+        group_duration += 100
+
+      timeline_groups.append(
+          TimelineGroup(
+              title=current_group_title,
+              duration_ms=group_duration,
+              icon=current_events[0].icon if current_events else "bi:circle",
+              events=current_events,
+          )
+      )
+
+    return timeline_groups
+
+  def calculate_tool_timings(
+      self,
+      trace: List[Dict[str, Any]],
+      ttfr_ms: int = 0,
+      total_duration_ms: int = 0,
+  ) -> Dict[str, int]:
+    """Calculates tool timings from a raw trace."""
+    timeline = self.create_timeline_from_trace(
+        trace, ttfr_ms, total_duration_ms
+    )
+
+    tool_timings = {}
+    for group in timeline.groups:
+      tool_timings[group.title] = (
+          tool_timings.get(group.title, 0) + group.duration_ms
+      )
+
+    return tool_timings

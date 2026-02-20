@@ -140,8 +140,10 @@ def update_test_suites_list(pathname: str, search: str):
   coverage = parsed_qs.get("coverage", [None])[0]
 
   client = get_client()
+  include_archived = parsed_qs.get("archived", ["false"])[0] == "true"
   suites_with_stats = client.suites.get_suites_with_stats(
       coverage=coverage,
+      include_archived=include_archived,
   )
 
   if not suites_with_stats:
@@ -187,23 +189,88 @@ def update_test_suite_url_from_filters(
   else:
     params.pop("coverage", None)
 
-  new_search = (
-      f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
-  )
-  return new_search
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
 
 
 @typed_callback(
-    (TestSuiteHomeIds.FILTER_COVERAGE, CP.VALUE),
+    dash.Output("url", "search", allow_duplicate=True),
+    inputs=[
+        (TestSuiteHomeIds.SWITCH_ARCHIVED, CP.CHECKED),
+    ],
+    state=[("url", CP.SEARCH)],
+    prevent_initial_call=True,
+)
+def update_test_suite_url_from_archived_switch(
+    include_archived: bool, current_search: str
+):
+  """Update URL search params from Test Suites Home archived switch."""
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
+  )
+
+  if include_archived:
+    params["archived"] = ["true"]
+  else:
+    params.pop("archived", None)
+
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+
+
+@typed_callback(
+    [
+        (TestSuiteHomeIds.FILTER_COVERAGE, CP.VALUE),
+        (TestSuiteHomeIds.SWITCH_ARCHIVED, CP.CHECKED),
+    ],
     inputs=[("url", CP.SEARCH)],
 )
 def sync_test_suite_filters_to_url(search: str):
   """Sync Test Suites Home filters to URL search params."""
   if not search:
-    return None
+    return None, False
 
   params = urllib.parse.parse_qs(search.lstrip("?"))
-  return params.get("coverage", [None])[0]
+  coverage = params.get("coverage", [None])[0]
+  include_archived = params.get("archived", ["false"])[0] == "true"
+  return coverage, include_archived
+
+
+@typed_callback(
+    (REDIRECT_HANDLER, CP.HREF),
+    inputs=[
+        (test_suite_ids.TestSuiteIds.BTN_ARCHIVE, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.BTN_RESTORE, CP.N_CLICKS),
+    ],
+    state=[("url", CP.PATHNAME)],
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def toggle_suite_archive(archive_clicks, restore_clicks, pathname):
+  """Toggles archiving for a test suite."""
+  if not archive_clicks and not restore_clicks:
+    return dash.no_update
+
+  trigger_id = typed_callback.triggered_id()
+  if trigger_id not in [
+      test_suite_ids.TestSuiteIds.BTN_ARCHIVE,
+      test_suite_ids.TestSuiteIds.BTN_RESTORE,
+  ]:
+    return dash.no_update
+
+  try:
+    suite_id = int(pathname.split("/")[-1])
+  except (ValueError, IndexError):
+    return dash.no_update
+
+  client = get_client()
+
+  if trigger_id == test_suite_ids.TestSuiteIds.BTN_ARCHIVE:
+    client.suites.archive_suite(suite_id)
+  else:
+    client.suites.unarchive_suite(suite_id)
+
+  return pathname
 
 
 @typed_callback(

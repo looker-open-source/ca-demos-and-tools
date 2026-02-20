@@ -41,6 +41,7 @@ def test_get_dashboard_stats_accuracy_history(db_session: orm.Session):
       status=RunStatus.COMPLETED,
       started_at=now - datetime.timedelta(days=1),
       test_suite_snapshot_id=suite_snap.id,
+      is_archived=False,
   )
   db_session.add(run)
   db_session.commit()

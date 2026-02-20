@@ -14,10 +14,12 @@
 
 """Callbacks for Agent Detail Page."""
 
+import json
 import logging
 import time
 from typing import Any
 import dash
+from dash import dcc
 from dash import html
 from dash import Input
 from dash import Output
@@ -183,12 +185,35 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           disabled=True,
       ),
       dmc.Button(
+          "Archive",
+          id=AgentIds.Detail.BTN_ARCHIVE,
+          variant="outline",
+          radius="md",
+          leftSection=DashIconify(icon="material-symbols:archive", width=20),
+          color="gray",
+          style={"display": "none"}
+          if getattr(agent, "is_archived", False)
+          else {"display": "block"},
+      ),
+      dmc.Button(
+          "Restore",
+          id=AgentIds.Detail.BTN_RESTORE,
+          variant="filled",
+          radius="md",
+          leftSection=DashIconify(
+              icon="material-symbols:settings-backup-restore", width=20
+          ),
+          color="green",
+          style={"display": "block"}
+          if getattr(agent, "is_archived", False)
+          else {"display": "none"},
+      ),
+      dmc.Button(
           "Run Evaluation",
           id=AgentIds.Detail.BTN_RUN_EVAL,
           variant="filled",
           color="blue",
           radius="md",
-          fw=600,
           leftSection=DashIconify(icon="bi:play-fill", width=20),
           disabled=True,
       ),
@@ -203,7 +228,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ),
   ]
 
-  # --- Main Content Grid (Instruction + Datasource) ---
+  # --- Main Content Grid (Instruction + Datasource + Golden Queries) ---
   # Prepare Datasource Card (Skeleton Initially)
   datasource_skeleton = render_detail_card(
       title="Datasource",
@@ -223,26 +248,51 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ),
   )
 
-  main_grid = dmc.SimpleGrid(
-      cols={"base": 1, "md": 2},
-      spacing="md",
-      children=[
-          render_detail_card(
-              title="System Instruction",
-              description="The set of instructions sent to the LLM",
-              children=dmc.ScrollArea(
-                  mah=300,
-                  children=html.Div(
-                      id=AgentIds.Detail.INSTRUCTION,
-                      children=dmc.Skeleton(
-                          visible=True,
-                          height=150,
-                          radius="md",
-                      ),
-                  ),
+  system_instruction_card = render_detail_card(
+      title="System Instruction",
+      description="The set of instructions sent to the LLM",
+      action=dmc.Switch(
+          id=AgentIds.Detail.SWITCH_INSTRUCTION_VIEW,
+          label="Markdown",
+          checked=True,
+          size="sm",
+      ),
+      children=dmc.ScrollArea(
+          mah=500,
+          children=html.Div(
+              id=AgentIds.Detail.INSTRUCTION,
+              children=dmc.Skeleton(
+                  visible=True,
+                  height=150,
+                  radius="md",
               ),
           ),
+      ),
+  )
+
+  golden_queries_card = render_detail_card(
+      title="Golden Queries",
+      description="Examples to guide the agent",
+      children=dmc.ScrollArea(
+          mah=500,
+          children=html.Div(
+              id=AgentIds.Detail.CARD_GOLDEN_QUERIES,
+              children=dmc.Skeleton(
+                  visible=True,
+                  height=100,
+                  radius="md",
+              ),
+          ),
+      ),
+  )
+
+  # Vertical Stack Layout
+  main_grid = dmc.Stack(
+      gap="lg",
+      children=[
           datasource_skeleton,
+          system_instruction_card,
+          golden_queries_card,
       ],
   )
 
@@ -466,6 +516,7 @@ def update_duration_chart(days_str: str, pathname: str):
         Output(AgentIds.Detail.BTN_EDIT, CP.DISABLED),
         Output(AgentIds.Detail.BTN_DUPLICATE, CP.DISABLED),
         Output(AgentIds.Detail.BTN_RUN_EVAL, CP.DISABLED),
+        Output(AgentIds.Detail.CARD_GOLDEN_QUERIES, CP.CHILDREN),
     ],
     [Input(AgentIds.Detail.STORE_REMOTE_TRIGGER, CP.DATA)],
     prevent_initial_call=True,
@@ -474,6 +525,7 @@ def fetch_remote_config(trigger_data):
   """Fetches remote GDA config and updates UI."""
   if not trigger_data:
     return (
+        dash.no_update,
         dash.no_update,
         dash.no_update,
         dash.no_update,
@@ -501,6 +553,7 @@ def fetch_remote_config(trigger_data):
         False,  # Re-enable edit button
         False,  # Re-enable duplicate button
         dash.no_update,
+        dash.no_update,
     )
 
   if not gcp_agent:
@@ -512,15 +565,34 @@ def fetch_remote_config(trigger_data):
         False,  # Re-enable edit button
         False,  # Re-enable duplicate button
         dash.no_update,
+        dash.no_update,
     )
 
   # 1. System Instruction
+  # 1. System Instruction
   instruction = gcp_agent.config.system_instruction or "No instruction."
-  instruction_ui = dmc.Text(
-      instruction,
-      size="sm",
-      c="dark",
-      style={"whiteSpace": "pre-wrap"},
+
+  # Markdown View (Default)
+  markdown_view = html.Div(
+      id=AgentIds.Detail.INSTRUCTION_MARKDOWN,
+      style={"display": "block"},
+      children=dcc.Markdown(instruction),
+  )
+
+  # Raw View (Hidden)
+  raw_view = html.Div(
+      id=AgentIds.Detail.INSTRUCTION_RAW,
+      style={"display": "none"},
+      children=dmc.Code(
+          instruction,
+          block=True,
+          style={"whiteSpace": "pre-wrap"},
+      ),
+  )
+
+  instruction_ui = html.Div(
+      style={"maxHeight": "500px", "overflowY": "auto"},
+      children=html.Div([markdown_view, raw_view]),
   )
 
   # 2. Datasource
@@ -606,6 +678,30 @@ def fetch_remote_config(trigger_data):
       and bool(gcp_agent.config.looker_client_secret)
   )
 
+  # 3. Golden Queries
+  golden_queries_ui = []
+  if gcp_agent.config.golden_queries:
+    # Convert to list of dicts for JSON display
+    gqs = [gq.model_dump(mode="json") for gq in gcp_agent.config.golden_queries]
+    json_str = json.dumps(gqs, indent=2)
+
+    golden_queries_ui = html.Div(
+        style={"maxHeight": "500px", "overflowY": "auto"},
+        children=dmc.Stack(
+            gap=0,
+            children=[
+                dcc.Markdown(
+                    f"```json\n{json_str}\n```",
+                    style={"fontSize": "12px", "lineHeight": "1.1"},
+                )
+            ],
+        ),
+    )
+  else:
+    golden_queries_ui = dmc.Text(
+        "No golden queries configured.", size="sm", c="dimmed"
+    )
+
   return (
       instruction_ui,
       dmc.Stack(children=ds_children),
@@ -614,7 +710,26 @@ def fetch_remote_config(trigger_data):
       False,  # Re-enable edit button
       False,  # Re-enable duplicate button
       not can_run_eval,  # BTN_RUN_EVAL disabled if missing creds
+      dmc.Stack(children=[golden_queries_ui]),
   )
+
+
+dash.clientside_callback(
+    """
+    function(checked) {
+        if (checked) {
+            return [{'display': 'block'}, {'display': 'none'}];
+        } else {
+            return [{'display': 'none'}, {'display': 'block'}];
+        }
+    }
+    """,
+    [
+        Output(AgentIds.Detail.INSTRUCTION_MARKDOWN, "style"),
+        Output(AgentIds.Detail.INSTRUCTION_RAW, "style"),
+    ],
+    Input(AgentIds.Detail.SWITCH_INSTRUCTION_VIEW, "checked"),
+)
 
 
 @typed_callback(
@@ -633,6 +748,8 @@ def fetch_remote_config(trigger_data):
         Output(AgentIds.Detail.CONTAINER_EDIT_BQ_CONFIG, "style"),
         # BQ Values
         Output(AgentIds.Detail.INPUT_EDIT_BQ_TABLES, CP.VALUE),
+        # Golden Queries
+        Output(AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES, CP.VALUE),
     ],
     [
         Input(AgentIds.Detail.BTN_EDIT, CP.N_CLICKS),
@@ -646,7 +763,7 @@ def fetch_remote_config(trigger_data):
 def open_edit_modal(n_clicks, gcp_config, pathname):
   """Opens the edit modal and pre-fills values."""
   if not n_clicks:
-    return (dash.no_update,) * 10
+    return (dash.no_update,) * 11
 
   current_name = ""
   instruction = ""
@@ -656,6 +773,7 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
   looker_explores = []
   looker_client_id = ""
   looker_client_secret = ""
+  golden_queries_str = ""
 
   is_bq = False
   bq_tables = []
@@ -695,6 +813,13 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
           looker_explores = agent.config.datasource.explores or []
           looker_client_id = agent.config.looker_client_id or ""
           looker_client_secret = agent.config.looker_client_secret or ""
+
+          if agent.config.golden_queries:
+            # model_dump to get dicts, then json dumps
+            gqs = [
+                gq.model_dump(mode="json") for gq in agent.config.golden_queries
+            ]
+            golden_queries_str = json.dumps(gqs, indent=2)
 
         # Check for BQ
         if agent.config.datasource and isinstance(
@@ -738,6 +863,7 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
       looker_client_secret,
       bq_style,
       "\n".join(bq_tables),
+      golden_queries_str,
   )
 
 
@@ -763,6 +889,7 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
         State(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_ID, CP.VALUE),
         State(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_SECRET, CP.VALUE),
         State(AgentIds.Detail.INPUT_EDIT_BQ_TABLES, CP.VALUE),
+        State(AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES, CP.VALUE),
     ],
     prevent_initial_call=True,
 )
@@ -776,6 +903,7 @@ def submit_edit(
     looker_client_id,
     looker_client_secret,
     bq_tables_raw,
+    golden_queries_raw,
 ):
   """Submits the edit form."""
   if not n_clicks:
@@ -805,6 +933,15 @@ def submit_edit(
         for t in bq_tables:
           if not is_valid_bq_table(t):
             invalid_fields.append(f"Invalid BQ Table: {t}")
+
+    if golden_queries_raw:
+      try:
+        parsed_gqs = json.loads(golden_queries_raw)
+        if not isinstance(parsed_gqs, list):
+          invalid_fields.append("Golden Queries must be a list")
+      except json.JSONDecodeError:
+        invalid_fields.append("Golden Queries must be valid JSON")
+
   except (ValueError, IndexError):
     return False, False, dash.no_update, dash.no_update
 
@@ -840,6 +977,32 @@ def submit_edit(
         )
         new_config.looker_client_id = looker_client_id
         new_config.looker_client_secret = looker_client_secret
+
+        if golden_queries_raw:
+          try:
+            # We already validated JSON above
+            gqs_list = json.loads(golden_queries_raw)
+            # Pydantic will validate the structure
+            new_config.golden_queries = [
+                agent_schemas.LookerGoldenQuery.model_validate(item)
+                for item in gqs_list
+            ]
+          except Exception as e:  # pylint: disable=broad-exception-caught
+            return (
+                dash.no_update,
+                False,
+                dash.no_update,
+                [{
+                    "action": "show",
+                    "title": "Golden Query Error",
+                    "message": f"Invalid Golden Query structure: {str(e)}",
+                    "color": "red",
+                }],
+                dash.no_update,
+            )
+        else:
+          new_config.golden_queries = []  # Clear if empty
+
     else:
       # Fallback (should not happen for valid agent)
       # If fallback, we don't know the type, so we can't easily set datasource.
@@ -1091,10 +1254,14 @@ def handle_suite_selection(suite_id, pathname):
     [
         State("url", CP.PATHNAME),
         State(AgentIds.Detail.EvalModal.SELECT_SUITE, CP.VALUE),
+        State(AgentIds.Detail.EvalModal.TOGGLE_SUGGESTIONS, "checked"),
+        State(AgentIds.Detail.EvalModal.INPUT_CONCURRENCY, CP.VALUE),
     ],
     prevent_initial_call=True,
 )
-def start_evaluation(n_clicks, pathname, suite_id):
+def start_evaluation(
+    n_clicks, pathname, suite_id, generate_suggestions, concurrency
+):
   """Starts a new evaluation run."""
   if not n_clicks or not suite_id:
     return dash.no_update
@@ -1131,7 +1298,12 @@ def start_evaluation(n_clicks, pathname, suite_id):
       }]
 
   try:
-    run = client.runs.create_run(agent_id=agent_id, test_suite_id=s_id)
+    run = client.runs.create_run(
+        agent_id=agent_id,
+        test_suite_id=s_id,
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
+    )
     # Redirect to the new run page
     return f"/evaluations/runs/{run.id}", dash.no_update
   except Exception as e:  # pylint: disable=broad-except
@@ -1273,3 +1445,114 @@ def test_looker_connectivity(n_clicks, uri, client_id, client_secret):
     return result.get("message", "Success!"), False, color, False
   except Exception as e:  # pylint: disable=broad-except
     return f"Test failed: {str(e)}", False, "red", False
+
+
+@typed_callback(
+    [
+        Output(
+            AgentIds.Detail.STORE_REFRESH_TRIGGER, CP.DATA, allow_duplicate=True
+        ),
+        Output(
+            "notification-container", "sendNotifications", allow_duplicate=True
+        ),
+    ],
+    [
+        Input(AgentIds.Detail.BTN_ARCHIVE, CP.N_CLICKS),
+        Input(AgentIds.Detail.BTN_RESTORE, CP.N_CLICKS),
+    ],
+    [State("url", CP.PATHNAME)],
+    prevent_initial_call=True,
+)
+def toggle_agent_archive(
+    archive_clicks: int, restore_clicks: int, pathname: str
+):
+  """Archives or restores an agent."""
+  ctx = dash.callback_context
+  if not ctx.triggered:
+    return dash.no_update, dash.no_update
+
+  triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+  if not archive_clicks and not restore_clicks:
+    return dash.no_update, dash.no_update
+
+  try:
+    agent_id = int(pathname.split("/")[-1])
+  except (ValueError, IndexError):
+    return dash.no_update, dash.no_update
+
+  client = get_client().agents
+  try:
+    if triggered_id == AgentIds.Detail.BTN_ARCHIVE:
+      client.archive_agent(agent_id)
+      msg = "Agent archived successfully."
+    else:
+      client.unarchive_agent(agent_id)
+      msg = "Agent restored successfully."
+
+    return {"ts": time.time()}, {
+        "title": "Success",
+        "message": msg,
+        "color": "green",
+    }
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logging.error("Failed to toggle agent archive: %s", e)
+    return dash.no_update, {
+        "title": "Error",
+        "message": f"Failed to update agent: {str(e)}",
+        "color": "red",
+    }
+
+
+@typed_callback(
+    [
+        Output(
+            AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES,
+            CP.VALUE,
+            allow_duplicate=True,
+        ),
+        Output(
+            AgentIds.Detail.ERROR_GOLDEN_QUERIES,
+            CP.CHILDREN,
+            allow_duplicate=True,
+        ),
+    ],
+    [Input(AgentIds.Detail.BTN_FIX_GOLDEN_QUERIES_AI, CP.N_CLICKS)],
+    [State(AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES, CP.VALUE)],
+    prevent_initial_call=True,
+)
+def fix_golden_queries_with_ai(n_clicks, current_value):
+  """Uses AI to fix/format the golden queries JSON."""
+  if not n_clicks:
+    return dash.no_update, dash.no_update
+
+  if not current_value:
+    return dash.no_update, dash.no_update
+
+  try:
+    client = get_client().agents
+    # format_golden_queries_with_ai is available in AgentsClient
+    result = client.format_golden_queries_with_ai(current_value)
+    return result, ""  # Clear error on success
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logging.error("Failed to fix golden queries with AI: %s", e)
+    return dash.no_update, f"AI Fix failed: {str(e)}"
+
+
+@typed_callback(
+    Output(AgentIds.Detail.ERROR_GOLDEN_QUERIES, CP.CHILDREN),
+    [Input(AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES, CP.VALUE)],
+    prevent_initial_call=True,
+)
+def validate_golden_queries_edit(value: str | None):
+  """Validates golden queries JSON in edit modal."""
+  if not value:
+    return ""
+
+  try:
+    parsed = json.loads(value)
+    if not isinstance(parsed, list):
+      return "Error: Must be a list of objects"
+  except json.JSONDecodeError as e:
+    return f"Invalid JSON: {e}"
+
+  return ""

@@ -178,6 +178,10 @@ class AgentService:
     """Archives an agent."""
     return self.agent_repository.archive(agent_id=agent_id)
 
+  def unarchive_agent(self, agent_id: int) -> Agent:
+    """Unarchives an agent."""
+    return self.agent_repository.unarchive(agent_id=agent_id)
+
   def get_unique_datasources(self) -> UniqueDatasources:
     """Returns unique datasource names grouped by type (BQ, Looker)."""
     agents = self.list_agents()

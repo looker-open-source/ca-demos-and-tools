@@ -40,6 +40,13 @@ class AgentRepository:
       # Pydantic model dump
       datasource_config = config.datasource.model_dump()
 
+    if config.golden_queries:
+      if datasource_config is None:
+        datasource_config = {}
+      datasource_config["golden_queries"] = [
+          gq.model_dump(mode="json") for gq in config.golden_queries
+      ]
+
     agent = Agent(
         name=name,
         project_id=config.project_id,
@@ -89,11 +96,31 @@ class AgentRepository:
       else:
         agent.datasource_config = None
 
-      if config.looker_client_id is not None:
-        agent.looker_client_id = config.looker_client_id
-
       if config.looker_client_secret is not None:
         agent.looker_client_secret = config.looker_client_secret
+
+      # Store golden_queries in datasource_config if present
+      if config.golden_queries is not None and agent.datasource_config:
+        # We need to ensure we don't handle this if datasource_config is None,
+        # but the previous block sets it to None if config.datasource is None.
+        # However, if config.datasource was None, we probably shouldn't have golden queries?
+        # Actually GDA allows updates.
+
+        # If we updated datasource above, agent.datasource_config is set.
+        current_ds = (
+            agent.datasource_config.copy() if agent.datasource_config else {}
+        )
+        if config.golden_queries:
+          current_ds["golden_queries"] = [
+              gq.model_dump(mode="json") for gq in config.golden_queries
+          ]
+        else:
+          # Explicitly set to empty list or remove if None/Empty passed?
+          # config.golden_queries is a list or None.
+          # If empty list, we store empty list.
+          current_ds["golden_queries"] = []
+
+        agent.datasource_config = current_ds
 
     self.session.commit()
     self.session.refresh(agent)
@@ -106,6 +133,17 @@ class AgentRepository:
       raise ValueError(f"Agent with id {agent_id} not found")
 
     agent.is_archived = True
+    self.session.commit()
+    self.session.refresh(agent)
+    return agent
+
+  def unarchive(self, agent_id: int) -> Agent:
+    """Unarchives an agent."""
+    agent = self.get_by_id(agent_id)
+    if not agent:
+      raise ValueError(f"Agent with id {agent_id} not found")
+
+    agent.is_archived = False
     self.session.commit()
     self.session.refresh(agent)
     return agent

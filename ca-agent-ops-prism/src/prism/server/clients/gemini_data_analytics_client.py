@@ -23,13 +23,16 @@ from typing import Any
 from google.api_core import client_options
 import google.auth
 from google.auth import exceptions as auth_exceptions
-from google.cloud import geminidataanalytics
+from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
 from google.protobuf import field_mask_pb2
 from google.protobuf import json_format
 from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import BigQueryConfig
 from prism.common.schemas.agent import LookerConfig
+from prism.common.schemas.agent import LookerFilter
+from prism.common.schemas.agent import LookerGoldenQuery
+from prism.common.schemas.agent import LookerQuery
 from prism.common.schemas.trace import AskQuestionResponse
 from prism.common.schemas.trace import DurationMetrics
 
@@ -112,12 +115,19 @@ class GeminiDataAnalyticsClient:
                   explores=explores,
               )
 
+    # Convert Golden Queries
+    golden_queries = []
+    if context:
+      proto_gqs = getattr(context, "looker_golden_queries", [])
+      golden_queries = self._pb_to_looker_golden_queries(list(proto_gqs))
+
     config = AgentConfig(
         project_id=project_id,
         location=location,
         agent_resource_id=agent_resource_id,
         datasource=datasource,
         system_instruction=system_instruction,
+        golden_queries=golden_queries if golden_queries else None,
     )
 
     return AgentBase(name=agent_pb.display_name, config=config)
@@ -187,6 +197,80 @@ class GeminiDataAnalyticsClient:
 
     return None
 
+  def _get_looker_golden_queries(
+      self, app_golden_queries: list[LookerGoldenQuery] | None
+  ) -> list[geminidataanalytics.LookerGoldenQuery]:
+    """Converts app schema Golden Queries to Proto Golden Queries."""
+    if not app_golden_queries:
+      return []
+
+    proto_golden_queries = []
+    for gq in app_golden_queries:
+      lq = gq.looker_query
+      filters = []
+      if lq.filters:
+        for f in lq.filters:
+          filters.append(
+              geminidataanalytics.LookerQuery.Filter(
+                  field=f.field, value=f.value or ""
+              )
+          )
+
+      proto_lq = geminidataanalytics.LookerQuery(
+          model=lq.model or "",
+          explore=lq.explore or "",
+          fields=lq.fields or [],
+          filters=filters,
+          sorts=lq.sorts or [],
+          limit=lq.limit or "",
+      )
+
+      proto_golden_queries.append(
+          geminidataanalytics.LookerGoldenQuery(
+              natural_language_questions=gq.natural_language_questions,
+              looker_query=proto_lq,
+          )
+      )
+    return proto_golden_queries
+
+  def _pb_to_looker_golden_queries(
+      self, proto_golden_queries: list[Any]
+  ) -> list[LookerGoldenQuery]:
+    """Converts Proto Golden Queries to app schema Golden Queries."""
+    if not proto_golden_queries:
+      return []
+
+    app_golden_queries = []
+    for pgq in proto_golden_queries:
+      plq = getattr(pgq, "looker_query", None)
+      if plq:
+        filters = []
+        p_filters = getattr(plq, "filters", [])
+        for pf in p_filters:
+          filters.append(
+              LookerFilter(
+                  field=getattr(pf, "field", ""), value=getattr(pf, "value", "")
+              )
+          )
+
+        lq = LookerQuery(
+            model=getattr(plq, "model", None),
+            explore=getattr(plq, "explore", None),
+            fields=list(getattr(plq, "fields", [])),
+            filters=filters,
+            sorts=list(getattr(plq, "sorts", [])),
+            limit=getattr(plq, "limit", None),
+        )
+        app_golden_queries.append(
+            LookerGoldenQuery(
+                natural_language_questions=list(
+                    getattr(pgq, "natural_language_questions", [])
+                ),
+                looker_query=lq,
+            )
+        )
+    return app_golden_queries
+
   def create_agent(
       self,
       display_name: str,
@@ -204,10 +288,14 @@ class GeminiDataAnalyticsClient:
         The created AgentBase.
     """
     datasource_references = self._get_datasource_references(config)
+    looker_golden_queries = self._get_looker_golden_queries(
+        config.golden_queries
+    )
 
     context = geminidataanalytics.Context(
         system_instruction=config.system_instruction or "",
         datasource_references=datasource_references,
+        looker_golden_queries=looker_golden_queries,
     )
     data_analytics_agent = geminidataanalytics.DataAnalyticsAgent(
         published_context=context
@@ -234,6 +322,7 @@ class GeminiDataAnalyticsClient:
     request = geminidataanalytics.GetDataAgentRequest(name=agent_name)
     try:
       agent = self.agent_client.get_data_agent(request=request)
+      print(agent)
       return self._pb_to_agent_base(agent)
     except Exception as e:
       logging.error("An error occurred: %s", e)
@@ -317,11 +406,25 @@ class GeminiDataAnalyticsClient:
           else old_context.datasource_references
       )
 
+      new_golden_queries = None
+      if config and config.golden_queries is not None:
+        new_golden_queries = self._get_looker_golden_queries(
+            config.golden_queries
+        )
+
+      final_golden_queries = (
+          new_golden_queries
+          if new_golden_queries is not None
+          else getattr(old_context, "looker_golden_queries", [])
+      )
+
       new_context = geminidataanalytics.Context(
           system_instruction=final_instruction or "",
           datasource_references=final_datasource,
+          looker_golden_queries=final_golden_queries,
       )
 
+      print(new_context)
       agent_update = geminidataanalytics.DataAgent(
           name=agent_name,
           data_analytics_agent=geminidataanalytics.DataAnalyticsAgent(
@@ -340,7 +443,23 @@ class GeminiDataAnalyticsClient:
 
       try:
         operation = self.agent_client.update_data_agent(request=request)
-        updated_agent = operation.result()
+        try:
+          updated_agent = operation.result(timeout=300)
+        except Exception as e:
+          logging.error(
+              "Failed to get result from agent update operation: %s", e
+          )
+          # Attempt to fetch the agent as a fallback if the operation result fails
+          # but the update might have actually succeeded server-side.
+          try:
+            updated_agent = self.agent_client.get_data_agent(name=agent_name)
+            logging.info(
+                "Fallback: Successfully fetched agent after operation error."
+            )
+          except Exception as fetch_error:
+            logging.error("Fallback fetch also failed: %s", fetch_error)
+            raise e
+
         return self._pb_to_agent_base(updated_agent)
       except Exception as e:
         logging.error("An error occurred during update: %s", e)

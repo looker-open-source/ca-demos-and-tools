@@ -172,12 +172,24 @@ def render_agent_trace(
                       ],
                       gap="sm",
                   ),
-                  dmc.Text(
-                      "TRACE",
-                      size="xs",
-                      fw=700,
-                      c="dimmed",
-                      style={"letterSpacing": "1px"},
+                  dmc.Stack(
+                      gap=2,
+                      align="flex-end",
+                      children=[
+                          dmc.Text(
+                              "TRACE",
+                              size="xs",
+                              fw=700,
+                              c="dimmed",
+                              style={"letterSpacing": "1px"},
+                          ),
+                          dmc.Text(
+                              "Step | % | Total",
+                              size="10px",
+                              fw=500,
+                              c="dimmed",
+                          ),
+                      ],
                   ),
               ],
               justify="space-between",

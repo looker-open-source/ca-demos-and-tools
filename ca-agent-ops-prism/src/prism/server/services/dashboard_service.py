@@ -50,7 +50,10 @@ class DashboardService:
         self.session.query(
             sqlalchemy.func.count(sqlalchemy.distinct(Run.agent_id))
         )
-        .filter(Run.started_at >= seven_days_ago)
+        .filter(
+            Run.started_at >= seven_days_ago,
+            Run.is_archived.is_not(True),
+        )
         .scalar()
         or 0
     )
@@ -60,14 +63,22 @@ class DashboardService:
         self.session.query(
             sqlalchemy.func.count(sqlalchemy.distinct(Run.agent_id))
         )
-        .filter(Run.started_at >= twenty_four_hours_ago)
+        .filter(
+            Run.started_at >= twenty_four_hours_ago,
+            Run.is_archived.is_not(True),
+        )
         .scalar()
         or 0
     )
 
     # 4. Total Runs (Last 7 Days)
     total_runs_7d = (
-        self.session.query(Run).filter(Run.started_at >= seven_days_ago).count()
+        self.session.query(Run)
+        .filter(
+            Run.started_at >= seven_days_ago,
+            Run.is_archived.is_not(True),
+        )
+        .count()
     )
 
     # 5. Average Accuracy (Last 7 Days)
@@ -78,6 +89,7 @@ class DashboardService:
         .filter(
             Run.started_at >= seven_days_ago,
             Run.status == RunStatus.COMPLETED,
+            not Run.is_archived,
         )
         .all()
     )
@@ -95,6 +107,7 @@ class DashboardService:
         .filter(
             Run.started_at >= thirty_days_ago,
             Run.status == RunStatus.COMPLETED,
+            Run.is_archived.is_not(True),
         )
         .order_by(Run.started_at)
         .all()
@@ -121,7 +134,10 @@ class DashboardService:
     # We include all runs (even FAILED/CANCELLED) for volume metrics
     all_runs_30d = (
         self.session.query(Run)
-        .filter(Run.started_at >= thirty_days_ago)
+        .filter(
+            Run.started_at >= thirty_days_ago,
+            Run.is_archived.is_not(True),
+        )
         .order_by(Run.started_at)
         .all()
     )
@@ -143,6 +159,7 @@ class DashboardService:
     recent_runs_orm = (
         self.session.query(Run)
         .options(*self.run_repo.eager_options())
+        .filter(Run.is_archived.is_not(True))
         .order_by(Run.started_at.desc())
         .limit(5)
         .all()
@@ -159,7 +176,10 @@ class DashboardService:
         row[0]
         for row in (
             self.session.query(Run.agent_id)
-            .filter(Run.started_at >= seven_days_ago)
+            .filter(
+                Run.started_at >= seven_days_ago,
+                Run.is_archived.is_not(True),
+            )
             .distinct()
             .all()
         )

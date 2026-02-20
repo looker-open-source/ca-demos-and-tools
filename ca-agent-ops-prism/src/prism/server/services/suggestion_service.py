@@ -16,6 +16,7 @@
 
 import json
 import logging
+import os
 from typing import Any
 
 from prism.common.schemas import assertion as assertion_schemas
@@ -27,7 +28,9 @@ from prism.server.repositories import trial_repository
 import pydantic
 
 # Path to the prompt template
-PROMPT_TEMPLATE_PATH = "src/prism/server/services/prompts/suggestion_prompt.txt"
+PROMPT_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(__file__), "prompts", "suggestion_prompt.txt"
+)
 
 
 class SuggestionResponse(pydantic.BaseModel):

@@ -2,12 +2,11 @@
 
 from unittest import mock
 
-from google.cloud import geminidataanalytics
 from prism.common.schemas.agent import AgentBase
-from prism.common.schemas.agent import AgentBase
-from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import BigQueryConfig
+from prism.common.schemas.trace import AskQuestionResponse
+from prism.common.schemas.trace import DurationMetrics
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 import pytest
 
@@ -52,6 +51,7 @@ def make_mock_agent_pb(
     resource_id="agent-123",
     display_name="Test Agent",
     sys_instruct="instruction",
+    **kwargs,
 ):
   """Helper to create a mock DataAgent protobuf."""
   mock_pb = mock.Mock()
@@ -64,6 +64,9 @@ def make_mock_agent_pb(
   mock_context = mock.Mock()
   mock_context.system_instruction = sys_instruct
   mock_context.datasource_references = None  # Simplest case
+  mock_context.looker_golden_queries = []
+  if kwargs.get("golden_queries"):
+    mock_context.looker_golden_queries = kwargs.get("golden_queries")
 
   mock_da = mock.Mock()
   mock_da.published_context = mock_context
@@ -98,17 +101,38 @@ def test_list_agents(client):
 
 def test_create_agent(client, mock_gemini_lib):
   """Tests create_agent."""
+  from prism.common.schemas.agent import LookerGoldenQuery
+  from prism.common.schemas.agent import LookerQuery
+
+  gq = LookerGoldenQuery(
+      natural_language_questions=["Q1"],
+      looker_query=LookerQuery(view="v", fields=["f"]),
+  )
+
   config = AgentConfig(
       project_id="test-project",
       location="us-central1",
       agent_resource_id="new-agent",
       system_instruction="desc",
       datasource=BigQueryConfig(tables=["p.d.t"]),
+      golden_queries=[gq],
   )
+
+  # Mock the proto return for the golden query
+  mock_proto_gq = mock.Mock()
+  mock_proto_gq.natural_language_questions = ["Q1"]
+  mock_proto_gq.looker_query.view = "v"
+  mock_proto_gq.looker_query.fields = ["f"]
+  mock_proto_gq.looker_query.model = None
+  mock_proto_gq.looker_query.limit = None
+  # Ensure iterable fields are lists
+  mock_proto_gq.looker_query.filters = []
+  mock_proto_gq.looker_query.sorts = []
+  mock_proto_gq.looker_query.dynamic_fields = []
 
   mock_operation = mock.Mock()
   mock_operation.result.return_value = make_mock_agent_pb(
-      "new-agent", "Test Agent"
+      "new-agent", "Test Agent", golden_queries=[mock_proto_gq]
   )
   client.agent_client.create_data_agent.return_value = mock_operation
 
@@ -116,12 +140,19 @@ def test_create_agent(client, mock_gemini_lib):
 
   assert isinstance(created_agent, AgentBase)
   assert created_agent.config.agent_resource_id == "new-agent"
+  assert created_agent.config.golden_queries is not None
+  assert len(created_agent.config.golden_queries) == 1
+  assert created_agent.config.golden_queries[0].natural_language_questions == [
+      "Q1"
+  ]
 
   client.agent_client.create_data_agent.assert_called_once()
   # Verify BQ datasource construction
   mock_gemini_lib.BigQueryTableReference.assert_called_with(
       project_id="p", dataset_id="d", table_id="t"
   )
+  # Verify Golden Queries construction
+  mock_gemini_lib.LookerGoldenQuery.assert_called()
   mock_gemini_lib.Context.assert_called()
 
 
@@ -159,7 +190,7 @@ def test_update_agent(client, mock_gemini_lib):
   client.agent_client.update_data_agent.assert_called_once()
   # Verify Context called with new instruction
   # Note: mock_gemini_lib.Context is called to create the NEW context
-  args, kwargs = mock_gemini_lib.Context.call_args
+  _, kwargs = mock_gemini_lib.Context.call_args
   assert kwargs["system_instruction"] == "new desc"
 
 
@@ -180,9 +211,6 @@ def test_ask_question(client, mock_json_format):
 
 def test_ask_question_response_reparsing():
   """Tests AskQuestionResponse.protobuf_response property."""
-  from prism.common.schemas.trace import AskQuestionResponse
-  from prism.common.schemas.trace import DurationMetrics
-
   trace_data = [{"user_message": {"text": "hello"}}]
   result = AskQuestionResponse(
       response=trace_data,
@@ -194,3 +222,49 @@ def test_ask_question_response_reparsing():
   assert len(pbs) == 1
   # proto-plus access
   assert pbs[0].user_message.text == "hello"
+
+
+def test_update_agent_with_golden_queries(client, mock_gemini_lib):
+  """Tests update_agent with golden queries."""
+  from prism.common.schemas.agent import LookerGoldenQuery
+  from prism.common.schemas.agent import LookerQuery
+
+  mock_existing = make_mock_agent_pb("agent-123")
+  client.agent_client.get_data_agent.return_value = mock_existing
+
+  mock_proto_gq = mock.Mock()
+  mock_proto_gq.natural_language_questions = ["New Q"]
+  mock_proto_gq.looker_query.view = "new_view"
+  mock_proto_gq.looker_query.model = None
+  mock_proto_gq.looker_query.limit = None
+  mock_proto_gq.looker_query.fields = []
+  mock_proto_gq.looker_query.filters = []
+  mock_proto_gq.looker_query.sorts = []
+  mock_proto_gq.looker_query.dynamic_fields = []
+
+  mock_operation = mock.Mock()
+  mock_operation.result.return_value = make_mock_agent_pb(
+      "agent-123", golden_queries=[mock_proto_gq]
+  )
+  client.agent_client.update_data_agent.return_value = mock_operation
+
+  gq = LookerGoldenQuery(
+      natural_language_questions=["New Q"],
+      looker_query=LookerQuery(view="new_view", fields=["f"]),
+  )
+  config = AgentConfig(golden_queries=[gq])
+
+  updated_agent = client.update_agent("agents/agent-123", config=config)
+
+  assert isinstance(updated_agent, AgentBase)
+  assert updated_agent.config.golden_queries is not None
+  assert len(updated_agent.config.golden_queries) == 1
+  assert updated_agent.config.golden_queries[0].natural_language_questions == [
+      "New Q"
+  ]
+
+  client.agent_client.update_data_agent.assert_called_once()
+  # Verify Context called with new golden queries
+  _, kwargs = mock_gemini_lib.Context.call_args
+  assert "looker_golden_queries" in kwargs
+  assert kwargs["looker_golden_queries"] is not None

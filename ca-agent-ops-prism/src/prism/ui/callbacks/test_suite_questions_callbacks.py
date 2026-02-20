@@ -25,6 +25,7 @@ import dash
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
+from prism.common.schemas.example import TestCaseInput
 from prism.ui import constants
 from prism.ui.components import assertion_components
 from prism.ui.components import test_case_components
@@ -2011,30 +2012,135 @@ def toggle_bulk_add_modal(open_clicks, close_clicks):
 
 @typed_callback(
     [
+        ("bulk-add-input-title", CP.CHILDREN),
+        (Ids.INPUT_BULK_TEXT, "placeholder"),
+        ("bulk-add-guide-wrapper", CP.STYLE),
+        (Ids.BTN_BULK_FIX_AI, CP.STYLE),
+    ],
+    inputs=[(Ids.TC_BULK_MODE, CP.VALUE)],
+    prevent_initial_call=False,
+)
+def switch_bulk_add_mode(mode: str):
+  """Updates UI elements when switching between Simple and Advanced bulk add modes."""
+  if mode == "simple":
+    return (
+        "Question List (One per line)",
+        (
+            "Enter questions, one per line...\nExample:\nWhat is the capital of"
+            " France?\nHow do I boil an egg?"
+        ),
+        {"display": "none"},
+        {"display": "none"},
+    )
+  else:
+    return (
+        "Structured YAML Input",
+        (
+            "- question: Why is it raining?\n  assertions:\n    - type:"
+            " text-contains\n      value: water"
+        ),
+        {"display": "block"},
+        {"display": "inline-flex"},
+    )
+
+
+@typed_callback(
+    [
         (Ids.VAL_MSG + "-bulk-count", CP.CHILDREN),
         (Ids.PREVIEW_BULK_ADD, CP.CHILDREN),
+        (Ids.BTN_BULK_ADD_CONFIRM, CP.DISABLED),
     ],
-    inputs=[(Ids.INPUT_BULK_TEXT, CP.VALUE)],
+    inputs=[
+        (Ids.INPUT_BULK_TEXT, CP.VALUE),
+        (Ids.TC_BULK_MODE, CP.VALUE),
+    ],
     prevent_initial_call=True,
 )
-def update_bulk_preview(text_value):
+def update_bulk_preview(text_value: str | None, mode: str):
   """Updates the preview of test cases to be added."""
-  if not text_value:
-    return "", dmc.Text("No questions to preview", c="dimmed", size="sm")
+  if not text_value or not text_value.strip():
+    return (
+        "",
+        dmc.Text(
+            "No valid test cases found.",
+            c="dimmed",
+            size="sm",
+            mt="md",
+            ta="center",
+        ),
+        True,
+    )
 
-  test_cases = [line.strip() for line in text_value.split("\n") if line.strip()]
+  try:
+    if mode == "simple":
+      lines = [line.strip() for line in text_value.split("\n") if line.strip()]
+      test_cases = [
+          TestCaseInput(question=line, assertions=[]) for line in lines
+      ]
+    else:
+      client = get_client()
+      test_cases = client.suites.parse_bulk_import_yaml(text_value)
 
-  if not test_cases:
-    return "", dmc.Text("No valid test cases found", c="dimmed", size="sm")
+    count_text = f"{len(test_cases)} test cases found"
 
-  count_text = f"{len(test_cases)} test cases found"
-  list_items = dmc.List(
-      [dmc.ListItem(tc) for tc in test_cases],
-      size="sm",
-      spacing="xs",
-  )
+    # Render a nice preview
+    preview_items = []
+    for tc in test_cases:
+      badges = []
+      if tc.assertions:
+        badges.append(
+            dmc.Badge(
+                f"{len(tc.assertions)} assertions",
+                variant="light",
+                size="xs",
+            )
+        )
 
-  return count_text, list_items
+      preview_items.append(
+          dmc.Paper(
+              p="xs",
+              withBorder=True,
+              mb="xs",
+              children=[
+                  dmc.Text(tc.question, fw=500, size="sm"),
+                  dmc.Group(gap="xs", children=badges),
+              ],
+          )
+      )
+
+    return count_text, dmc.Stack(preview_items, gap="xs"), False
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    return (
+        dmc.Text("Parsing Error", c="red", size="sm"),
+        dmc.Alert(
+            str(e),
+            title="Input Error",
+            color="red",
+            variant="light",
+            icon=DashIconify(icon="bi:exclamation-triangle"),
+        ),
+        True,
+    )
+
+
+@typed_callback(
+    (Ids.INPUT_BULK_TEXT, CP.VALUE),
+    inputs=[(Ids.BTN_BULK_FIX_AI, CP.N_CLICKS)],
+    state=[(Ids.INPUT_BULK_TEXT, CP.VALUE)],
+    prevent_initial_call=True,
+)
+def fix_bulk_import_with_ai(n_clicks, text_value):
+  """Uses AI to fix and reformat the bulk import text into structured YAML."""
+  if not n_clicks or not text_value or not text_value.strip():
+    return typed_callback.no_update
+
+  client = get_client()
+  try:
+    fixed_yaml = client.suites.format_bulk_import_with_ai(text_value)
+    return fixed_yaml
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logging.error("AI Fix failed: %s", e)
+    return typed_callback.no_update
 
 
 @typed_callback(
@@ -2046,14 +2152,15 @@ def update_bulk_preview(text_value):
     inputs=[(Ids.BTN_BULK_ADD_CONFIRM, CP.N_CLICKS)],
     state=[
         (Ids.INPUT_BULK_TEXT, CP.VALUE),
+        (Ids.TC_BULK_MODE, CP.VALUE),
         (Ids.STORE_BUILDER, CP.DATA),
         ("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
 )
-def confirm_bulk_add(n_clicks, text_value, current_test_cases, pathname):
-  """Adds the bulk test cases to the list."""
+def confirm_bulk_add(n_clicks, text_value, mode, current_test_cases, pathname):
+  """Adds the bulk test cases to the list (Strict YAML version)."""
   if not n_clicks or not text_value:
     return (
         typed_callback.no_update,
@@ -2061,11 +2168,23 @@ def confirm_bulk_add(n_clicks, text_value, current_test_cases, pathname):
         typed_callback.no_update,
     )
 
-  new_test_cases_text = [
-      line.strip() for line in text_value.split("\n") if line.strip()
-  ]
+  client = get_client()
+  try:
+    if mode == "simple":
+      lines = [line.strip() for line in text_value.split("\n") if line.strip()]
+      test_cases = [
+          TestCaseInput(question=line, assertions=[]) for line in lines
+      ]
+    else:
+      test_cases = client.suites.parse_bulk_import_yaml(text_value)
+  except Exception:  # pylint: disable=broad-exception-caught
+    return (
+        typed_callback.no_update,
+        typed_callback.no_update,
+        typed_callback.no_update,
+    )
 
-  if not new_test_cases_text:
+  if not test_cases:
     return (
         typed_callback.no_update,
         typed_callback.no_update,
@@ -2074,8 +2193,7 @@ def confirm_bulk_add(n_clicks, text_value, current_test_cases, pathname):
 
   current_test_cases = current_test_cases or []
 
-  # 1. Add to DB
-  # Get suite_id from URL: /test_suites/edit/<suite_id>
+  # Parse Suite ID
   suite_id = None
   if pathname and "/test_suites/edit/" in pathname:
     try:
@@ -2083,34 +2201,31 @@ def confirm_bulk_add(n_clicks, text_value, current_test_cases, pathname):
     except (ValueError, IndexError):
       pass
 
-  if not suite_id and current_test_cases:
-    # Fallback to existing test cases if URL parsing fails (unlikely)
-    suite_id = current_test_cases[0].get("suite_id")
+  if not suite_id:
+    return (
+        typed_callback.no_update,
+        typed_callback.no_update,
+        typed_callback.no_update,
+    )
 
   new_tc_dicts = []
-
-  if suite_id:
-    client = get_client()
-    for tc_text in new_test_cases_text:
-      # Create in DB
-      example = client.suites.add_example(
-          suite_id=int(suite_id), question=tc_text
-      )
-      new_tc_dicts.append(example.model_dump())
-  else:
-    # Fallback: Just append dicts (unsaved)
-    # This matches `add_question` behavior where `id=None` until saved/refreshed?
-    # WARNING: If suite_id is missing, `update_question_text` won't save it either.
-    # But we assume `current_questions` is populated if we are in this view.
-    for tc_text in new_test_cases_text:
-      new_tc_dicts.append({
-          "id": None,
-          "question": tc_text,
-          "asserts": [],
-      })
+  for tc in test_cases:
+    # Create example with assertions
+    example = client.suites.add_example(
+        suite_id=suite_id,
+        question=tc.question,
+        asserts=tc.assertions,
+    )
+    new_tc_dicts.append({
+        "id": example.id,
+        "question": example.question,
+        "asserts": [
+            (a.model_dump() if hasattr(a, "model_dump") else a)
+            for a in example.asserts or []
+        ],
+    })
 
   updated_test_cases = current_test_cases + new_tc_dicts
-
   return updated_test_cases, False, ""
 
 
