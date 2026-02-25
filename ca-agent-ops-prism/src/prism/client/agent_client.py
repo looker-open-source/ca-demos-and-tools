@@ -174,15 +174,26 @@ class AgentsClient:
     return service.get_current_gcp_project()
 
   @inject
+  def discover_gcp_agents(
+      self,
+      project_id: str,
+      location: str,
+      service: AgentService = Depends(dependencies.get_agent_service),
+  ) -> Sequence[agent_schemas.AgentBase]:
+    """Lists available agents from GCP."""
+    return service.discover_gcp_agents(
+        project_id=project_id, location=location
+    )
+
+  @inject
   def list_gda_agents(
       self,
       project_id: str,
       location: str,
-      env: str,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> Sequence[agent_schemas.AgentBase]:
     return service.discover_gcp_agents(
-        project_id=project_id, location=location, env=env
+        project_id=project_id, location=location
     )
 
   @inject
