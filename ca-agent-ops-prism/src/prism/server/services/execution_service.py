@@ -255,13 +255,17 @@ class ExecutionService:
           trial.trace_results.append(dict(item))
 
       # Extract response text (Final Answer)
-      response_text = ""
-      for message in reversed(response.protobuf_response):
+      response_text_parts = []
+      for message in response.protobuf_response:
         if hasattr(message, "system_message"):
           sys_msg = message.system_message
-          if hasattr(sys_msg, "text") and hasattr(sys_msg.text, "parts"):
-            response_text += " ".join(sys_msg.text.parts)
-            break
+          if hasattr(sys_msg, "text"):
+            text_type = getattr(sys_msg.text, "text_type", 0)
+            if text_type in (1, "FINAL_RESPONSE"):
+              if hasattr(sys_msg.text, "parts"):
+                response_text_parts.append(" ".join(sys_msg.text.parts))
+
+      response_text = "\n\n".join(response_text_parts)
 
       trial.output_text = response_text.strip()
 
@@ -508,21 +512,26 @@ class ExecutionService:
 
     # Extract SQL or Text for convenience
     generated_sql = ""
-    response_text = ""
+    response_text_parts = []
     for message in response.protobuf_response:
-      if "system_message" in message:
+      if hasattr(message, "system_message"):
         sys_msg = message.system_message
-        if "text" in sys_msg:
-          response_text += " ".join(sys_msg.text.parts) + "\n"
-        if "data" in sys_msg and "generated_sql" in sys_msg.data:
+        if hasattr(sys_msg, "text"):
+          text_type = getattr(sys_msg.text, "text_type", 0)
+          if text_type in (1, "FINAL_RESPONSE"):
+            if hasattr(sys_msg.text, "parts"):
+              response_text_parts.append(" ".join(sys_msg.text.parts))
+        if hasattr(sys_msg, "data") and hasattr(sys_msg.data, "generated_sql"):
           generated_sql = sys_msg.data.generated_sql
+
+    response_text = "\n\n".join(response_text_parts).strip()
 
     return EphemeralTestResult(
         passed=all(r.passed for r in results) if results else True,
         score=sum(r.score for r in results) / len(results) if results else None,
         duration_ms=duration_ms,
         assertion_results=results,
-        response_text=response_text.strip(),
+        response_text=response_text,
         generated_sql=generated_sql,
         trace=trace_results,
         error_message=response.error_message,

@@ -18,6 +18,7 @@ import difflib
 import json
 from typing import Any
 
+from dash import dcc
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
@@ -44,44 +45,43 @@ def render_run_context(
   except (TypeError, ValueError):
     formatted_json = str(raw_context)
 
-  return dmc.Stack([
-      dmc.Group(
-          [
-              dmc.Group(
-                  [
-                      DashIconify(icon="lucide:database", width=16),
-                      dmc.Text("Snapshot Context", fw=600, size="sm"),
-                  ],
-                  gap="xs",
-              ),
-              dmc.Button(
-                  "Compare to Live",
-                  id=EvaluationIds.RUN_CONTEXT_DIFF_BTN,
-                  variant="subtle",
-                  size="compact-xs",
-                  leftSection=DashIconify(icon="lucide:git-diff", width=14),
-                  color="blue.6",
-              ),
-          ],
-          justify="space-between",
-          mb="xs",
-      ),
-      dmc.Paper(
-          html.Pre(
-              formatted_json,
-              style={
-                  "whiteSpace": "pre-wrap",
-                  "wordBreak": "break-all",
-                  "fontSize": "12px",
-                  "margin": 0,
-              },
+  return dmc.Paper(
+      [
+          dmc.Group(
+              [
+                  dmc.Text("Agent Context Snapshot", fw=600, size="sm"),
+                  dmc.Button(
+                      "Compare to Live Context",
+                      id=EvaluationIds.RUN_CONTEXT_DIFF_BTN,
+                      variant="subtle",
+                      size="compact-xs",
+                      leftSection=DashIconify(icon="lucide:git-diff", width=14),
+                      color="blue.6",
+                  ),
+              ],
+              justify="space-between",
+              mb="sm",
           ),
-          withBorder=True,
-          p="md",
-          radius="md",
-          bg="gray.0",
-      ),
-  ])
+          dmc.ScrollArea(
+              html.Pre(
+                  formatted_json,
+                  style={
+                      "whiteSpace": "pre-wrap",
+                      "wordBreak": "break-all",
+                      "fontSize": "12px",
+                      "margin": 0,
+                  },
+              ),
+              offsetScrollbars=True,
+              type="auto",
+              h=400,
+          ),
+      ],
+      withBorder=True,
+      p="md",
+      radius="md",
+      bg="white",
+  )
 
 
 def render_context_diff(
@@ -385,11 +385,37 @@ def render_trial_card(
   sections.append(
       dmc.Box(
           p="lg",
-          children=dmc.Text(
-              f'"{trial.question}"' if trial.question else "(No Test Case)",
-              fw=700,
-              size="lg",
-              style={"letterSpacing": "-0.01em"},
+          children=dmc.Stack(
+              gap="xs",
+              children=[
+                  dmc.Group(
+                      gap=4,
+                      children=[
+                          dmc.Box(
+                              style={
+                                  "width": "6px",
+                                  "height": "6px",
+                                  "borderRadius": "50%",
+                                  "backgroundColor": (
+                                      "var(--mantine-color-blue-5)"
+                                  ),
+                              }
+                          ),
+                          dmc.Text(
+                              "TEST CASE",
+                              size="10px",
+                              fw=700,
+                              c="blue.7",
+                          ),
+                      ],
+                  ),
+                  dmc.Text(
+                      trial.question if trial.question else "(No Test Case)",
+                      fw=700,
+                      size="lg",
+                      style={"letterSpacing": "-0.01em"},
+                  ),
+              ],
           ),
       )
   )
@@ -420,7 +446,7 @@ def render_trial_card(
                                       }
                                   ),
                                   dmc.Text(
-                                      "TRIAL OUTPUT",
+                                      "AGENT RESPONSE",
                                       size="10px",
                                       fw=700,
                                       c="blue.7",
@@ -437,13 +463,13 @@ def render_trial_card(
                       bg="var(--mantine-color-gray-0)",
                       withBorder=True,
                       style={"borderColor": "var(--mantine-color-gray-2)"},
-                      children=dmc.Text(
-                          trial.output_text or "No output available.",
-                          size="sm",
+                      children=dcc.Markdown(
+                          trial.output_text or "No agent response available.",
                           style={
                               "fontFamily": "var(--font-mono)",
                               "lineHeight": "1.7",
-                              "whiteSpace": "pre-wrap",
+                              "fontSize": "14px",
+                              "wordBreak": "break-word",
                           },
                       ),
                   ),

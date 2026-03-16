@@ -84,20 +84,39 @@ class TimelineService:
           or event.get("system_message", {})
       )
 
-    # TextMessage (THOUGHT or FINAL_RESPONSE)
+    # TextMessage (THOUGHT, FINAL_RESPONSE, etc.)
     if "text" in message:
       text_content = message["text"]
       text_type = text_content.get("text_type") or text_content.get("textType")
-      # Safely get the first part or empty string
-      parts = text_content.get("parts", [""])
-      content = parts[0] if parts else ""
 
-      if text_type == "THOUGHT":
+      # Safely get all parts joined by newlines
+      parts = text_content.get("parts", [""])
+
+      if text_type in ("FOLLOWUP_QUESTIONS", 4):
+        # Format follow-up questions as a bulleted list
+        content = "\n".join(f"* {str(p)}" for p in parts) if parts else ""
+        return (
+            "bi:patch-question",
+            "Suggested Follow-up Questions",
+            content,
+            "text",
+        )
+
+      content = "\n\n".join(str(p) for p in parts) if parts else ""
+
+      if text_type in ("FINAL_RESPONSE", 1):
+        return "bi:chat-left-text", "Final Response", content, "text"
+      elif text_type in ("THOUGHT", 2):
         return "bi:lightbulb", "Agent Thought", content, "text"
-      elif text_type == "PROGRESS":
+      elif text_type in ("PROGRESS", 3):
         return "bi:info-circle", "Agent Progress", content, "text"
       else:
-        return "bi:chat-left-text", "Final Response", content, "text"
+        return (
+            "bi:question-circle",
+            f"Unknown Text Type ({text_type})",
+            content,
+            "text",
+        )
 
     # SchemaMessage (query or result)
     if "schema" in message:

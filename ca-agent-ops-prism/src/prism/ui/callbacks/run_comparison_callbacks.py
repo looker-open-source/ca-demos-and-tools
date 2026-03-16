@@ -18,6 +18,7 @@ import math
 from typing import Any
 import urllib.parse
 import dash
+from dash import dcc
 from dash import Input
 from dash import Output
 from dash import State
@@ -621,7 +622,7 @@ def update_page_content(
       mb="md",
       justify="space-between",
       children=[
-          dmc.Text("Test Cases", fw=700, size="lg"),
+          dmc.Text("Trials", fw=700, size="lg"),
           dmc.Group(
               gap="xs",
               p=4,
@@ -1215,8 +1216,30 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
                                           ),
                                       ],
                                   ),
+                                  dmc.Group(
+                                      gap=4,
+                                      mt="sm",
+                                      children=[
+                                          dmc.Box(
+                                              style={
+                                                  "width": "6px",
+                                                  "height": "6px",
+                                                  "borderRadius": "50%",
+                                                  "backgroundColor": (
+                                                      "var(--mantine-color-blue-5)"
+                                                  ),
+                                              }
+                                          ),
+                                          dmc.Text(
+                                              "TEST CASE",
+                                              size="10px",
+                                              fw=700,
+                                              c="blue.7",
+                                          ),
+                                      ],
+                                  ),
                                   dmc.Text(
-                                      f'"{case.question}"',
+                                      case.question,
                                       fw=600,
                                       size="md",
                                       style={"letterSpacing": "-0.01em"},
@@ -1395,13 +1418,13 @@ def _render_trial_summary(trial, is_base: bool):
           "borderColor": "var(--mantine-color-gray-2)",
       },
       children=[
-          dmc.Text(
-              trial.output_text,
-              size="sm",
+          dcc.Markdown(
+              trial.output_text or "No output available.",
               style={
                   "fontFamily": "var(--font-mono)",
                   "lineHeight": "1.7",
-                  "whiteSpace": "pre-wrap",
+                  "fontSize": "14px",
+                  "wordBreak": "break-word",
               },
           ),
           error_alert,

@@ -53,7 +53,19 @@ def render_timeline(
     item_value = f"event-{i}"
 
     if content_type == "text":
-      content_display = dmc.Blockquote(event["content"], color="gray", mt="sm")
+      content_display = dmc.Paper(
+          dcc.Markdown(
+              event["content"],
+              style={
+                  "fontSize": "14px",
+                  "wordBreak": "break-word",
+              },
+          ),
+          p="sm",
+          mt="sm",
+          withBorder=True,
+          bg="var(--mantine-color-gray-0)",
+      )
     elif content_type in ["json", "code", "sql"]:
       content_display = dmc.Code(
           event["content"],
@@ -87,7 +99,9 @@ def render_timeline(
         )
     else:
       # Fallback
-      content_display = dmc.Text(event["content"])
+      content_display = dmc.Text(
+          event["content"], style={"whiteSpace": "pre-wrap"}
+      )
 
     # Calculate progress bar values
     if total_duration > 0:
@@ -497,10 +511,15 @@ def _render_event_content(event: dict[str, Any]) -> html.Div:
         p="md",
         radius="md",
         withBorder=True,
-        children=dmc.Text(
+        children=dcc.Markdown(
             content,
-            size="sm",
-            fs="italic" if event["title"] == "Agent Thought" else None,
+            style={
+                "fontSize": "14px",
+                "fontStyle": (
+                    "italic" if event["title"] == "Agent Thought" else "normal"
+                ),
+                "wordBreak": "break-word",
+            },
         ),
         bg="var(--mantine-color-blue-0)"
         if event["title"] == "Final Response"
@@ -573,7 +592,7 @@ def _render_event_content(event: dict[str, Any]) -> html.Div:
         color="gray",
     )
   else:
-    return dmc.Text(content, size="sm")
+    return dmc.Text(content, size="sm", style={"whiteSpace": "pre-wrap"})
 
 
 def _get_icon_color(bullet_icon: str) -> str:

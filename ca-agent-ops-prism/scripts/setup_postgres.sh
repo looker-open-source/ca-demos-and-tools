@@ -55,12 +55,26 @@ if [[ "$USE_DOCKER" == true ]]; then
         # Give it a moment to start up
         echo "Waiting for Postgres to be ready..."
         sleep 5
-    elif ! $DOCKER_BIN ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-        echo "Starting existing Docker container: $CONTAINER_NAME..."
-        $DOCKER_BIN start "$CONTAINER_NAME"
-        sleep 2
     else
-        echo "Docker container $CONTAINER_NAME is already running."
+        # Container exists, check if it's exposing the right port
+        EXPOSED_PORT=$($DOCKER_BIN inspect --format='{{(index (index .HostConfig.PortBindings "5432/tcp") 0).HostPort}}' "$CONTAINER_NAME" 2>/dev/null || echo "")
+        
+        if [[ "$EXPOSED_PORT" != "$DB_PORT" ]]; then
+            echo "Container exists but port mapping is incorrect ($EXPOSED_PORT != $DB_PORT). Recreating..."
+            $DOCKER_BIN rm -f "$CONTAINER_NAME"
+            $DOCKER_BIN run --pull=always \
+                -e "POSTGRES_PASSWORD=$DB_PASS" \
+                -p "${DB_PORT}:5432" --name "$CONTAINER_NAME" -d \
+                postgres:latest
+            echo "Waiting for Postgres to be ready..."
+            sleep 5
+        elif ! $DOCKER_BIN ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo "Starting existing Docker container: $CONTAINER_NAME..."
+            $DOCKER_BIN start "$CONTAINER_NAME"
+            sleep 2
+        else
+            echo "Docker container $CONTAINER_NAME is already running with correct ports."
+        fi
     fi
 
     PG_SUPER_CMD="$DOCKER_BIN exec -i $CONTAINER_NAME psql -U postgres"
