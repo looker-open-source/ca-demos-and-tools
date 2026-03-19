@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.backup
+conductor
+looker-api-swagger-2026-02-20.json
+ca_example_cli.js
+README.md
+Dockerfile
+.dockerignore
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
