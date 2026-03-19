@@ -14,7 +14,7 @@
     "@looker/sdk-node": "^26.4.0",
     "@looker/sdk-rtl": "^21.6.4",
     "@tailwindcss/typography": "^0.5.19",
-    "next": "16.1.6",
+    "next": "16.1.7",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
