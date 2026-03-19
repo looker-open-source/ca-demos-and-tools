@@ -40,3 +40,13 @@ This project provides a comprehensive platform for monitoring and evaluating Gem
 - Trace Capture: Provides detailed visibility into agent execution steps and tool calls.
 - Assertion Engine: Automates the validation of agent responses using structured assertions.
 - Diagnostic UI: Offers high-density tables and comparison dashboards for deep-dive analysis.
+
+### [Looker Conversational Analytics API Demo](/looker-api-ca-demo/README.md)
+
+A comprehensive reference implementation and boilerplate for building AI-powered conversational data exploration interfaces using the Looker SDK to connect to Conversational Analytics.
+
+- Natural Language Data Exploration: Enables direct user interaction with Looker-governed data agents.
+- Dynamic Visualization: Real-time rendering of charts and tabular data within an optimized "Insight Workspace."
+- Robust Authentication: Supports both Looker Service Account and User OAuth 2.0 (PKCE) with automatic token refresh.
+- Stateful Conversations: Demonstrates session persistence and history management across multiple interaction turns.
+- Developer-Centric UX: Includes real-time streaming logs for Looker API calls, Gemini "thought" process visibility, and multi-agent discovery.

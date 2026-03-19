@@ -20,6 +20,9 @@
       "path": "ca-agent-ops-prism",
     },
     {
+      "path": "looker-api-ca-demo",
+    },
+    {
       "path": ".",
       "name": "root",
     },
