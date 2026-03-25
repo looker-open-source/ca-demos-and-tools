@@ -189,6 +189,12 @@
   font-weight: 300;
 }
 
+/* allow line wrapping in react markdown */
+.message.response pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .message-box {
   padding: 5px 16px;
 }

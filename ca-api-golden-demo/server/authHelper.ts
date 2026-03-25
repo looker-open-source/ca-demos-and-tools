@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { GoogleAuth } from "google-auth-library";
+import { GoogleAuth } from "@google-cloud/geminidataanalytics/node_modules/google-gax";
+
+export const auth = new GoogleAuth({
+  scopes: "https://www.googleapis.com/auth/cloud-platform",
+});
 
 export async function getAccessToken() {
-  const auth = new GoogleAuth({
-    scopes: "https://www.googleapis.com/auth/cloud-platform",
-  });
-
   let projectId = process.env.GOOGLE_CLOUD_PROJECT;
 
   if (!projectId) {

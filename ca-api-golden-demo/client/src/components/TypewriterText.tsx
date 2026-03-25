@@ -26,10 +26,10 @@ interface TypewriterTextProps {
 
 const TypewriterText: React.FC<TypewriterTextProps> = ({
   text,
-  delayMultiplier = 0.02,
+  delayMultiplier = 0.01,
   containerClassName = "",
-  paragraphClassName = "",
-  spanClassName = "",
+  paragraphClassName = "typingComplete",
+  spanClassName = "typingIncomplete",
 }) => {
   const [isTypingComplete, setIsTypingComplete] = useState(false);
 

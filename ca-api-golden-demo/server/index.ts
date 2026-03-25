@@ -51,18 +51,18 @@ const startServer = async () => {
         "looker" in dsConfig.datasourceReferences
       ) {
         const lookerConfig = dsConfig.datasourceReferences.looker;
-        lookerConfig.credentials.oauth.secret.client_id = lookerClientId;
-        lookerConfig.credentials.oauth.secret.client_secret =
+        lookerConfig.credentials.oauth.secret.clientId = lookerClientId;
+        lookerConfig.credentials.oauth.secret.clientSecret =
           lookerClientSecret;
-        lookerConfig.explore_references.looker_instance_uri = lookerInstanceUri;
+        lookerConfig.exploreReferences[0].lookerInstanceUri = lookerInstanceUri;
       }
     }
   });
   Object.keys(config.multimodalLookerDatasourceReferences).forEach((key) => {
     const dsConfig = config.multimodalLookerDatasourceReferences[key];
-    dsConfig.looker.credentials.oauth.secret.client_id = lookerClientId;
-    dsConfig.looker.credentials.oauth.secret.client_secret = lookerClientSecret;
-    dsConfig.looker.explore_references.looker_instance_uri = lookerInstanceUri;
+    dsConfig.looker.credentials.oauth.secret.clientId = lookerClientId;
+    dsConfig.looker.credentials.oauth.secret.clientSecret = lookerClientSecret;
+    dsConfig.looker.exploreReferences[0].lookerInstanceUri = lookerInstanceUri;
   });
 
   /******************************************************************************************
@@ -260,10 +260,12 @@ const startServer = async () => {
         // Looker explore is dynamically set on multimodal. This will need API credentials added
         if (
           pageId === "multimodal" &&
+          req.body.datasourceReferences &&
           "looker" in req.body.datasourceReferences
         ) {
           const selectedExplore =
-            req.body.datasourceReferences?.looker?.explore_references?.explore;
+            req.body.datasourceReferences?.looker?.exploreReferences?.[0]
+              ?.explore;
           req.body.datasourceReferences =
             config.getMultimodalLookerDatasource(selectedExplore);
         }
