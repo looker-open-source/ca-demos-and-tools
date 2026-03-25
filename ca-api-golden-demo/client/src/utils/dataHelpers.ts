@@ -55,6 +55,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
   let chartQueryInstructions = "";
   let vegaConfig = null;
   let text = "";
+  let textParts: string[] = [];
+  let textType = "";
   let errorMessage = "";
   let ignoreMessage = false;
 
@@ -89,7 +91,11 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
 
         if (systemMessage.data) {
           if (systemMessage.data.query) {
-            derivedQuestion = `Writing a query for the question '${systemMessage.data.query.question}'`;
+            if (systemMessage.data.query.question) {
+              derivedQuestion = `Writing a query for the question '${systemMessage.data.query.question}'`;
+            } else if (systemMessage.data.query.name) {
+              derivedQuestion = `Writing query: ${systemMessage.data.query.name}`;
+            }
           }
           if (systemMessage.data.generatedSql) {
             generatedSQL = format(systemMessage.data.generatedSql);
@@ -142,6 +148,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
 
         if (systemMessage.text && systemMessage.text.parts) {
           text += systemMessage.text.parts.join(" ");
+          textParts = systemMessage.text.parts;
+          textType = systemMessage.text.textType;
         }
 
         if (systemMessage.error) {
@@ -196,6 +204,8 @@ export function transformDataQnAResponse(dataqnaResponse: any[]) {
       chartQueryInstructions,
       vegaConfig,
       text,
+      textParts,
+      textType,
       errorMessage,
       ignoreMessage,
     };
@@ -291,11 +301,11 @@ export function parseFilters(event: any) {
 // Update dashboard filters to system instructions
 export function updateSystemInstructions(
   fullSystemInstructionYAML: any,
-  currentFilters: string
+  currentFilters: string,
 ) {
   const fullSystemInstructionJSON: any = yaml.load(fullSystemInstructionYAML);
   const filteredSystemInstructionJSON = fullSystemInstructionJSON.filter(
-    (obj: any) => !obj.hasOwnProperty("current_filters")
+    (obj: any) => !obj.hasOwnProperty("current_filters"),
   );
   filteredSystemInstructionJSON.push({ current_filters: currentFilters });
 
@@ -309,7 +319,7 @@ export function updateSystemInstructions(
 export function trimSystemInstructions(
   fullSystemInstructionYAML: any,
   datasourceReferences: any,
-  datasource: datasource
+  datasource: datasource,
 ) {
   const fullSystemInstructionJSON: any = yaml.load(fullSystemInstructionYAML);
   let dynamicSystemInstructionJSON: any = {};
@@ -317,12 +327,12 @@ export function trimSystemInstructions(
   if (datasource === "bq") {
     dynamicSystemInstructionJSON = trimSystemInstructionsBQ(
       fullSystemInstructionJSON,
-      datasourceReferences
+      datasourceReferences,
     );
   } else if (datasource === "looker") {
     dynamicSystemInstructionJSON = trimSystemInstructionsLooker(
       fullSystemInstructionJSON,
-      datasourceReferences
+      datasourceReferences,
     );
   } else {
     console.error("Invalid datasource supplied", datasource);
@@ -336,11 +346,12 @@ export function trimSystemInstructions(
 // For BigQuery - remove unused tables, glossaries, core_relationships, and additional_instructions
 function trimSystemInstructionsBQ(
   fullSystemInstructionJSON: any,
-  datasourceReferences: any
+  datasourceReferences: any,
 ) {
   const dynamicSystemInstructionJSON: any = {};
   const allowedTables = datasourceReferences.map(
-    (ref: TableReferences) => `${ref.projectId}.${ref.datasetId}.${ref.tableId}`
+    (ref: TableReferences) =>
+      `${ref.projectId}.${ref.datasetId}.${ref.tableId}`,
   );
 
   // 1. Copy system_description
@@ -364,7 +375,7 @@ function trimSystemInstructionsBQ(
           } else {
             console.warn(
               "Skipping a table entry due to missing table.name",
-              tableObj
+              tableObj,
             );
             return false;
           }
@@ -390,7 +401,7 @@ function trimSystemInstructionsBQ(
           } else {
             console.warn(
               "Skipping glossary entry due to missing table property",
-              glosObj
+              glosObj,
             );
             return false;
           }
@@ -418,17 +429,17 @@ function trimSystemInstructionsBQ(
               Array.isArray(entityObj.entity.tables)
             ) {
               const filteredTables = entityObj.entity.tables.filter(
-                (tableName: string) => allowedTables.includes(tableName)
+                (tableName: string) => allowedTables.includes(tableName),
               );
               return filteredTables.length > 0;
             } else {
               console.warn(
                 "Skipping core_relationships entry due to missing entity.tables",
-                entityObj
+                entityObj,
               );
               return false;
             }
-          }
+          },
         );
     } else {
       console.warn("core_relationships is not an array");
@@ -451,7 +462,7 @@ function trimSystemInstructionsBQ(
               return allowedTables.includes(instrObj.table);
             }
             return true;
-          }
+          },
         );
     } else {
       console.warn("additional_instructions is not an array");
@@ -470,7 +481,7 @@ function trimSystemInstructionsBQ(
 // For Looker - remove unused explores, golden queries, glossaries, and additional_instructions
 function trimSystemInstructionsLooker(
   fullSystemInstructionJSON: any,
-  datasourceReferences: any
+  datasourceReferences: any,
 ) {
   const dynamicJSON: any = {};
   const allowedExplore = datasourceReferences.explore;
@@ -498,7 +509,7 @@ function trimSystemInstructionsLooker(
           } else {
             console.warn(
               "Skipping golden_query entry due to missing golden_query.explore_name",
-              gqObj
+              gqObj,
             );
             return false;
           }
@@ -531,10 +542,10 @@ function trimSystemInstructionsLooker(
           }
           console.warn(
             "Skipping glossary entry due to missing glossary property",
-            glosObj
+            glosObj,
           );
           return false;
-        }
+        },
       );
     } else {
       console.warn("glossaries is not an array");
@@ -557,13 +568,13 @@ function trimSystemInstructionsLooker(
               } else {
                 console.warn(
                   "Instruction explore_name is not a string",
-                  instrObj
+                  instrObj,
                 );
                 return false;
               }
             }
             return true;
-          }
+          },
         );
     } else {
       console.warn("additional_instructions is not an array");

@@ -399,7 +399,14 @@ function OrchestratePage({ variant = "default" }: ChatPageProps) {
                   <div className="message-box">
                     {message.data.text && (
                       <TypewriterText
-                        text={message.data.text}
+                        text={
+                          message.data.textType === "THOUGHT" &&
+                          message.data.textParts?.length >= 2
+                            ? `**${message.data.textParts[0]}**\n\n${message.data.textParts
+                                .slice(1)
+                                .join("\n")}`
+                            : message.data.text
+                        }
                         containerClassName={animations.text}
                       />
                     )}

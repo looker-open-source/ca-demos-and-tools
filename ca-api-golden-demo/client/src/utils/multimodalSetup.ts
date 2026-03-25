@@ -97,11 +97,11 @@ export const setupMessage = (datasource: datasource) => {
   }
   return {
     setup: {
-      model: `projects/${process.env.REACT_APP_FIREBASE_PROJECT_ID}/locations/us-central1/publishers/google/models/gemini-live-2.5-flash-preview-native-audio`,
+      model: `projects/${process.env.REACT_APP_FIREBASE_PROJECT_ID}/locations/us-central1/publishers/google/models/gemini-live-2.5-flash-native-audio`,
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       generationConfig: {
-        responseModalities: "AUDIO",
+        responseModalities: ["AUDIO"],
         speechConfig: {
           voiceConfig: { prebuiltVoiceConfig: { voiceName: "Fenrir" } }, // choose from https://cloud.google.com/vertex-ai/generative-ai/docs/live-api#voice-settings
           languageCode: "en-US", // choose from https://ai.google.dev/api/generate-content#SpeechConfig

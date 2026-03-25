@@ -89,14 +89,4 @@ export const PAGE_ID_MAP: Record<string, PageConfig> = {
     newConversationButtonBackground: "#1a7344",
     newConversationButtonColor: "#ffffff",
   },
-  globalgadgets_embed: {
-    logo: "/globalgadgets_logo.png",
-    avatar: "/globalgadgets_avatar.png",
-    title: "Global Gadgets Data Agent",
-    bodyBackground: "#2f4a7d",
-    userQuestionBackground: "#cbd6e5",
-    userQuestionText: "#202124",
-    newConversationButtonBackground: "#748fb0",
-    newConversationButtonColor: "#ffffff",
-  },
 };

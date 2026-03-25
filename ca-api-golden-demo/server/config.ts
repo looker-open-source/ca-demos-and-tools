@@ -40,7 +40,7 @@ export type Messages = SystemMessage | UserMessage;
 
 export interface BqTableReference {
   bq: {
-    table_references: {
+    tableReferences: {
       projectId: string;
       datasetId: string;
       tableId: string;
@@ -50,16 +50,16 @@ export interface BqTableReference {
 
 export interface LookerExploreReference {
   looker: {
-    explore_references: {
-      looker_instance_uri: string;
-      lookml_model: string;
+    exploreReferences: {
+      lookerInstanceUri: string;
+      lookmlModel: string;
       explore: string;
-    };
+    }[];
     credentials: {
       oauth: {
         secret: {
-          client_id: string;
-          client_secret: string;
+          clientId: string;
+          clientSecret: string;
         };
       };
     };
@@ -68,7 +68,7 @@ export interface LookerExploreReference {
 
 export interface LookerStudioReference {
   studio: {
-    datasource_ids: string;
+    datasourceIds: string[];
   };
 }
 
@@ -95,7 +95,7 @@ export const appDatasourceReferences: AppConfig = {
   multimodal: {
     datasourceReferences: {
       bq: {
-        table_references: [
+        tableReferences: [
           {
             projectId: "not-in-use",
             datasetId: "not-in-use",
@@ -109,7 +109,7 @@ export const appDatasourceReferences: AppConfig = {
   openaq: {
     datasourceReferences: {
       bq: {
-        table_references: [
+        tableReferences: [
           {
             projectId: "bigquery-public-data",
             datasetId: "openaq",
@@ -123,10 +123,10 @@ export const appDatasourceReferences: AppConfig = {
   thelook: {
     datasourceReferences: {
       bq: {
-        table_references: [
+        tableReferences: [
           {
-            projectId: "looker-private-demo",
-            datasetId: "thelook",
+            projectId: "gemini-looker-demo-dataset",
+            datasetId: "thelook_ecommerce",
             tableId: "events",
           },
         ],
@@ -137,16 +137,18 @@ export const appDatasourceReferences: AppConfig = {
   cymbalpets: {
     datasourceReferences: {
       looker: {
-        explore_references: {
-          looker_instance_uri: "stub", // dynamically set
-          lookml_model: "cymbal_pets",
-          explore: "order_items",
-        },
+        exploreReferences: [
+          {
+            lookerInstanceUri: "stub", // dynamically set
+            lookmlModel: "cymbal_pets",
+            explore: "order_items",
+          },
+        ],
         credentials: {
           oauth: {
             secret: {
-              client_id: "stub", // dynamically set
-              client_secret: "stub", // dynamically set
+              clientId: "stub", // dynamically set
+              clientSecret: "stub", // dynamically set
             },
           },
         },
@@ -157,16 +159,18 @@ export const appDatasourceReferences: AppConfig = {
   cymbalpets_branded: {
     datasourceReferences: {
       looker: {
-        explore_references: {
-          looker_instance_uri: "stub", // dynamically set
-          lookml_model: "cymbal_pets",
-          explore: "order_items",
-        },
+        exploreReferences: [
+          {
+            lookerInstanceUri: "stub", // dynamically set
+            lookmlModel: "cymbal_pets",
+            explore: "order_items",
+          },
+        ],
         credentials: {
           oauth: {
             secret: {
-              client_id: "stub", // dynamically set
-              client_secret: "stub", // dynamically set
+              clientId: "stub", // dynamically set
+              clientSecret: "stub", // dynamically set
             },
           },
         },
@@ -177,16 +181,18 @@ export const appDatasourceReferences: AppConfig = {
   cymbalpets_embed_business_pulse: {
     datasourceReferences: {
       looker: {
-        explore_references: {
-          looker_instance_uri: "stub", // dynamically set
-          lookml_model: "cymbal_pets",
-          explore: "order_items", // business pulse uses order_items explore
-        },
+        exploreReferences: [
+          {
+            lookerInstanceUri: "stub", // dynamically set
+            lookmlModel: "cymbal_pets",
+            explore: "order_items", // business pulse uses order_items explore
+          },
+        ],
         credentials: {
           oauth: {
             secret: {
-              client_id: "stub", // dynamically set
-              client_secret: "stub", // dynamically set
+              clientId: "stub", // dynamically set
+              clientSecret: "stub", // dynamically set
             },
           },
         },
@@ -197,16 +203,18 @@ export const appDatasourceReferences: AppConfig = {
   cymbalpets_embed_supplier_metrics: {
     datasourceReferences: {
       looker: {
-        explore_references: {
-          looker_instance_uri: "stub", // dynamically set
-          lookml_model: "cymbal_pets",
-          explore: "purchases", // supplier metrics uses purchases explore
-        },
+        exploreReferences: [
+          {
+            lookerInstanceUri: "stub", // dynamically set
+            lookmlModel: "cymbal_pets",
+            explore: "purchases", // supplier metrics uses purchases explore
+          },
+        ],
         credentials: {
           oauth: {
             secret: {
-              client_id: "stub", // dynamically set
-              client_secret: "stub", // dynamically set
+              clientId: "stub", // dynamically set
+              clientSecret: "stub", // dynamically set
             },
           },
         },
@@ -220,16 +228,18 @@ export const multimodalLookerDatasourceReferences: {
 } = {
   order_items: {
     looker: {
-      explore_references: {
-        looker_instance_uri: "stub", // dynamically set
-        lookml_model: "cymbal_pets",
-        explore: "order_items",
-      },
+      exploreReferences: [
+        {
+          lookerInstanceUri: "stub", // dynamically set
+          lookmlModel: "cymbal_pets",
+          explore: "order_items",
+        },
+      ],
       credentials: {
         oauth: {
           secret: {
-            client_id: "stub", // dynamically set
-            client_secret: "stub", // dynamically set
+            clientId: "stub", // dynamically set
+            clientSecret: "stub", // dynamically set
           },
         },
       },
@@ -237,16 +247,18 @@ export const multimodalLookerDatasourceReferences: {
   },
   purchases: {
     looker: {
-      explore_references: {
-        looker_instance_uri: "stub", // dynamically set
-        lookml_model: "cymbal_pets",
-        explore: "purchases",
-      },
+      exploreReferences: [
+        {
+          lookerInstanceUri: "stub", // dynamically set
+          lookmlModel: "cymbal_pets",
+          explore: "purchases",
+        },
+      ],
       credentials: {
         oauth: {
           secret: {
-            client_id: "stub", // dynamically set
-            client_secret: "stub", // dynamically set
+            clientId: "stub", // dynamically set
+            clientSecret: "stub", // dynamically set
           },
         },
       },
@@ -279,7 +291,7 @@ export const loadDatasource = (pageId: string): DatasourceConfig => {
   // Ensure a configuration exists for the provided pageId.
   if (!appDatasourceReferences[pageId]) {
     throw new Error(
-      `Datasource configuration for pageId '${pageId}' not found.`
+      `Datasource configuration for pageId '${pageId}' not found.`,
     );
   }
   return {
@@ -289,7 +301,7 @@ export const loadDatasource = (pageId: string): DatasourceConfig => {
 
 // Helper function to look up multimodal Looker configuration
 export const getMultimodalLookerDatasource = (
-  selectedExplore: string | undefined
+  selectedExplore: string | undefined,
 ) => {
   if (
     selectedExplore &&
@@ -298,16 +310,23 @@ export const getMultimodalLookerDatasource = (
     return multimodalLookerDatasourceReferences[selectedExplore];
   }
   console.error(
-    "Invalid or missing Looker explore. Falling back to default 'order_items'."
+    "Invalid or missing Looker explore. Falling back to default 'order_items'.",
   );
   return multimodalLookerDatasourceReferences.order_items;
 };
 
 // Retrieves (and caches) the system instruction for a given pageId.
 export async function getSystemInstruction(
-  agentPageId: string
+  agentPageId: string,
 ): Promise<string> {
   const secretKey = `SYSTEM_INSTRUCTION_${agentPageId.toUpperCase()}`;
+  return await getSecret(secretKey);
+}
+
+// Retrieves array of emails, e.g. ["abc@google.com","def@google.com", ...]
+// (This isn’t for security – just to limit access)
+export async function checkAllowedEmail(pageId: string) {
+  const secretKey = `ALLOWLIST_${pageId.toUpperCase()}`;
   return await getSecret(secretKey);
 }
 

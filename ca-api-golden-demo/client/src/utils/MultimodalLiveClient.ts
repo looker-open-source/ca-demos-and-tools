@@ -24,15 +24,15 @@ export type messageLogger = (message: any) => void;
 export type setClientStatus = (statuts: boolean) => void;
 export type updateChatQuestionHandler = (
   question: string,
-  final: boolean
+  final: boolean,
 ) => void;
 export type appendChatQuestionHandler = (question: string) => void;
 export type updateChatAnswerHandler = (
   transcript?: any,
   isFinal?: boolean,
-  forceNew?: boolean
+  forceNew?: boolean,
 ) => void;
-export type appendChatAnswerHandler = (chunk: any) => void;
+export type appendChatAnswerHandler = (chunk: any, isFinal?: boolean) => void;
 export type systemInstruction = { [key: string]: string };
 export type setCortadoLoading = (status: boolean) => void;
 export type getCortadoLoading = () => boolean;
@@ -75,7 +75,7 @@ export class MultimodalLiveClient {
     setCortadoLoading: setCortadoLoading,
     getCortadoLoading: getCortadoLoading,
     setCortadoTempStatus: setCortadoTempStatus,
-    setError: setError
+    setError: setError,
   ) {
     this.user = user;
     this.datasource = datasource;
@@ -91,8 +91,8 @@ export class MultimodalLiveClient {
     this.setCortadoTempStatus = setCortadoTempStatus;
     this.setError = setError;
     this.multimodalLiveWs = new ReconnectingWebSocket(multimodalLiveWsUrl, [], {
-      connectionTimeout: 4000,
-      maxRetries: Infinity,
+      connectionTimeout: 10000,
+      maxRetries: 5,
       maxReconnectionDelay: 30000,
       // debug: true,
     });
@@ -162,7 +162,7 @@ export class MultimodalLiveClient {
     this.audioStreamer.postMessage({ type: "clearQueue" });
     this.messageLogger("Request cancelled");
     console.log(
-      "Cortado API call cancelled by user: streaming cancelled and audio queue cleared."
+      "Cortado API call cancelled by user: streaming cancelled and audio queue cleared.",
     );
   }
 
@@ -275,7 +275,7 @@ export class MultimodalLiveClient {
     ) {
       if (this.getCortadoLoading()) {
         console.log(
-          `Ignore new toolCall as cortado request already in flight: ${message.toolCall.functionCalls[0].args.question}`
+          `Ignore new toolCall as cortado request already in flight: ${message.toolCall.functionCalls[0].args.question}`,
         );
         return;
       }
@@ -303,7 +303,7 @@ export class MultimodalLiveClient {
       const outputTranscription = message.serverContent.outputTranscription;
       this.updateChatAnswer(
         outputTranscription.text,
-        outputTranscription.finished
+        outputTranscription.finished,
       );
 
       // Gemini's done generating
@@ -318,7 +318,7 @@ export class MultimodalLiveClient {
       // Gemini's turn finished
     } else if (message.serverContent && message.serverContent.turnComplete) {
       logMessage = `Turn complete. Usage metadata: ${JSON.stringify(
-        message.usageMetadata
+        message.usageMetadata,
       )}`;
       console.log("Turn complete");
       this.audioStreamer.complete();
@@ -350,17 +350,19 @@ export class MultimodalLiveClient {
     const dynamicSystemInstructionYAML = trimSystemInstructions(
       fullSystemInstructionYAML,
       datasource,
-      this.datasource
+      this.datasource,
     );
     const datasourceReferences =
       this.datasource === "bq"
-        ? { bq: { table_references: datasource } }
+        ? { bq: { tableReferences: datasource } }
         : {
             looker: {
-              explore_references: {
-                lookml_model: datasource.lookml_model,
-                explore: datasource.explore,
-              },
+              exploreReferences: [
+                {
+                  lookmlModel: datasource.lookml_model,
+                  explore: datasource.explore,
+                },
+              ],
             },
           };
 
@@ -416,7 +418,7 @@ export class MultimodalLiveClient {
             const parsedData = JSON.parse(lines[i]);
             console.log(
               `[${parsedData.timestamp}] Received streaming results.`,
-              parsedData.systemMessage
+              parsedData.systemMessage,
             );
 
             const { chunkAnswer, isFinal } = this.handleChunk(parsedData);
@@ -450,7 +452,7 @@ export class MultimodalLiveClient {
 
         // Send the response for summary (add context here if you want to respond in a different language)
         const clientContentMessage = clientContentPayload(
-          `Use this response to answer the corresponding question: "${finalAnswer}"`
+          `Use this response to answer the corresponding question: "${finalAnswer}"`,
         );
         this.send(clientContentMessage);
       }
@@ -471,7 +473,7 @@ export class MultimodalLiveClient {
     if (parsedData.systemMessage) {
       if (
         parsedData.systemMessage.text &&
-        Array.isArray(parsedData.systemMessage.text.parts)
+        parsedData.systemMessage.text.textType === "FINAL_RESPONSE"
       ) {
         caseKey = "final";
       } else if (
@@ -492,7 +494,7 @@ export class MultimodalLiveClient {
         chunkAnswer = parsedData.systemMessage.text.parts.join(" ");
         isFinal = true;
         this.messageLogger(`Final Answer: ${chunkAnswer.slice(0, 50)}...`);
-        this.updateChatAnswer(chunkAnswer, true, true);
+        this.appendChatAnswer(parsedData, true);
         break;
 
       case "intermediate":
@@ -515,20 +517,20 @@ export class MultimodalLiveClient {
           this.messageLogger(
             `Generated SQL: ${parsedData.systemMessage.data.generatedSql.slice(
               0,
-              50
-            )}...`
+              50,
+            )}...`,
           );
         } else if (dataResult) {
           this.messageLogger(`Received results`);
         } else if (analysisProgressEvent) {
           this.messageLogger(
             `Progress event ${JSON.stringify(
-              parsedData.systemMessage.analysis.progressEvent
-            ).slice(0, 50)}...}`
+              parsedData.systemMessage.analysis.progressEvent,
+            ).slice(0, 50)}...}`,
           );
         } else if (chartQuery) {
           this.messageLogger(
-            `Chart query instructions: ${parsedData.systemMessage.chart.query.instructions}`
+            `Chart query instructions: ${parsedData.systemMessage.chart.query.instructions}`,
           );
         }
         this.appendChatAnswer(parsedData);

@@ -161,7 +161,7 @@ const Multimodal: React.FC = () => {
   };
 
   // This callback is used to update the messages state with streaming results for ask question tool
-  const appendChatAnswer = (parsedData: any) => {
+  const appendChatAnswer = (parsedData: any, isFinal?: boolean) => {
     const transformedData = transformDataQnAResponse([parsedData]);
 
     if (transformedData!.schemaResultDatasources) {
@@ -202,7 +202,7 @@ const Multimodal: React.FC = () => {
     // Append to the messages state incrementally
     setMessages((prevMessages) => [
       ...prevMessages,
-      { type: "response", data: transformedData },
+      { type: "response", data: transformedData, final: isFinal },
     ]);
   };
 
@@ -519,7 +519,14 @@ const Multimodal: React.FC = () => {
 
                       {message.data.text && (
                         <TypewriterText
-                          text={message.data.text}
+                          text={
+                            message.data.textType === "THOUGHT" &&
+                            message.data.textParts?.length >= 2
+                              ? `**${message.data.textParts[0]}**\n\n${message.data.textParts
+                                  .slice(1)
+                                  .join("\n")}`
+                              : message.data.text
+                          }
                           containerClassName={animations.text}
                         />
                       )}
