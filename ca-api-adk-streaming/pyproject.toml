@@ -5,16 +5,16 @@ description = "Conversational Analytics Agent"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "python-dotenv==1.0.1",
-    "google-adk==1.15.1",
+    "python-dotenv==1.2.2",
+    "google-adk==1.28.0",
     "immutabledict==4.2.1",
-    "google-cloud-aiplatform[adk,agent-engines]==1.118.0",
+    "google-cloud-aiplatform[adk,agent-engines]==1.143.0",
     "absl-py==2.2.2",
-    "pydantic==2.11.3",
-    "google-auth==2.40.3",
+    "pydantic==2.12.5",
+    "google-auth==2.49.1",
     "google-auth-oauthlib==1.2.2",
-    "google-auth-httplib2==0.2.0",
-    "google-genai==1.39.1",
+    "google-auth-httplib2==0.3.0",
+    "google-genai==1.69.0",
     "typing-extensions==4.15.0",
     "google-cloud-geminidataanalytics==0.10.0",
 ]
@@ -22,10 +22,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "google-cloud-aiplatform[adk,agent-engines,evaluation]==1.118.0",
+    "google-cloud-aiplatform[adk,agent-engines,evaluation]==1.143.0",
     "pytest==8.3.5",
     "pytest-asyncio==0.26.0",
-    "google-adk[eval]==1.15.1",
+    "google-adk[eval]==1.28.0",
 ]
 
 
