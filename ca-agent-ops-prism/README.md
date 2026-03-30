@@ -144,7 +144,7 @@ The Cloud Run default compute service account requires the following IAM roles:
 4.  **Deploy**: Use `gcloud run deploy` with the following requirements:
     - Include the `--no-cpu-throttling` flag.
     - Add the Cloud SQL instance connection.
-    - Set the **`DATABASE_URL`** or  **`INSTANCE_CONNECTION_NAME`** environment variable.
+    - Set the **`DATABASE_URL`** or **`INSTANCE_CONNECTION_NAME`** environment variable.
 
 Example deployment command:
 ```bash
