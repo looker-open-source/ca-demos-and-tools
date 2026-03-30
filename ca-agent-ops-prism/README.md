@@ -151,7 +151,6 @@ Example deployment command:
 gcloud run deploy prism-app \
   --image ARTIFACT_REGISTRY_IMAGE_URL \
   --region us-central1 \
-  --allow-unauthenticated \
   --no-cpu-throttling \
   --memory=1024Mi \
   --add-cloudsql-instances YOUR_INSTANCE_CONNECTION_NAME \
