@@ -134,40 +134,41 @@ For production deployments on Google Cloud, we recommend **Cloud Run**
 connected to **Cloud SQL (PostgreSQL)**.
 
 #### IAM Roles
+
 The Cloud Run default compute service account requires the following IAM roles:
 
-- `BigQuery User` and `BigQuery Data Viewer` (if using BQ Agents)
-- `Cloud SQL Client`
-- `Cloud Build Service Account`
-- `Gemini Data Analytics Data Agent Owner`
-- `Gemini Data Analytics Data Agent Creator`
-- `Secret Manager Secret Accessor`
-- `Vertex AI User` (for Gen AI evaluation)
+-   `BigQuery User` and `BigQuery Data Viewer` (if using BQ Agents)
+-   `Cloud SQL Client`
+-   `Cloud Build Service Account`
+-   `Gemini Data Analytics Data Agent Owner`
+-   `Gemini Data Analytics Data Agent Creator`
+-   `Secret Manager Secret Accessor`
+-   `Vertex AI User` (for Gen AI evaluation)
 
-> [!WARNING]
-> **Cloud Run CPU Throttling and Memory**
-> Prism uses Python `multiprocessing` for asynchronous evaluations inside of a background `WorkerProcessManager`. Because of this, it is required to deploy your Cloud Run service with **`--no-cpu-throttling`** (so your background evaluators don't crash when HTTP requests finish) and at least **`--memory=1024Mi`** (to handle the duplicated memory footprint of subprocesses).
+> [!WARNING] **Cloud Run CPU Throttling and Memory** Prism uses Python
+> `multiprocessing` for asynchronous evaluations inside of a background
+> `WorkerProcessManager`. Because of this, it is required to deploy your Cloud
+> Run service with **`--no-cpu-throttling`** (so your background evaluators
+> don't crash when HTTP requests finish) and at least **`--memory=1024Mi`** (to
+> handle the duplicated memory footprint of subprocesses).
 
 #### Deployment Checklist:
+
 1.  **Build and Push**: Push your image to Artifact Registry.
 2.  **Database**: Create a Cloud SQL instance.
 3.  **Secrets**: Store your database password in Secret Manager.
 4.  **Deploy**: Use `gcloud run deploy` with the following requirements:
-    - Include the `--no-cpu-throttling` flag.
-    - Add the Cloud SQL instance connection.
-    - Set the **`DATABASE_URL`** or **`INSTANCE_CONNECTION_NAME`** environment variable.
+    -   Include the `--no-cpu-throttling` flag.
+    -   Add the Cloud SQL instance connection.
+    -   Set the **`DATABASE_URL`** or **`INSTANCE_CONNECTION_NAME`** environment
+        variable.
 
-Example deployment command:
-```bash
-gcloud run deploy prism-app \
-  --image ARTIFACT_REGISTRY_IMAGE_URL \
-  --region us-central1 \
-  --no-cpu-throttling \
-  --memory=1024Mi \
-  --add-cloudsql-instances YOUR_INSTANCE_CONNECTION_NAME \
-  --set-env-vars "INSTANCE_CONNECTION_NAME=YOUR_INSTANCE_CONNECTION_NAME,DB_NAME=prism,DB_USER=postgres" \
-  --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"
-```
+Example deployment command: `bash gcloud run deploy prism-app \ --image
+ARTIFACT_REGISTRY_IMAGE_URL \ --region us-central1 \ --no-cpu-throttling \
+--memory=1024Mi \ --add-cloudsql-instances YOUR_INSTANCE_CONNECTION_NAME \
+--set-env-vars
+"INSTANCE_CONNECTION_NAME=YOUR_INSTANCE_CONNECTION_NAME,DB_NAME=prism,DB_USER=postgres"
+\ --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"`
 
 ## Testing
 Run the test suite using the provided script:

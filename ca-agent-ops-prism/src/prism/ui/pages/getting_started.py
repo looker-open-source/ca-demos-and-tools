@@ -148,7 +148,11 @@ def _render_assertion_list():
               "pink",
               "Looker Query Match",
               "LOOKML",
-              "Matches Looker query parameters using YAML configuration.",
+              "Checks if the generated Looker query matches the specified"
+              " structure (model, explore, fields, filters, sorts, limit). A"
+              " partial score is computed based on the ratio of matching"
+              " parameters. The assertion evaluates to Pass if the match rate"
+              " is >= 0.75, otherwise it Fails.",
           ),
           _assertion_item(
               "material-symbols:table-rows",
