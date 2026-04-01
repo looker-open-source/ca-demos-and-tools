@@ -10,6 +10,7 @@ from fast_depends import inject
 from prism.client import agent_client
 from prism.client import dependencies
 from prism.client import prism_client
+from prism.client.run_client import RunsClient
 from prism.common.schemas import agent as agent_schemas
 from prism.server.services.agent_service import AgentService
 import pydantic
@@ -89,7 +90,6 @@ class TestClientDI(unittest.TestCase):
 
   def test_pydantic_type_validation(self):
     """Test that Pydantic validates arguments at runtime."""
-    from prism.client.run_client import RunsClient
 
     runs = RunsClient()
 

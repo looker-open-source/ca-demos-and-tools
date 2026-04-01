@@ -96,11 +96,14 @@ class AgentRepository:
       else:
         agent.datasource_config = None
 
+      if config.looker_client_id is not None:
+        agent.looker_client_id = config.looker_client_id
+
       if config.looker_client_secret is not None:
         agent.looker_client_secret = config.looker_client_secret
 
       # Store golden_queries in datasource_config if present
-      if config.golden_queries is not None and agent.datasource_config:
+      if config.golden_queries is not None:
         # We need to ensure we don't handle this if datasource_config is None,
         # but the previous block sets it to None if config.datasource is None.
         # However, if config.datasource was None, we probably shouldn't have golden queries?

@@ -5,6 +5,8 @@ from unittest import mock
 from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import BigQueryConfig
+from prism.common.schemas.agent import LookerGoldenQuery
+from prism.common.schemas.agent import LookerQuery
 from prism.common.schemas.trace import AskQuestionResponse
 from prism.common.schemas.trace import DurationMetrics
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
@@ -101,12 +103,10 @@ def test_list_agents(client):
 
 def test_create_agent(client, mock_gemini_lib):
   """Tests create_agent."""
-  from prism.common.schemas.agent import LookerGoldenQuery
-  from prism.common.schemas.agent import LookerQuery
 
   gq = LookerGoldenQuery(
       natural_language_questions=["Q1"],
-      looker_query=LookerQuery(view="v", fields=["f"]),
+      looker_query=LookerQuery(explore="v", fields=["f"]),
   )
 
   config = AgentConfig(
@@ -121,9 +121,10 @@ def test_create_agent(client, mock_gemini_lib):
   # Mock the proto return for the golden query
   mock_proto_gq = mock.Mock()
   mock_proto_gq.natural_language_questions = ["Q1"]
-  mock_proto_gq.looker_query.view = "v"
+  mock_proto_gq.looker_query.explore = "v"
   mock_proto_gq.looker_query.fields = ["f"]
   mock_proto_gq.looker_query.model = None
+  mock_proto_gq.looker_query.explore = None
   mock_proto_gq.looker_query.limit = None
   # Ensure iterable fields are lists
   mock_proto_gq.looker_query.filters = []
@@ -226,17 +227,16 @@ def test_ask_question_response_reparsing():
 
 def test_update_agent_with_golden_queries(client, mock_gemini_lib):
   """Tests update_agent with golden queries."""
-  from prism.common.schemas.agent import LookerGoldenQuery
-  from prism.common.schemas.agent import LookerQuery
 
   mock_existing = make_mock_agent_pb("agent-123")
   client.agent_client.get_data_agent.return_value = mock_existing
 
   mock_proto_gq = mock.Mock()
   mock_proto_gq.natural_language_questions = ["New Q"]
-  mock_proto_gq.looker_query.view = "new_view"
+  mock_proto_gq.looker_query.explore = "new_view"
   mock_proto_gq.looker_query.model = None
   mock_proto_gq.looker_query.limit = None
+  mock_proto_gq.looker_query.explore = None
   mock_proto_gq.looker_query.fields = []
   mock_proto_gq.looker_query.filters = []
   mock_proto_gq.looker_query.sorts = []
@@ -250,7 +250,7 @@ def test_update_agent_with_golden_queries(client, mock_gemini_lib):
 
   gq = LookerGoldenQuery(
       natural_language_questions=["New Q"],
-      looker_query=LookerQuery(view="new_view", fields=["f"]),
+      looker_query=LookerQuery(explore="new_view", fields=["f"]),
   )
   config = AgentConfig(golden_queries=[gq])
 

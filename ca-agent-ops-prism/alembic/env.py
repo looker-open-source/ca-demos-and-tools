@@ -5,6 +5,7 @@ import logging.config
 from alembic import context
 from prism.server.config import settings
 from prism.server.db import Base
+from prism.server.db import engine
 from prism.server.models import agent  # noqa: F401
 from prism.server.models import assertion  # noqa: F401
 from prism.server.models import example  # noqa: F401
@@ -46,7 +47,6 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
   """Run migrations in 'online' mode."""
   # Import the engine already configured with the Cloud SQL Connector if needed
-  from prism.server.db import engine
 
   with engine.connect() as connection:
     context.configure(

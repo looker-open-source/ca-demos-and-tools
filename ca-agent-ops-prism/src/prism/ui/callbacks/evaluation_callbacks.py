@@ -910,24 +910,21 @@ def _calculate_assertion_summary(
   diagnostic = {"total": 0, "passed": 0}
 
   for a in assertion_details:
-    passed = a.get("passed", False)
     weight = a.get("weight", 0)
+    passed = 1 if a.get("passed", False) else 0
 
     overall["total"] += 1
-    if passed:
-      overall["passed"] += 1
+    overall["passed"] += passed
 
     if weight > 0:
       accuracy["total"] += 1
-      if passed:
-        accuracy["passed"] += 1
+      accuracy["passed"] += passed
     else:
       diagnostic["total"] += 1
-      if passed:
-        diagnostic["passed"] += 1
+      diagnostic["passed"] += passed
 
-  def _to_metric(counts: dict[str, int]) -> AssertionMetric:
-    total = counts["total"]
+  def _to_metric(counts: dict[str, float]) -> AssertionMetric:
+    total = int(counts["total"])
     passed = counts["passed"]
     failed = total - passed
     rate = (passed / total * 100) if total > 0 else None
@@ -1023,6 +1020,7 @@ def render_trial_detail(
           "type": ar.assertion.type,
           "weight": ar.assertion.weight,
           "passed": ar.passed,
+          "score": getattr(ar, "score", None),
           "reasoning": ar.reasoning,
           "error_message": ar.error_message,
       }

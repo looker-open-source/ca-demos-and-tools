@@ -1,3 +1,5 @@
+"""Tests for the assertion engine."""
+
 import unittest.mock
 from prism.common.schemas.assertion import AIJudge
 from prism.common.schemas.assertion import ChartCheckType
@@ -10,6 +12,7 @@ from prism.common.schemas.assertion import TextContains
 from prism.common.schemas.trace import AskQuestionResponse
 from prism.common.schemas.trace import DurationMetrics
 from prism.server.services import assert_engine
+from prism.server.services.assert_engine import AIJudgeResult
 
 
 def make_response(messages=None, duration_ms=100):
@@ -43,6 +46,8 @@ def test_check_text_contains_fail():
   assertion = TextContains(value="hello")
 
   result = assert_engine.check_text_contains(response, assertion)
+  assert not result.passed
+  assert result.score == 0.0
 
 
 def test_check_text_contains_ignores_thought():
@@ -56,6 +61,7 @@ def test_check_text_contains_ignores_thought():
   assertion = TextContains(value="thinking")
 
   result = assert_engine.check_text_contains(response, assertion)
+  assert not result.passed
 
   assert not result.passed
   assert "Did not find 'thinking'" in result.reasoning
@@ -137,6 +143,44 @@ def test_check_chart_type_pass():
   assert result.passed
 
 
+def test_normalize_filter_value():
+  """Tests filter normalization logic."""
+  # pylint: disable=protected-access
+  # Base case
+  assert assert_engine._normalize_filter_value("hello") == frozenset(["hello"])
+
+  # URL encoding
+  assert assert_engine._normalize_filter_value("hello+world") == frozenset(
+      ["hello world"]
+  )
+
+  # Quotes
+  assert assert_engine._normalize_filter_value('"foo bar"') == frozenset(
+      ["foo bar"]
+  )
+  assert assert_engine._normalize_filter_value("'foo bar'") == frozenset(
+      ["foo bar"]
+  )
+
+  # Commas (list/OR values)
+  assert assert_engine._normalize_filter_value("a, b, c") == frozenset(
+      ["a", "b", "c"]
+  )
+
+  # Escaped commas (Should not be split)
+  assert assert_engine._normalize_filter_value("San Jose^, CA") == frozenset(
+      ["San Jose, CA"]
+  )
+
+  # Combination
+  assert assert_engine._normalize_filter_value(
+      "110,+FULL+LINE+STORES"
+  ) == frozenset(["110", "FULL LINE STORES"])
+  assert assert_engine._normalize_filter_value(
+      "110^, FULL LINE STORES"
+  ) == frozenset(["110, FULL LINE STORES"])
+
+
 def test_check_looker_query_match_pass():
   """Tests looker query match passing."""
   trace = [{
@@ -147,18 +191,49 @@ def test_check_looker_query_match_pass():
                       "model": "the_model",
                       "explore": "the_explore",
                       "fields": ["f1", "f2"],
+                      "filters": [
+                          {"field": "country", "value": "US, CA"},
+                          {"field": "city", "value": "San Jose^, CA"},
+                      ],
                   }
               }
           }
       }
   }]
   response = make_response(trace)
-  assertion = LookerQueryMatch(
+
+  # Full match
+  assertion_full = LookerQueryMatch(
       params={
           "model": "the_model",
           "fields": ["f1"],
+          "filters": [
+              # Different order
+              {"field": "country", "value": "CA, US"},
+              # Different escaping/quotes
+              {"field": "city", "value": '"San Jose, CA"'},
+          ],
       }
   )
+  result_full = assert_engine.check_looker_query_match(response, assertion_full)
+  assert result_full.passed
+  assert result_full.score == 1.0
+
+  # Partial match
+  assertion_partial = LookerQueryMatch(
+      params={
+          "model": "the_model",  # matches (1 pt)
+          "limit": "100",  # misses (1 pt)
+          "fields": ["f1", "f3"],  # misses (1 pt)
+      }
+  )
+  result_partial = assert_engine.check_looker_query_match(
+      response, assertion_partial
+  )
+  assert not result_partial.passed
+  assert result_partial.score == 0.0
+  assert "limit: expected" in result_partial.reasoning
+  assert "fields: missing {'f3'}" in result_partial.reasoning
 
 
 def test_check_chart_type_last_result():
@@ -213,7 +288,6 @@ def test_check_ai_judge_pass():
   response = make_response([{"system_message": {"text": {"parts": ["hello"]}}}])
   assertion = AIJudge(value="The response should be hello")
   mock_llm = unittest.mock.MagicMock()
-  from prism.server.services.assert_engine import AIJudgeResult
 
   mock_llm.generate_structured.return_value = AIJudgeResult(
       verdict=True, explanation="It said hello"

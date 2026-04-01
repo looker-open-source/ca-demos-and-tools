@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 
 # Default values for production
 PORT=${PORT:-8080}
-TIMEOUT=${TIMEOUT:-0}
+TIMEOUT=${TIMEOUT:-3600}
 
 echo "Starting Prism App with Gunicorn (Production Build)..."
 echo "Port: $PORT"

@@ -17,7 +17,6 @@
 from typing import Any
 import uuid
 
-from prism.common.schemas import agent
 from prism.common.schemas import execution
 import pydantic
 

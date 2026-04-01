@@ -21,12 +21,12 @@ import dash_mantine_components as dmc
 from prism.ui.components.assertion_components import render_assertion_form_content
 from prism.ui.components.cards import render_detail_card
 from prism.ui.components.page_layout import render_page
+from prism.ui.constants import ASSERTS_GUIDE
 from prism.ui.ids import TestSuiteIds as Ids
 
 
 def render_bulk_add_guide():
   """Renders a collapsible guide for assertion types in bulk add."""
-  from prism.ui.constants import ASSERTS_GUIDE
 
   items = []
   for guide in ASSERTS_GUIDE:

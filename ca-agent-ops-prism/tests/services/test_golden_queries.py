@@ -18,7 +18,7 @@ def test_create_agent_with_golden_queries(db_session: Session):
       natural_language_questions=["How many sales?"],
       looker_query=schemas.LookerQuery(
           model="the_model",
-          view="the_view",
+          explore="the_view",
           fields=["count"],
           filters=[schemas.LookerFilter(field="date", value="last 7 days")],
       ),
@@ -106,7 +106,7 @@ def test_update_agent_golden_queries(db_session: Session):
   # Update
   gq = schemas.LookerGoldenQuery(
       natural_language_questions=["Update?"],
-      looker_query=schemas.LookerQuery(view="view2", fields=["f1"]),
+      looker_query=schemas.LookerQuery(explore="view2", fields=["f1"]),
   )
   new_config = config.model_copy()
   new_config.golden_queries = [gq]
@@ -129,7 +129,7 @@ def test_update_agent_golden_queries(db_session: Session):
   assert len(updated_agent.datasource_config["golden_queries"]) == 1
   assert (
       updated_agent.datasource_config["golden_queries"][0]["looker_query"][
-          "view"
+          "explore"
       ]
       == "view2"
   )

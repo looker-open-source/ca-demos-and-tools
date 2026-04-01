@@ -21,8 +21,6 @@ def upgrade():
 
 
 def downgrade():
-  from sqlalchemy.dialects import postgresql
-
   op.add_column(
       'agents',
       sa.Column(

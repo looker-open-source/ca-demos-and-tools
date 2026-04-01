@@ -89,7 +89,7 @@ class DashboardService:
         .filter(
             Run.started_at >= seven_days_ago,
             Run.status == RunStatus.COMPLETED,
-            not Run.is_archived,
+            Run.is_archived.is_not(True),
         )
         .all()
     )

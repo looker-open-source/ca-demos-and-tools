@@ -121,15 +121,19 @@ ASSERTS_GUIDE = [
         "name": "looker-query-match",
         "label": "Looker Query Match",
         "description": (
-            "Checks if the generated Looker query matches the specified"
-            " structure (model, explore, fields, filters, sorts, limit)."
-            " Supports partial matching."
+            "Checks if the generated Looker query matches the specified "
+            "structure (model, explore, fields, filters, sorts, limit). "
+            "A partial score is computed based on the ratio of matching "
+            "parameters. The assertion evaluates to Pass if the match rate "
+            "is >= 0.75, otherwise it Fails. Filters are compared "
+            "order-independently handling URL-encoding and commas."
         ),
         "example": (
             "model: 'thelook'\nexplore: 'orders'\nfields: ['orders.id',"
-            " 'orders.status', 'users.name']\nfilters:\n  orders.created_at:"
-            " 'last 7 days'\n  users.state: 'California'\nsorts:"
-            " ['orders.created_at desc']\nlimit: '100'"
+            " 'orders.status', 'users.name']\nfilters:\n- field:"
+            " orders.created_at\n  value: 'last 7 days'\n- field: users.state\n"
+            "  value: 'California'\nsorts: ['orders.created_at desc']\nlimit:"
+            " '100'"
         ),
     },
     {

@@ -1493,8 +1493,8 @@ def get_assertion_result_key(ar: Any) -> str:
     return f"orig-{assertion['original_assertion_id']}"
 
   # 2. Fallback to content-based matching for ad-hoc assertions or missing IDs
-  # We do NOT use assertion.get('id') here because that is often the Snapshot ID,
-  # which changes for every run and prevents alignment.
+  # We do NOT use assertion.get('id') here because that is often the Snapshot
+  # ID, which changes for every run and prevents alignment.
   a_type = assertion.get("type", "unknown")
   a_val = str(assertion.get("value", ""))
   if not a_val and "params" in assertion:
