@@ -39,9 +39,7 @@ def layout(run_id: str = None):
                       id=Ids.BTN_PAUSE_RUN,
                       variant="default",
                       radius="md",
-                      fw=600,
-                      size="xs",
-                      leftSection=DashIconify(icon="bi:pause-fill"),
+                      leftSection=DashIconify(icon="bi:pause-fill", width=20),
                       style={"display": "none"},
                   ),
                   dmc.Button(
@@ -49,9 +47,7 @@ def layout(run_id: str = None):
                       id=Ids.BTN_RESUME_RUN,
                       variant="default",
                       radius="md",
-                      fw=600,
-                      size="xs",
-                      leftSection=DashIconify(icon="bi:play-fill"),
+                      leftSection=DashIconify(icon="bi:play-fill", width=20),
                       style={"display": "none"},
                   ),
                   dmc.Button(
@@ -59,9 +55,30 @@ def layout(run_id: str = None):
                       id=Ids.BTN_CANCEL_RUN_EXEC,
                       variant="default",
                       radius="md",
-                      fw=600,
-                      size="xs",
-                      leftSection=DashIconify(icon="bi:x-circle"),
+                      leftSection=DashIconify(icon="bi:x-circle", width=20),
+                      style={"display": "none"},
+                  ),
+                  dmc.Button(
+                      "Archive",
+                      id=Ids.BTN_ARCHIVE,
+                      variant="outline",
+                      color="gray",
+                      radius="md",
+                      leftSection=DashIconify(
+                          icon="material-symbols:archive", width=20
+                      ),
+                      style={"display": "none"},
+                  ),
+                  dmc.Button(
+                      "Restore",
+                      id=Ids.BTN_RESTORE,
+                      variant="filled",
+                      color="green",
+                      radius="md",
+                      leftSection=DashIconify(
+                          icon="material-symbols:settings-backup-restore",
+                          width=20,
+                      ),
                       style={"display": "none"},
                   ),
                   dmc.Button(
@@ -71,7 +88,7 @@ def layout(run_id: str = None):
                           "index": run_id,
                       },
                       leftSection=DashIconify(
-                          icon="material-symbols:compare-arrows"
+                          icon="material-symbols:compare-arrows", width=20
                       ),
                       variant="outline",
                       color="gray",
@@ -107,7 +124,7 @@ def layout(run_id: str = None):
                   html.Div(id=Ids.RUN_CHARTS_CONTAINER),
                   html.Div(id=Ids.RUN_TRIALS_CONTAINER),
                   render_compare_run_modal(),
-                  run_components.render_diff_modal([]),
+                  run_components.render_diff_modal(),
                   dash.dcc.Download(id=Ids.DOWNLOAD_DIFF_COMPONENT),
                   dash.dcc.Store(id=Ids.RUN_CONTEXT_DIFF_STORE),
                   dash.dcc.Store(id=Ids.RUN_DATA_STORE),

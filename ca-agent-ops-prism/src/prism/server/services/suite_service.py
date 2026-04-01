@@ -93,6 +93,7 @@ class SuiteService:
           self.session.query(Run)
           .join(TestSuiteSnapshot)
           .filter(TestSuiteSnapshot.original_suite_id == suite.id)
+          .filter(Run.is_archived == False)  # pylint: disable=singleton-comparison
           .count()
       )
 
@@ -141,6 +142,10 @@ class SuiteService:
   def archive_suite(self, suite_id: int) -> TestSuite:
     """Archives a test suite."""
     return self.suite_repository.archive(suite_id=suite_id)
+
+  def unarchive_suite(self, suite_id: int) -> TestSuite:
+    """Unarchives a test suite."""
+    return self.suite_repository.unarchive(suite_id=suite_id)
 
   def sync_suite(
       self,

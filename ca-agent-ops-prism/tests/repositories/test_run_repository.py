@@ -63,3 +63,51 @@ def test_list_runs(db_session: Session):
 
   runs = repo.list_all()
   assert len(runs) == 2
+
+
+def test_archive_run(db_session: Session):
+  """Tests archiving a run."""
+  agent_repo = AgentRepository(db_session)
+  suite_repo = SuiteRepository(db_session)
+  example_repo = ExampleRepository(db_session)
+  snapshot_service = SnapshotService(db_session, suite_repo, example_repo)
+
+  agent = agent_repo.create(
+      name="Bot",
+      config=AgentConfig(project_id="p", location="l", agent_resource_id="r"),
+  )
+  suite = suite_repo.create(name="Suite")
+  snapshot = snapshot_service.create_snapshot(suite.id)
+
+  repo = RunRepository(db_session)
+  run = repo.create(snapshot.id, agent.id)
+  assert not run.is_archived
+
+  repo.archive(run.id)
+  db_session.refresh(run)
+  assert run.is_archived
+
+
+def test_unarchive_run(db_session: Session):
+  """Tests unarchiving a run."""
+  agent_repo = AgentRepository(db_session)
+  suite_repo = SuiteRepository(db_session)
+  example_repo = ExampleRepository(db_session)
+  snapshot_service = SnapshotService(db_session, suite_repo, example_repo)
+
+  agent = agent_repo.create(
+      name="Bot",
+      config=AgentConfig(project_id="p", location="l", agent_resource_id="r"),
+  )
+  suite = suite_repo.create(name="Suite")
+  snapshot = snapshot_service.create_snapshot(suite.id)
+
+  repo = RunRepository(db_session)
+  run = repo.create(snapshot.id, agent.id)
+  repo.archive(run.id)
+  db_session.refresh(run)
+  assert run.is_archived
+
+  repo.unarchive(run.id)
+  db_session.refresh(run)
+  assert not run.is_archived

@@ -1,6 +1,7 @@
 """Unit tests for TrialRepository."""
 
 from prism.common.schemas.agent import AgentConfig
+from prism.server.models.assertion import AssertionResult, AssertionSnapshot, AssertionType
 from prism.server.models.assertion import SuggestedAssertion
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
@@ -63,8 +64,6 @@ def test_update_result_trial(db_session: Session):
   snapshot = snapshot_service.create_snapshot(suite.id)
   run = run_repo.create(snapshot.id, agent.id)
   trial = trial_repo.create(run.id, snapshot.examples[0].id)
-
-  from prism.server.models.assertion import AssertionResult, AssertionSnapshot, AssertionType
 
   snap = AssertionSnapshot(
       example_snapshot_id=snapshot.examples[0].id,

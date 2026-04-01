@@ -34,6 +34,31 @@ class LookerConfig(pydantic.BaseModel):
   explores: list[str]
 
 
+class LookerFilter(pydantic.BaseModel):
+  """Usage of a filter in a Looker query."""
+
+  field: str
+  value: str | None = None
+
+
+class LookerQuery(pydantic.BaseModel):
+  """Representation of a Looker query."""
+
+  model: str | None = None
+  explore: str | None = None
+  fields: list[str] | None = None
+  filters: list[LookerFilter] | None = None
+  sorts: list[str] | None = None
+  limit: str | None = None
+
+
+class LookerGoldenQuery(pydantic.BaseModel):
+  """A golden query example for Looker."""
+
+  natural_language_questions: list[str]
+  looker_query: LookerQuery
+
+
 class AgentConfig(pydantic.BaseModel):
   """Configuration for an Agent."""
 
@@ -44,6 +69,7 @@ class AgentConfig(pydantic.BaseModel):
   system_instruction: str | None = None
   looker_client_id: str | None = None
   looker_client_secret: str | None = None
+  golden_queries: list[LookerGoldenQuery] | None = None
 
 
 class AgentBase(pydantic.BaseModel):

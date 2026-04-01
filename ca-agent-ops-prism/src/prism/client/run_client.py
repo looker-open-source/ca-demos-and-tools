@@ -69,6 +69,7 @@ class RunsClient:
       agent_id: int | None = None,
       original_suite_id: int | None = None,
       status: execution_schemas.RunStatus | None = None,
+      include_archived: bool = False,
       repo: RunRepository = Depends(dependencies.get_run_repository),
   ) -> Sequence[execution_schemas.RunSchema]:
     """Lists evaluation runs with optional filtering."""
@@ -77,6 +78,7 @@ class RunsClient:
         agent_id=agent_id,
         original_suite_id=original_suite_id,
         status=status,
+        include_archived=include_archived,
     )
     return [_map_run(m) for m in models]
 
@@ -122,30 +124,69 @@ class RunsClient:
       self,
       run_id: int,
       service: ExecutionService = Depends(dependencies.get_execution_service),
+      timeline_service: TimelineService = Depends(
+          dependencies.get_timeline_service
+      ),
   ) -> execution_schemas.RunSchema | None:
+    """Gets a specific evaluation run by ID, including aggregated statistics."""
 
     model = service.get_run(run_id)
-    return _map_run(model) if model else None
+    if not model:
+      return None
+
+    run = _map_run(model)
+    # Aggregate tool timings from trials
+    run_tool_timings = {}
+    for trial_model in model.trials:
+      trial_timings = timeline_service.calculate_tool_timings(
+          trace=trial_model.trace_results or [],
+          ttfr_ms=trial_model.ttfr_ms or 0,
+      )
+      for tool, duration in trial_timings.items():
+        run_tool_timings[tool] = run_tool_timings.get(tool, 0) + duration
+
+    run.tool_timings = run_tool_timings
+    return run
 
   @inject
   def list_trials(
       self,
       run_id: int,
       service: ExecutionService = Depends(dependencies.get_execution_service),
+      timeline_service: TimelineService = Depends(
+          dependencies.get_timeline_service
+      ),
   ) -> Sequence[execution_schemas.Trial]:
-    models = service.list_trials(run_id)
-    return [_map_trial(m) for m in models]
+    """Lists all trials for a given run ID."""
+
+    models = service.get_run(run_id).trials if service.get_run(run_id) else []
+    trials = []
+    for m in models:
+      t = _map_trial(m)
+      t.tool_timings = timeline_service.calculate_tool_timings(
+          trace=t.trace_results or [],
+          ttfr_ms=t.ttfr_ms or 0,
+      )
+      trials.append(t)
+    return trials
 
   @inject
   def create_run(
       self,
       agent_id: int,
       test_suite_id: int,
+      generate_suggestions: bool = False,
+      concurrency: int = 2,
       service: ExecutionService = Depends(dependencies.get_execution_service),
   ) -> execution_schemas.RunSchema:
-
-    model = service.create_run(agent_id=agent_id, test_suite_id=test_suite_id)
-    return _map_run(model)
+    """Creates a new evaluation run for an agent and test suite."""
+    model = service.create_run(
+        agent_id=agent_id,
+        test_suite_id=test_suite_id,
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
+    )
+    return execution_schemas.RunSchema.model_validate(model)
 
   @inject
   def get_agent_dashboard_stats(
@@ -162,10 +203,21 @@ class RunsClient:
       self,
       trial_id: int,
       repo: TrialRepository = Depends(dependencies.get_trial_repository),
+      timeline_service: TimelineService = Depends(
+          dependencies.get_timeline_service
+      ),
   ) -> execution_schemas.Trial | None:
     """Fetch a single Trial by ID."""
     model = repo.get_trial(trial_id)
-    return _map_trial(model) if model else None
+    if not model:
+      return None
+
+    trial = _map_trial(model)
+    trial.tool_timings = timeline_service.calculate_tool_timings(
+        trace=trial.trace_results or [],
+        ttfr_ms=trial.ttfr_ms or 0,
+    )
+    return trial
 
   @inject
   def get_trial_timeline(
@@ -216,13 +268,19 @@ class RunsClient:
       run_id: int,
       repo: RunRepository = Depends(dependencies.get_run_repository),
   ) -> execution_schemas.RunSchema:
-    """Sets a run to RUNNING. The worker pool will pick it up."""
+    """Queues a run for execution (status remains PENDING)."""
     model = repo.get_by_id(run_id)
     if not model:
       raise ValueError(f"Run {run_id} not found")
 
-    model.status = execution_schemas.RunStatus.RUNNING
-    model.started_at = datetime.datetime.now(datetime.timezone.utc)
+    logging.info(
+        "Run %s queued for execution (Current Status: %s). Worker will pick it"
+        " up.",
+        run_id,
+        model.status,
+    )
+    # No status change - Worker auto-promotes PENDING runs
+    # We commit just in case there were other changes, though query is read-only here
     repo.session.commit()
     return _map_run(model)
 
@@ -269,14 +327,18 @@ class RunsClient:
       run_id: int,
       repo: RunRepository = Depends(dependencies.get_run_repository),
   ) -> None:
-    """Sets a run to RUNNING. The worker pool will naturally pick it up."""
+    """Queues a run for execution (status remains PENDING)."""
     model = repo.get_by_id(run_id)
     if not model:
       raise ValueError(f"Run {run_id} not found")
 
-    model.status = execution_schemas.RunStatus.RUNNING
-    model.started_at = datetime.datetime.now(datetime.timezone.utc)
-    repo.session.commit()
+    logging.info(
+        "Run %s queued for execution (Current Status: %s). Worker will pick it"
+        " up.",
+        run_id,
+        model.status,
+    )
+    # No status change - Worker auto-promotes PENDING runs
 
   @inject
   def pause_run(
@@ -318,6 +380,26 @@ class RunsClient:
           Trial.status == execution_schemas.RunStatus.PENDING
       ).values(status=execution_schemas.RunStatus.CANCELLED)
       repo.session.commit()
+
+  @inject
+  def archive_run(
+      self,
+      run_id: int,
+      service: ExecutionService = Depends(dependencies.get_execution_service),
+  ) -> execution_schemas.RunSchema:
+    """Archives a run."""
+    model = service.archive_run(run_id=run_id)
+    return _map_run(model)
+
+  @inject
+  def unarchive_run(
+      self,
+      run_id: int,
+      service: ExecutionService = Depends(dependencies.get_execution_service),
+  ) -> execution_schemas.RunSchema:
+    """Unarchives a run."""
+    model = service.unarchive_run(run_id=run_id)
+    return _map_run(model)
 
   @inject
   def retry_trial(

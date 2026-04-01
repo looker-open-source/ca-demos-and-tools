@@ -222,31 +222,55 @@ class WorkerProcessManager:
   def _start_new_trials(self):
     """Claims and starts new trials if under concurrency limit."""
     with self.session_factory() as session:
+      r_repo = run_repository.RunRepository(session)
       t_repo = trial_repository.TrialRepository(session)
 
-      # 1. Check current capacity
-      active_count = len(
-          t_repo.list_by_status([
-              execution.RunStatus.RUNNING,
-              execution.RunStatus.EXECUTING,
-              execution.RunStatus.EVALUATING,
-          ])
+      # 1. Identify valid active run (running or pending)
+      # Check for existing RUNNING run first
+      active_run = r_repo.list_all(
+          status=execution.RunStatus.RUNNING, include_archived=False, limit=1
       )
 
-      capacity = self.max_concurrent_trials - active_count
+      running_run = active_run[0] if active_run else None
+
+      if not running_run:
+        # Try to promote next pending
+        running_run = r_repo.promote_next_run()
+
+      if not running_run:
+        # No work to do
+        return
+
+      # Proceed with running_run
+      active_run = running_run
+
+      # 2. Check capacity for THIS active run
+      current_active_trials = t_repo.list_by_status([
+          execution.RunStatus.RUNNING,
+          execution.RunStatus.EXECUTING,
+          execution.RunStatus.EVALUATING,
+      ])
+      # Filter trials to only those belonging to the active run
+      active_run_trials = [
+          t for t in current_active_trials if t.run_id == active_run.id
+      ]
+
+      capacity = active_run.concurrency - len(active_run_trials)
       if capacity <= 0:
         return
 
-      # 2. Claim pending trials
+      # 3. Claim pending trials for this run
       for _ in range(capacity):
-        trial = t_repo.pick_next_pending_trial()
+        trial = t_repo.pick_next_pending_trial(run_id=active_run.id)
         if not trial:
           break
 
         trial_id = trial.id
-        logging.info("Manager claimed trial %s", trial_id)
+        logging.info(
+            "Manager claimed trial %s for run %s", trial_id, active_run.id
+        )
 
-        # 3. Spawn (Outside session to avoid leaks/locks)
+        # 4. Spawn (Outside session to avoid leaks/locks)
         try:
           ctx = multiprocessing.get_context("spawn")
           p = ctx.Process(target=execute_trial, args=(trial_id,), daemon=True)
@@ -263,13 +287,17 @@ class WorkerProcessManager:
           session.commit()
 
   def _aggregate_run_statuses(self):
-    """Checks RUNNING runs for completion."""
+    """Checks active runs for completion."""
     try:
       with self.session_factory() as session:
         run_repo = run_repository.RunRepository(session)
+        # Use list_active to find PENDING/RUNNING/PAUSED runs
         active_runs = run_repo.list_active()
 
         for run in active_runs:
+          if not run.trials:
+            continue
+
           all_done = True
           for trial in run.trials:
             if trial.status not in (
@@ -280,7 +308,7 @@ class WorkerProcessManager:
               all_done = False
               break
 
-          if all_done and run.trials:
+          if all_done:
             logging.info("Run %s completed", run.id)
             run.status = execution.RunStatus.COMPLETED
             run.completed_at = datetime.datetime.now(datetime.timezone.utc)

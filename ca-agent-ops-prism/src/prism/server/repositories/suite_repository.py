@@ -89,3 +89,14 @@ class SuiteRepository:
     self.session.flush()
     self.session.refresh(suite)
     return suite
+
+  def unarchive(self, suite_id: int) -> TestSuite:
+    """Unarchives a test suite."""
+    suite = self.get_by_id(suite_id)
+    if not suite:
+      raise ValueError(f"TestSuite with id {suite_id} not found")
+
+    suite.is_archived = False
+    self.session.flush()
+    self.session.refresh(suite)
+    return suite

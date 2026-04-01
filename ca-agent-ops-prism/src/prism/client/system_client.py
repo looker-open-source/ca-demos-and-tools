@@ -26,11 +26,11 @@ class SystemClient:
   @inject
   def start_worker_pool(
       self,
-      max_concurrent_trials: int = 2,
+      num_workers: int = 2,
       service: WorkerProcessManager = Depends(
           dependencies.get_worker_pool_service
       ),
   ) -> None:
     """Starts the background worker manager."""
-    service.max_concurrent_trials = max_concurrent_trials
+    service.max_concurrent_trials = num_workers
     service.start()

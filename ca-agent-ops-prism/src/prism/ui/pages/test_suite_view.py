@@ -167,6 +167,32 @@ def layout(suite_id: str = None):
       ),
       actions=[
           dmc.Button(
+              "Archive",
+              id=Ids.BTN_ARCHIVE,
+              leftSection=DashIconify(
+                  icon="material-symbols:archive", width=20
+              ),
+              color="gray",
+              variant="outline",
+              radius="md",
+              style={"display": "none"}
+              if getattr(suite, "is_archived", False)
+              else {"display": "block"},
+          ),
+          dmc.Button(
+              "Restore",
+              id=Ids.BTN_RESTORE,
+              leftSection=DashIconify(
+                  icon="material-symbols:settings-backup-restore", width=20
+              ),
+              color="green",
+              variant="filled",
+              radius="md",
+              style={"display": "block"}
+              if getattr(suite, "is_archived", False)
+              else {"display": "none"},
+          ),
+          dmc.Button(
               "Edit Test Suite",
               id=Ids.BTN_CONFIG_EDIT,
               leftSection=DashIconify(icon="material-symbols:edit", width=20),
@@ -307,6 +333,24 @@ def render_run_eval_modal():
                       placeholder="Search agents...",
                       data=[],
                       searchable=True,
+                  ),
+                  dmc.Switch(
+                      id=EvaluationIds.TOGGLE_SUGGESTIONS,
+                      label="Generate Suggested Assertions",
+                      description=(
+                          "Automatically suggest new assertions based on trace"
+                          " results (Uses LLM)."
+                      ),
+                      checked=False,
+                  ),
+                  dmc.NumberInput(
+                      id=EvaluationIds.INPUT_CONCURRENCY,
+                      label="Concurrency",
+                      description="Number of trials to run in parallel.",
+                      value=2,
+                      min=1,
+                      max=100,
+                      step=1,
                   ),
                   html.Div(id=EvaluationIds.AGENT_DETAILS),
                   dmc.Group(

@@ -515,6 +515,12 @@ def get_assertion_style(a_type: str):
         "bg": "pink",
         "label": "Looker Query Match",
         "badge": "LOOKML",
+        "desc": (
+            "Checks if the generated Looker query matches the specified"
+            " structure. A partial score is computed based on parameter match"
+            " ratio. The assertion evaluates to Pass if the match rate is >="
+            " 0.75."
+        ),
     })
   elif a_type == "data-check-row":
     style.update({

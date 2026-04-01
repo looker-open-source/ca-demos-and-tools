@@ -200,6 +200,19 @@ def layout():
           ),
       ],
       children=[
+          dmc.Group(
+              justify="flex-end",
+              mb="md",
+              children=[
+                  dmc.Switch(
+                      id=AgentIds.Home.SWITCH_ARCHIVED,
+                      label="Show Archived",
+                      size="sm",
+                      radius="md",
+                      checked=False,
+                  ),
+              ],
+          ),
           dmc.Paper(
               id=AgentIds.Home.CARD_GRID,
               withBorder=True,

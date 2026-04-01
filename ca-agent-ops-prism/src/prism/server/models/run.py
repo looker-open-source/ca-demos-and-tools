@@ -57,6 +57,15 @@ class Run(Base, BaseMixin):
   completed_at: orm.Mapped[datetime.datetime | None] = orm.mapped_column(
       sqlalchemy.DateTime(timezone=True), nullable=True
   )
+  generate_suggestions: orm.Mapped[bool] = orm.mapped_column(
+      sqlalchemy.Boolean,
+      default=False,
+      server_default=sqlalchemy.sql.expression.false(),
+      nullable=False,
+  )
+  concurrency: orm.Mapped[int] = orm.mapped_column(
+      sqlalchemy.Integer, default=2, server_default="2", nullable=False
+  )
 
   # Aggregated Stats
   @property

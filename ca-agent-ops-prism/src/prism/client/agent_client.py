@@ -21,6 +21,7 @@ from fast_depends import Depends
 from fast_depends import inject
 from prism.client import dependencies
 from prism.common.schemas import agent as agent_schemas
+from prism.server.services import ai_service
 from prism.server.services.agent_service import AgentService
 
 
@@ -60,6 +61,9 @@ def _map_agent(model: Any) -> agent_schemas.Agent:
               datasource=datasource,
               looker_client_id=gv("looker_client_id"),
               looker_client_secret=gv("looker_client_secret"),
+              golden_queries=ds_config.get("golden_queries")
+              if ds_config
+              else None,
           ),
           created_at=gv("created_at"),
           modified_at=gv("modified_at"),
@@ -78,9 +82,10 @@ class AgentsClient:
   @inject
   def list_agents(
       self,
+      include_archived: bool = False,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> Sequence[agent_schemas.Agent]:
-    models = service.list_agents()
+    models = service.list_agents(include_archived=include_archived)
     return [_map_agent(m) for m in models]
 
   @inject
@@ -122,6 +127,26 @@ class AgentsClient:
         name=name,
         config=config,
     )
+    return _map_agent(model)
+
+  @inject
+  def archive_agent(
+      self,
+      agent_id: int,
+      service: AgentService = Depends(dependencies.get_agent_service),
+  ) -> agent_schemas.Agent:
+    """Archives an agent."""
+    model = service.archive_agent(agent_id=agent_id)
+    return _map_agent(model)
+
+  @inject
+  def unarchive_agent(
+      self,
+      agent_id: int,
+      service: AgentService = Depends(dependencies.get_agent_service),
+  ) -> agent_schemas.Agent:
+    """Unarchives an agent."""
+    model = service.unarchive_agent(agent_id=agent_id)
     return _map_agent(model)
 
   @inject
@@ -174,16 +199,13 @@ class AgentsClient:
     return service.get_current_gcp_project()
 
   @inject
-  def list_gda_agents(
+  def discover_gcp_agents(
       self,
       project_id: str,
       location: str,
-      env: str,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> Sequence[agent_schemas.AgentBase]:
-    return service.discover_gcp_agents(
-        project_id=project_id, location=location, env=env
-    )
+    return service.discover_gcp_agents(project_id=project_id, location=location)
 
   @inject
   def get_gcp_agent_details(
@@ -245,3 +267,12 @@ class AgentsClient:
         client_id=client_id,
         client_secret=client_secret,
     )
+
+  @inject
+  def format_golden_queries_with_ai(
+      self,
+      text: str,
+      service: ai_service.AIService = Depends(dependencies.get_ai_service),
+  ) -> str:
+    """Formats golden queries using AI."""
+    return service.format_golden_queries(text)

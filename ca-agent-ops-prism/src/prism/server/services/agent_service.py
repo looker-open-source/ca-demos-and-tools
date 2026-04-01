@@ -20,6 +20,9 @@ import logging
 from typing import Any
 from typing import Sequence
 
+import google.auth
+import looker_sdk
+from looker_sdk.rtl import api_settings as looker_settings
 from prism.common.schemas.agent import AgentBase
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.agent import UniqueDatasources
@@ -28,18 +31,6 @@ from prism.server.config import settings
 from prism.server.models.agent import Agent
 from prism.server.repositories.agent_repository import AgentRepository
 from sqlalchemy.orm import Session
-
-try:
-  import google.auth
-except ImportError:
-  google = None
-
-try:
-  import looker_sdk
-  from looker_sdk.rtl import api_settings as looker_settings
-except ImportError:
-  looker_sdk = None
-  looker_settings = None
 
 
 class AgentService:
@@ -177,6 +168,10 @@ class AgentService:
   def archive_agent(self, agent_id: int) -> Agent:
     """Archives an agent."""
     return self.agent_repository.archive(agent_id=agent_id)
+
+  def unarchive_agent(self, agent_id: int) -> Agent:
+    """Unarchives an agent."""
+    return self.agent_repository.unarchive(agent_id=agent_id)
 
   def get_unique_datasources(self) -> UniqueDatasources:
     """Returns unique datasource names grouped by type (BQ, Looker)."""

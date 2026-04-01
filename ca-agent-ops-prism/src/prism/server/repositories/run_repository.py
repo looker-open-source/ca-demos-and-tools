@@ -54,6 +54,8 @@ class RunRepository:
       test_suite_snapshot_id: int,
       agent_id: int,
       agent_context_snapshot: dict[str, Any] | None = None,
+      generate_suggestions: bool = False,
+      concurrency: int = 2,
   ) -> Run:
     """Creates a new Run."""
     run = Run(
@@ -62,10 +64,50 @@ class RunRepository:
         agent_context_snapshot=agent_context_snapshot,
         status=RunStatus.PENDING,
         created_at=datetime.datetime.now(datetime.timezone.utc),
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
     )
     self.session.add(run)
     self.session.commit()
     return run
+
+  def promote_next_run(self) -> Run | None:
+    """Promotes the oldest PENDING run to RUNNING if no other run is active."""
+    # 1. Check if any run is already RUNNING
+    active = (
+        self.session.execute(
+            sqlalchemy.select(Run)
+            .where(Run.status == RunStatus.RUNNING)
+            .where(Run.is_archived.is_not(True))
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if active:
+      return None
+
+    # 2. Find oldest PENDING run
+    pending = (
+        self.session.execute(
+            sqlalchemy.select(Run)
+            .where(Run.status == RunStatus.PENDING)
+            .where(Run.is_archived.is_not(True))
+            .order_by(Run.created_at.asc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+
+    if pending:
+      pending.status = RunStatus.RUNNING
+      pending.started_at = datetime.datetime.now(datetime.timezone.utc)
+      self.session.commit()
+      self.session.refresh(pending)
+      return pending
+
+    return None
 
   def get_by_id(self, run_id: int) -> Run | None:
     """Gets a Run by ID."""
@@ -78,10 +120,32 @@ class RunRepository:
 
   def list_active(self) -> Sequence[Run]:
     """Lists all active (non-completed) runs."""
-    stmt = sqlalchemy.select(Run).where(
-        Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING])
+    stmt = (
+        sqlalchemy.select(Run)
+        .where(Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
+        .where(Run.is_archived.is_not(True))
     )
     return self.session.scalars(stmt).all()
+
+  def archive(self, run_id: int) -> Run:
+    """Archives a run."""
+    run = self.get_by_id(run_id)
+    if not run:
+      raise ValueError(f"Run with id {run_id} not found")
+    run.is_archived = True
+    self.session.commit()
+    self.session.refresh(run)
+    return run
+
+  def unarchive(self, run_id: int) -> Run:
+    """Unarchives a run."""
+    run = self.get_by_id(run_id)
+    if not run:
+      raise ValueError(f"Run with id {run_id} not found")
+    run.is_archived = False
+    self.session.commit()
+    self.session.refresh(run)
+    return run
 
   def get_latest_for_agent(self, agent_id: int) -> Run | None:
     """Gets the latest run for an agent."""
@@ -100,9 +164,13 @@ class RunRepository:
       agent_id: int | None = None,
       original_suite_id: int | None = None,
       status: RunStatus | None = None,
+      include_archived: bool = False,
   ) -> Sequence[Run]:
     """Lists recent runs with optional filtering."""
     stmt = sqlalchemy.select(Run).options(*self.eager_options())
+
+    if not include_archived:
+      stmt = stmt.where(Run.is_archived.is_not(True))
 
     if agent_id is not None:
       stmt = stmt.where(Run.agent_id == agent_id)
@@ -144,7 +212,12 @@ class RunRepository:
             .over(partition_by=Run.agent_id, order_by=Run.created_at.desc())
             .label("rn"),
         )
-        .where(Run.agent_id.in_(agent_ids))
+        .where(
+            sqlalchemy.and_(
+                Run.agent_id.in_(agent_ids),
+                Run.is_archived.is_not(True),
+            )
+        )
         .subquery()
     )
 
@@ -241,6 +314,7 @@ class RunRepository:
               Run.agent_id == agent_id,
               Run.created_at >= start,
               Run.created_at < end,
+              Run.is_archived.is_not(True),
           )
       )
       return self.session.execute(stmt).one()
@@ -265,7 +339,10 @@ class RunRepository:
             orm.joinedload(Run.trials),
             orm.joinedload(Run.snapshot_suite),
         )
-        .where(Run.agent_id == agent_id)
+        .where(
+            Run.agent_id == agent_id,
+            Run.is_archived.is_not(True),
+        )
         .order_by(Run.created_at.desc())
         .limit(5)
     )
@@ -324,6 +401,7 @@ class RunRepository:
         .where(
             Run.agent_id == agent_id,
             Run.created_at >= start_date,
+            Run.is_archived.is_not(True),
             sqlalchemy.or_(
                 AssertionSnapshot.weight > 0, AssertionSnapshot.id.is_(None)
             ),
@@ -419,7 +497,12 @@ class RunRepository:
             .over(partition_by=Run.agent_id, order_by=Run.created_at.desc())
             .label("rn"),
         )
-        .where(Run.agent_id.in_(agent_ids))
+        .where(
+            sqlalchemy.and_(
+                Run.agent_id.in_(agent_ids),
+                Run.is_archived.is_not(True),
+            )
+        )
         .subquery()
     )
 

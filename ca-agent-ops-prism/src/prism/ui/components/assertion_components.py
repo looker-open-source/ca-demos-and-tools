@@ -476,7 +476,12 @@ def get_assertion_style(a_type: str) -> dict[str, Any]:
         "bg": "pink",
         "label": "Looker Query Match",
         "badge": "LOOKML",
-        "desc": "Matches Looker query parameters using YAML configuration.",
+        "desc": (
+            "Checks if the generated Looker query matches the specified"
+            " structure. A partial score is computed based on parameter match"
+            " ratio. The assertion evaluates to Pass if the match rate is >="
+            " 0.75."
+        ),
     })
   elif a_type == "data-check-row":
     style.update({
@@ -1493,8 +1498,8 @@ def get_assertion_result_key(ar: Any) -> str:
     return f"orig-{assertion['original_assertion_id']}"
 
   # 2. Fallback to content-based matching for ad-hoc assertions or missing IDs
-  # We do NOT use assertion.get('id') here because that is often the Snapshot ID,
-  # which changes for every run and prevents alignment.
+  # We do NOT use assertion.get('id') here because that is often the Snapshot
+  # ID, which changes for every run and prevents alignment.
   a_type = assertion.get("type", "unknown")
   a_val = str(assertion.get("value", ""))
   if not a_val and "params" in assertion:

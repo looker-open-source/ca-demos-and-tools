@@ -34,6 +34,9 @@ from prism.common.schemas.trace import AskQuestionResponse
 import pydantic
 
 
+LOOKER_QUERY_MATCH_THRESHOLD = 0.75
+
+
 def check_text_contains(
     response: AskQuestionResponse, assertion: TextContains
 ) -> AssertionResult:
@@ -306,10 +309,66 @@ def check_chart_type(
   )
 
 
+def _normalize_filter_value(val: str) -> frozenset[str]:
+  """Normalizes a Looker filter value for order-independent comparison.
+
+  Args:
+    val: The Looker filter value string to normalize.
+
+  Returns:
+    A frozenset of the normalized filter values.
+
+  - Replaces URL-encoded spaces (+) with actual spaces.
+  - Splits by unescaped commas to handle list/OR values.
+  - Respects quotes (commas inside quotes are not split).
+  - Replaces escaped commas (^,) with literal commas.
+  """
+  if not val:
+    return frozenset()
+
+  # Replace URL-encoded spaces
+  val = val.replace("+", " ")
+
+  # Strip whitespace from the entire string
+  val = val.strip()
+
+  parts = []
+  current_part = []
+  in_quotes = False
+  i = 0
+  while i < len(val):
+    char = val[i]
+    if char == "^":
+      # Escape next character
+      if i + 1 < len(val):
+        current_part.append(val[i + 1])
+        i += 1
+      else:
+        current_part.append(char)
+    elif char == '"' or char == "'":
+      # Toggle quotes
+      in_quotes = not in_quotes
+      # Do not append the quote character itself to the final value
+    elif char == "," and not in_quotes:
+      # Split point
+      parts.append("".join(current_part).strip())
+      current_part = []
+    else:
+      current_part.append(char)
+
+    i += 1
+
+  parts.append("".join(current_part).strip())
+
+  # Filter out empty parts
+  normalized = [p for p in parts if p]
+  return frozenset(normalized)
+
+
 def check_looker_query_match(
     response: AskQuestionResponse, assertion: LookerQueryMatch
 ) -> AssertionResult:
-  """Checks if any Looker query matches parameters."""
+  """Checks if any Looker query matches parameters, with partial scoring."""
   if not assertion.params:
     return AssertionResult(
         assertion=assertion,
@@ -336,34 +395,62 @@ def check_looker_query_match(
         reasoning="No Looker query found in trace.",
     )
 
-  reasons = []
   p = assertion.params
 
+  # Calculate total possible points based on defined expected parameters
+  total_points = 0
+  if p.model is not None:
+    total_points += 1
+  if p.explore is not None:
+    total_points += 1
+  if p.limit is not None:
+    total_points += 1
+  if p.fields:
+    total_points += 1
+  if p.sorts:
+    total_points += 1
+  if p.filters:
+    total_points += 1
+
+  if total_points == 0:
+    return AssertionResult(
+        assertion=assertion,
+        passed=True,
+        score=1.0,
+        reasoning="No specific Looker Query Match criteria defined.",
+    )
+
+  best_score = -1.0
+  best_reasons = []
+
   for query in found_queries:
-    match = True
+    earned_points = 0.0
     current_reasons = []
 
     # 1. Exact Match
     if p.model is not None:
       actual_model = str(query.get("model"))
-      if actual_model != str(p.model):
-        match = False
+      if actual_model == str(p.model):
+        earned_points += 1.0
+      else:
         current_reasons.append(
             f"model: expected '{p.model}', got '{actual_model}'"
         )
 
     if p.explore is not None:
       actual_explore = str(query.get("explore"))
-      if actual_explore != str(p.explore):
-        match = False
+      if actual_explore == str(p.explore):
+        earned_points += 1.0
+      else:
         current_reasons.append(
             f"explore: expected '{p.explore}', got '{actual_explore}'"
         )
 
     if p.limit is not None:
       actual_limit = str(query.get("limit"))
-      if actual_limit != str(p.limit):
-        match = False
+      if actual_limit == str(p.limit):
+        earned_points += 1.0
+      else:
         current_reasons.append(
             f"limit: expected '{p.limit}', got '{actual_limit}'"
         )
@@ -372,8 +459,9 @@ def check_looker_query_match(
     if p.fields:
       expected_fields = set(p.fields)
       actual_fields = set(query.get("fields", []))
-      if not expected_fields.issubset(actual_fields):
-        match = False
+      if expected_fields.issubset(actual_fields):
+        earned_points += 1.0
+      else:
         current_reasons.append(
             f"fields: missing {expected_fields - actual_fields}"
         )
@@ -381,16 +469,19 @@ def check_looker_query_match(
     if p.sorts:
       expected_sorts = set(p.sorts)
       actual_sorts = set(query.get("sorts", []))
-      if not expected_sorts.issubset(actual_sorts):
-        match = False
+      if expected_sorts.issubset(actual_sorts):
+        earned_points += 1.0
+      else:
         current_reasons.append(
             f"sorts: missing {expected_sorts - actual_sorts}"
         )
 
     # 3. Filters
     if p.filters:
-      # Pydantic ensures p.filters is list[LookerFilterSchema]
-      expected_filters = {(f.field, str(f.value)) for f in p.filters}
+      # Normalize expected filters
+      expected_filters = {
+          (f.field, _normalize_filter_value(str(f.value))) for f in p.filters
+      }
 
       # Actual data from trace remains raw/varied
       actual_filters_raw = query.get("filters", [])
@@ -400,31 +491,53 @@ def check_looker_query_match(
           if isinstance(f, dict):
             field = f.get("field")
             value = f.get("value")
-            if field:
-              actual_filters.add((str(field), str(value)))
+            if field and value is not None:
+              actual_filters.add(
+                  (str(field), _normalize_filter_value(str(value)))
+              )
       elif isinstance(actual_filters_raw, dict):
         for k, v in actual_filters_raw.items():
-          actual_filters.add((str(k), str(v)))
+          actual_filters.add((str(k), _normalize_filter_value(str(v))))
 
       missing = expected_filters - actual_filters
-      if missing:
-        match = False
-        current_reasons.append(f"filters: missing {missing}")
+      if not missing:
+        earned_points += 1.0
+      else:
+        # Simplify display of missing filters
+        missing_str = ", ".join(f"{f}='{{{','.join(v)}}}'" for f, v in missing)
+        current_reasons.append(f"filters: missing {missing_str}")
 
-    if match:
-      return AssertionResult(
-          assertion=assertion,
-          passed=True,
-          score=1.0,
-          reasoning="Found matching Looker query.",
+    score = earned_points / total_points
+    if score > best_score:
+      best_score = score
+      best_reasons = current_reasons
+
+  passed = best_score >= LOOKER_QUERY_MATCH_THRESHOLD
+  final_score = 1.0 if passed else 0.0
+  if passed:
+    if best_score == 1.0:
+      reasoning = "Found Looker query matching all criteria."
+    else:
+      reasoning = (
+          "Found Looker query matching most criteria (Match Rate:"
+          f" {best_score:.2f}). Minor mismatches: {'; '.join(best_reasons)}"
       )
-    reasons.extend(current_reasons)
+  elif best_score > 0.0:
+    reasoning = (
+        f"Mismatches (Match Rate: {best_score:.2f}): {'; '.join(best_reasons)}"
+    )
+  else:
+    reasons_str = "; ".join(best_reasons)
+    reasoning = (
+        "No matching Looker query criteria (Match Rate: 0.00). Failures:"
+        f" {reasons_str}"
+    )
 
   return AssertionResult(
       assertion=assertion,
-      passed=False,
-      score=0.0,
-      reasoning=f"No matching Looker query. Failures: {'; '.join(reasons)}",
+      passed=passed,
+      score=final_score,
+      reasoning=reasoning,
   )
 
 
@@ -509,7 +622,7 @@ Return a boolean verdict and a concise explanation.
         score=1.0 if result.verdict else 0.0,
         reasoning=result.explanation,
     )
-  except Exception as e:
+  except Exception as e:  # pylint: disable=broad-exception-caught
     return AssertionResult(
         assertion=assertion,
         passed=False,

@@ -37,27 +37,35 @@ standalone Python package with a Dash-based UI.
 
 ### 1. Prerequisites
 
-- Python 3.10+
-- PostgreSQL (Local or Cloud SQL)
-- Google Cloud SDK (for Gen AI features)
+-   **uv** (Required: https://astral.sh/uv)
+-   Python (Managed by **uv**, see `pyproject.toml`)
+-   Docker (Recommended for local database)
+-   PostgreSQL (Optional, if not using Docker)
+-   Google Cloud SDK (for Gen AI features)
 
 ### 2. Setup (Automated)
-The easiest way to get started is using the provided setup script, which
-automates dependency installation via `uv`:
-```bash
-./scripts/setup.sh
-```
-To also set up a local PostgreSQL database automatically (requires `sudo` and
-PostgreSQL installed), use:
-```bash
-./scripts/setup.sh --db
-```
-The script will:
-1. Ensure `uv` is installed.
-2. Synchronize all dependencies and create/update the virtual environment in
-   `.venv`.
-3. (If `--db` is used) Create the `prism` and `prism_test` databases and run
-   migrations.
+
+Prism leverages **uv's automatic synchronization**, so there is no manual installation step for the Python environment.
+
+To set up a local PostgreSQL database automatically (uses Docker by default), run:
+`bash ./scripts/setup_postgres.sh`
+
+> [!IMPORTANT]
+> This project requires **uv** to be installed on your system.
+> If you don't have it, install it first: https://astral.sh/uv
+
+1. Initialize the project environment (happens automatically via `uv run`).
+2. Spin up a Dockerized PostgreSQL container
+(`postgres_local`), create the `prism` and `prism_test` databases, and run
+migrations.
+
+> [!NOTE]
+> This project leverages **uv's automatic synchronization**. You do not need to
+> manually manage virtual environments. Running any script or `uv run` command
+> will automatically ensure your environment is in sync with `pyproject.toml`.
+
+> [!TIP] If you prefer to use a local PostgreSQL installation instead of Docker,
+> use: `./scripts/setup_postgres.sh --no-docker`
 
 ### 3. Running the Application
 
@@ -85,12 +93,15 @@ Prism uses environment variables for configuration. These can be defined in
 a `.env` file in the root directory.
 
 ### Database Configuration
-| Variable | Description | Default |
-| :--- | :--- | :--- |
-| `DATABASE_URL` | Standard SQLAlchemy connection URI. | `postgresql://localhost/prism` |
-| `DB_USER` | Database username. | `postgres` |
-| `DB_PASS` | Database password. | `""` |
-| `DB_NAME` | Database name. | `prism` |
+
+| Variable            | Description      | Default                             |
+| :------------------ | :--------------- | :---------------------------------- |
+| `DATABASE_URL`      | Primary database | `postgresql://localhost/prism`      |
+:                     : connection URI.  :                                     :
+| `TEST_DATABASE_URL` | Test database    | `postgresql://localhost/prism_test` |
+:                     : connection URI   :                                     :
+:                     : (used by         :                                     :
+:                     : pytest).         :                                     :
 
 ### GCP Project Configuration
 Prism interacts with GCP services for agent execution and LLM-based evaluation:
@@ -123,32 +134,41 @@ For production deployments on Google Cloud, we recommend **Cloud Run**
 connected to **Cloud SQL (PostgreSQL)**.
 
 #### IAM Roles
-The Cloud Run service account may require the following IAM roles:
 
-- `BigQuery User`
-- `Cloud Build Service Account`
-- `Cloud SQL Client`
-- `Gemini Data Analytics Data Agent Owner (Beta)`
-- `Gemini for Google Cloud User`
-- `Secret Manager Secret Accessor`
-- `Vertex AI User` (for Gen AI evaluation)
+The Cloud Run default compute service account requires the following IAM roles:
+
+-   `BigQuery User` and `BigQuery Data Viewer` (if using BQ Agents)
+-   `Cloud SQL Client`
+-   `Cloud Build Service Account`
+-   `Gemini Data Analytics Data Agent Owner`
+-   `Gemini Data Analytics Data Agent Creator`
+-   `Secret Manager Secret Accessor`
+-   `Vertex AI User` (for Gen AI evaluation)
+
+> [!WARNING] **Cloud Run CPU Throttling and Memory** Prism uses Python
+> `multiprocessing` for asynchronous evaluations inside of a background
+> `WorkerProcessManager`. Because of this, it is required to deploy your Cloud
+> Run service with **`--no-cpu-throttling`** (so your background evaluators
+> don't crash when HTTP requests finish) and at least **`--memory=1024Mi`** (to
+> handle the duplicated memory footprint of subprocesses).
 
 #### Deployment Checklist:
+
 1.  **Build and Push**: Push your image to Artifact Registry.
 2.  **Database**: Create a Cloud SQL instance.
 3.  **Secrets**: Store your database password in Secret Manager.
-4.  **Deploy**: Use `gcloud run deploy` with the following key configurations:
-    - Add Cloud SQL instance connection.
-    - Set `DATABASE_URL` or connection environment variables.
+4.  **Deploy**: Use `gcloud run deploy` with the following requirements:
+    -   Include the `--no-cpu-throttling` flag.
+    -   Add the Cloud SQL instance connection.
+    -   Set the **`DATABASE_URL`** or **`INSTANCE_CONNECTION_NAME`** environment
+        variable.
 
-Example deployment command (simplified):
-```bash
-gcloud run deploy prism-app \
-  --image GCR_IMAGE_URL \
-  --add-cloudsql-instances INSTANCE_CONNECTION_NAME \
-  --set-env-vars "INSTANCE_CONNECTION_NAME=...,DB_NAME=prism,DB_USER=postgres" \
-  --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"
-```
+Example deployment command: `bash gcloud run deploy prism-app \ --image
+ARTIFACT_REGISTRY_IMAGE_URL \ --region us-central1 \ --no-cpu-throttling \
+--memory=1024Mi \ --add-cloudsql-instances YOUR_INSTANCE_CONNECTION_NAME \
+--set-env-vars
+"INSTANCE_CONNECTION_NAME=YOUR_INSTANCE_CONNECTION_NAME,DB_NAME=prism,DB_USER=postgres"
+\ --set-secrets "DB_PASS=YOUR_SECRET_NAME:latest"`
 
 ## Testing
 Run the test suite using the provided script:

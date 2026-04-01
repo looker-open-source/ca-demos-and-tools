@@ -31,6 +31,7 @@ def _setup_test_data(db_session: Session):
       agent_id=agent.id,
       test_suite_snapshot_id=suite_snap.id,
       status=RunStatus.RUNNING,
+      is_archived=False,
   )
   db_session.add(run)
   db_session.flush()

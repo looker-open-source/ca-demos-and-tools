@@ -43,6 +43,7 @@ class TestComparisonOrdering(unittest.TestCase):
         test_suite_snapshot_id=1,
         agent_id=1,
         created_at=now,
+        is_archived=False,
     )
     run2 = Run(
         id=2,
@@ -51,6 +52,7 @@ class TestComparisonOrdering(unittest.TestCase):
         test_suite_snapshot_id=1,
         agent_id=1,
         created_at=now,
+        is_archived=False,
     )
 
     self.run_repository.get_by_id.side_effect = [run1, run2]
@@ -112,6 +114,7 @@ class TestComparisonOrdering(unittest.TestCase):
         test_suite_snapshot_id=1,
         agent_id=1,
         created_at=datetime.datetime.now(datetime.timezone.utc),
+        is_archived=False,
     )
     run2 = Run(
         id=2,
@@ -120,6 +123,7 @@ class TestComparisonOrdering(unittest.TestCase):
         test_suite_snapshot_id=2,
         agent_id=1,
         created_at=datetime.datetime.now(datetime.timezone.utc),
+        is_archived=False,
     )
 
     self.run_repository.get_by_id.side_effect = [run1, run2]

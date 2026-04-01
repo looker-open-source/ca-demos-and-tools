@@ -1,8 +1,10 @@
 import datetime
 from prism.common.schemas.execution import RunStatus
 from prism.server.models.agent import Agent
+from prism.server.models.assertion import AssertionResult, AssertionSnapshot, AssertionType
 from prism.server.models.run import Run
 from prism.server.models.run import Trial
+from prism.server.models.snapshot import ExampleSnapshot, TestSuiteSnapshot
 from prism.server.services.dashboard_service import DashboardService
 import pytest
 from sqlalchemy import orm
@@ -18,8 +20,6 @@ def test_get_dashboard_stats_accuracy_history(db_session: orm.Session):
   )
   db_session.add(agent)
   db_session.commit()
-
-  from prism.server.models.snapshot import TestSuiteSnapshot, ExampleSnapshot
 
   suite_snap = TestSuiteSnapshot(name="S1", original_suite_id=1)
   db_session.add(suite_snap)
@@ -41,11 +41,10 @@ def test_get_dashboard_stats_accuracy_history(db_session: orm.Session):
       status=RunStatus.COMPLETED,
       started_at=now - datetime.timedelta(days=1),
       test_suite_snapshot_id=suite_snap.id,
+      is_archived=False,
   )
   db_session.add(run)
   db_session.commit()
-
-  from prism.server.models.assertion import AssertionResult, AssertionSnapshot, AssertionType
 
   snap = AssertionSnapshot(
       example_snapshot_id=ex_snap.id,
