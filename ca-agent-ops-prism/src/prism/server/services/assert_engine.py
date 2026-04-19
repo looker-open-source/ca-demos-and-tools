@@ -15,22 +15,27 @@
 """Functional assertion logic for evaluating AskQuestionResponse."""
 
 import json
+import math
+from collections import Counter
 from typing import Any
 
 from google.cloud import geminidataanalytics
 from prism.common.schemas.assertion import AIJudge
 from prism.common.schemas.assertion import Assertion
 from prism.common.schemas.assertion import AssertionType
+from prism.common.schemas.assertion import BaselineDataMatch
 from prism.common.schemas.assertion import ChartCheckType
 from prism.common.schemas.assertion import DataCheckRow
 from prism.common.schemas.assertion import DataCheckRowCount
 from prism.common.schemas.assertion import DurationMaxMs
 from prism.common.schemas.assertion import LatencyMaxMs
 from prism.common.schemas.assertion import LookerQueryMatch
+from prism.common.schemas.assertion import QueryBaselineDataMatch
 from prism.common.schemas.assertion import QueryContains
 from prism.common.schemas.assertion import TextContains
 from prism.common.schemas.execution import AssertionResult
 from prism.common.schemas.trace import AskQuestionResponse
+import pandas as pd
 import pydantic
 
 
@@ -631,11 +636,275 @@ Return a boolean verdict and a concise explanation.
     )
 
 
+def _normalize_rows_to_df(
+    rows: list[dict[str, Any]], numeric_tolerance: float  # noqa: ARG001
+) -> pd.DataFrame:
+  """Converts a list of row-dicts to a plain DataFrame.
+
+  No column-level coercion is performed here; all normalization happens
+  per-cell inside ``_df_to_row_multiset`` via ``_canonical_cell_value``.
+  The DataFrame is only used for column-count and row-count checks.
+  """
+  if not rows:
+    return pd.DataFrame()
+  return pd.DataFrame(rows)
+
+
+def _canonical_cell_value(v: Any, precision: int) -> str:
+  """Normalize a single cell value to a canonical string.
+
+  Rules (applied in order):
+    1. ``None`` / ``NaN``-like → ``"NULL"``
+    2. Already a numeric type → round to *precision* decimal places, then
+       drop trailing ``".0"`` for whole numbers.
+    3. String that parses as a number → same rounding/formatting as (2).
+    4. Anything else → lowercased, whitespace-stripped string.
+
+  This mirrors the ``_canonical_value`` function in the eval_runner
+  benchmark so that the two comparison methods stay in sync.
+  """
+  # Rule 1: null / NaN
+  try:
+    if pd.isna(v):
+      return "NULL"
+  except (TypeError, ValueError):
+    pass
+
+  # Rule 2 & 3: numeric or numeric-looking string
+  try:
+    f = float(v)
+    f_rounded = round(f, precision)
+    if f_rounded == int(f_rounded) and abs(f_rounded) < 1e15:
+      return str(int(f_rounded))
+    return repr(f_rounded)
+  except (ValueError, TypeError):
+    pass
+
+  # Rule 4: plain string
+  return str(v).strip().lower()
+
+
+def _df_to_json_str(df: pd.DataFrame) -> str:
+  """Serialises a DataFrame to a compact JSON string for error messages."""
+  return json.dumps(df.to_dict(orient="records"), ensure_ascii=False, default=str)
+
+
+def _df_to_row_multiset(
+    df: pd.DataFrame, precision: int
+) -> "Counter[tuple[str, ...]]":
+  """Converts a DataFrame to a multiset of rows.
+
+  Each row becomes a **sorted** tuple of canonical cell strings, making
+  comparison independent of column order, column names, and row order.
+  """
+  rows = [
+      tuple(sorted(_canonical_cell_value(v, precision) for v in row))
+      for row in df.itertuples(index=False, name=None)
+  ]
+  return Counter(rows)
+
+
+def check_baseline_data_match(
+    response: AskQuestionResponse, assertion: BaselineDataMatch
+) -> AssertionResult:
+  """Compares agent result data against a pre-executed baseline dataset.
+
+  Implements execution-based accuracy as described in the Spider/BIRD
+  benchmarks: DataFrames are compared after normalizing column names, column
+  order, and row order.  A numeric tolerance is applied so that equivalent
+  floating-point representations are treated as equal.
+  """
+  agent_rows = _get_last_data_result(response)
+  if agent_rows is None:
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning="No data result found in trace.",
+    )
+
+  tol = assertion.numeric_tolerance
+  _precision = (
+      max(0, round(-math.log10(tol))) if tol > 0 else 9
+  )
+  agent_df = _normalize_rows_to_df(agent_rows, tol)
+  baseline_df = _normalize_rows_to_df(assertion.baseline_rows, tol)
+
+  # Column-count check (names and order are ignored; only the number of
+  # columns must match so the multiset comparison is meaningful).
+  if len(agent_df.columns) != len(baseline_df.columns):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Column count mismatch — agent returned {len(agent_df.columns)}"
+            f" column(s), baseline has {len(baseline_df.columns)} column(s)."
+        ),
+    )
+
+  # Row-count check (fast-exit before multiset comparison)
+  if len(agent_df) != len(baseline_df):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Row count mismatch — agent returned {len(agent_df)} rows,"
+            f" baseline has {len(baseline_df)} rows."
+        ),
+    )
+
+  # Multiset comparison: column names and order are irrelevant;
+  # only the set of values in each row matters.
+  if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(baseline_df, _precision):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            "Value mismatch — agent result does not match baseline data.\n"
+            f"Agent data: {_df_to_json_str(agent_df)}\n"
+            f"Baseline data: {_df_to_json_str(baseline_df)}"
+        ),
+    )
+
+  return AssertionResult(
+      assertion=assertion,
+      passed=True,
+      score=1.0,
+      reasoning=(
+          f"Agent data matches baseline ({len(baseline_df)} rows,"
+          f" {len(baseline_df.columns)} columns)."
+      ),
+  )
+
+
+def check_query_baseline_data_match(
+    response: AskQuestionResponse,
+    assertion: QueryBaselineDataMatch,
+    bq_client: Any | None = None,
+) -> AssertionResult:
+  """Compares agent result data against a live BigQuery baseline query.
+
+  Executes ``assertion.value`` against BigQuery at evaluation time,
+  then delegates to the same flexible DataFrame comparison used by
+  ``check_baseline_data_match``.  This avoids stale static baselines when
+  the underlying dataset changes.
+
+  Args:
+    response: The agent’s AskQuestionResponse.
+    assertion: The QueryBaselineDataMatch assertion to evaluate.
+    bq_client: A ``google.cloud.bigquery.Client`` instance.  If ``None`` the
+      assertion fails immediately with a descriptive error.
+
+  Returns:
+    An AssertionResult with pass/fail and a reasoning message.
+  """
+  if bq_client is None:
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning="BigQuery client not available. Ensure ADC credentials are configured and PRISM_GENAI_CLIENT_PROJECT is set.",
+    )
+
+  agent_rows = _get_last_data_result(response)
+  if agent_rows is None:
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning="No data result found in agent trace.",
+    )
+
+  # Execute the reference query against BigQuery
+  try:
+    query_job = bq_client.query(assertion.value)
+    # Add a 60s timeout to prevent hanging the worker indefinitely
+    bq_rows = query_job.result(timeout=60)
+    baseline_rows = [dict(row) for row in bq_rows]
+  except Exception as exc:  # pylint: disable=broad-exception-caught
+    # Truncate potentially long BQ error messages to keep the UI clean
+    err_msg = str(exc)
+    if len(err_msg) > 500:
+      err_msg = err_msg[:500] + "..."
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=f"BigQuery baseline query failed: {err_msg}",
+    )
+
+  if not baseline_rows:
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning="BigQuery baseline query returned no rows.",
+    )
+
+  tol = assertion.numeric_tolerance
+  _precision = (
+      max(0, round(-math.log10(tol))) if tol > 0 else 9
+  )
+  agent_df = _normalize_rows_to_df(agent_rows, tol)
+  baseline_df = _normalize_rows_to_df(baseline_rows, tol)
+
+  # Column-count check (names and order are ignored).
+  if len(agent_df.columns) != len(baseline_df.columns):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Column count mismatch — agent returned {len(agent_df.columns)}"
+            f" column(s), baseline query has {len(baseline_df.columns)} column(s)."
+        ),
+    )
+
+  # Row-count check (fast-exit before multiset comparison)
+  if len(agent_df) != len(baseline_df):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Row count mismatch — agent returned {len(agent_df)} rows,"
+            f" baseline query returned {len(baseline_df)} rows."
+        ),
+    )
+
+  # Multiset comparison: column names and order are irrelevant.
+  if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(baseline_df, _precision):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            "Value mismatch — agent result does not match BigQuery baseline.\n"
+            f"Agent data: {_df_to_json_str(agent_df)}\n"
+            f"Baseline data: {_df_to_json_str(baseline_df)}"
+        ),
+    )
+
+  return AssertionResult(
+      assertion=assertion,
+      passed=True,
+      score=1.0,
+      reasoning=(
+          f"Agent data matches BigQuery baseline ({len(baseline_df)} rows,"
+          f" {len(baseline_df.columns)} columns)."
+      ),
+  )
+
+
 def evaluate_all(
     response: AskQuestionResponse,
     assertions: list[Assertion],
     llm_client: Any | None = None,
     question: str | None = None,
+    bq_client: Any | None = None,
 ) -> list[AssertionResult]:
   """Evaluates a list of assertions against a response."""
   results = []
@@ -660,6 +929,12 @@ def evaluate_all(
       case AssertionType.AI_JUDGE:
         results.append(
             check_ai_judge(response, assertion, llm_client, question)
+        )
+      case AssertionType.BASELINE_DATA_MATCH:
+        results.append(check_baseline_data_match(response, assertion))
+      case AssertionType.QUERY_BASELINE_DATA_MATCH:
+        results.append(
+            check_query_baseline_data_match(response, assertion, bq_client)
         )
       case _:
         results.append(

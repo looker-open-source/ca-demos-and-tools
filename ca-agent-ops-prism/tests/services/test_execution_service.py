@@ -153,3 +153,22 @@ def test_execute_trial_failure(db_session: Session):
   assert "Agent Explosion!" in trial.error_message
   assert "traceback" in trial.error_traceback.lower()
   assert "ask_question" in trial.error_traceback
+
+
+def test_execution_service_bq_client_lazy_init(db_session: Session):
+  """Tests that bq_client is lazily initialized."""
+  service = ExecutionService(
+      db_session,
+      unittest.mock.MagicMock(),
+      unittest.mock.MagicMock(),
+  )
+  # Should be None initially
+  assert service._bq_client is None
+
+  with unittest.mock.patch("google.cloud.bigquery.Client") as mock_bq_class:
+    client = service.bq_client
+    assert client is not None
+    mock_bq_class.assert_called_once()
+    # Subsequent calls should return the same client without re-initializing
+    assert service.bq_client is client
+    assert mock_bq_class.call_count == 1

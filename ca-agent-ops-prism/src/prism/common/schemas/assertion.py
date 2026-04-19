@@ -39,6 +39,9 @@ class AssertionType(str, enum.Enum):
   LOOKER_QUERY_MATCH = "looker-query-match"
   # AI
   AI_JUDGE = "ai-judge"
+  # Baseline
+  BASELINE_DATA_MATCH = "baseline-data-match"
+  QUERY_BASELINE_DATA_MATCH = "query-baseline-data-match"
 
 
 class AssertionSchema(pydantic.BaseModel):
@@ -178,6 +181,40 @@ class AIJudgeSchema(AssertionSchema):
   value: str = pydantic.Field(min_length=1)
 
 
+class BaselineDataMatchSchema(AssertionSchema):
+  """Compares agent result data against a pre-executed baseline dataset.
+
+  Implements execution-based accuracy: both the agent data and the baseline are
+  converted to DataFrames and compared flexibly — column order, row order, and
+  column name casing are ignored; only the actual values must match.
+  """
+
+  type: Literal[AssertionType.BASELINE_DATA_MATCH] = (
+      AssertionType.BASELINE_DATA_MATCH
+  )
+  baseline_rows: list[dict[str, Any]] = pydantic.Field(min_length=1)
+  numeric_tolerance: float = 1e-9
+
+
+class QueryBaselineDataMatchSchema(AssertionSchema):
+  """Compares agent result data against a live BigQuery baseline query.
+
+  Instead of storing static rows, this assertion executes a reference SQL query
+  against BigQuery at evaluation time and compares the resulting rows to the
+  agent’s data using the same flexible DataFrame comparison as
+  BaselineDataMatch (column order, row order, and column name casing ignored).
+
+  The query is executed with ADC credentials against the GCP project configured
+  for Prism (``PRISM_GENAI_CLIENT_PROJECT``).
+  """
+
+  type: Literal[AssertionType.QUERY_BASELINE_DATA_MATCH] = (
+      AssertionType.QUERY_BASELINE_DATA_MATCH
+  )
+  value: str = pydantic.Field(min_length=1)
+  numeric_tolerance: float = 1e-9
+
+
 # --- Persisted Versions (Inherit from Schema + BaseAssertion) ---
 
 
@@ -217,6 +254,14 @@ class AIJudge(AIJudgeSchema, BaseAssertion):
   pass
 
 
+class BaselineDataMatch(BaselineDataMatchSchema, BaseAssertion):
+  pass
+
+
+class QueryBaselineDataMatch(QueryBaselineDataMatchSchema, BaseAssertion):
+  pass
+
+
 # Discriminated Unions
 
 # Using schemas for Generation
@@ -230,6 +275,8 @@ AssertionRequest = Union[
     DataCheckRowSchema,
     LookerQueryMatchSchema,
     AIJudgeSchema,
+    BaselineDataMatchSchema,
+    QueryBaselineDataMatchSchema,
 ]
 
 # Using persisted models for Storage/API
@@ -244,6 +291,8 @@ Assertion = Annotated[
         DataCheckRow,
         LookerQueryMatch,
         AIJudge,
+        BaselineDataMatch,
+        QueryBaselineDataMatch,
     ],
     pydantic.Discriminator("type"),
 ]

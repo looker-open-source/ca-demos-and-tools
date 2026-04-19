@@ -57,6 +57,7 @@ class ExecutionService:
       suggestion_service: (
           Any | None
       ) = None,  # Avoid circular import if needed, or import properly
+      bq_client: Any | None = None,
   ):
     """Initializes the ExecutionService."""
     self.session = session
@@ -64,6 +65,7 @@ class ExecutionService:
     self.client = client
     self._gen_ai_client = gen_ai_client
     self.suggestion_service = suggestion_service
+    self._bq_client = bq_client
     # Instantiate Repositories
     self.agent_repository = AgentRepository(session)
     self.run_repository = RunRepository(session)
@@ -172,6 +174,18 @@ class ExecutionService:
           location=settings.gcp_genai_location,
       )
     return self._gen_ai_client
+
+  @property
+  def bq_client(self) -> Any | None:
+    """Returns a BigQuery client, lazily initializing it from ADC."""
+    if self._bq_client is None:
+      try:
+        from google.cloud import bigquery  # pylint: disable=import-outside-toplevel
+        project = settings.gcp_genai_project
+        self._bq_client = bigquery.Client(project=project)
+      except Exception as exc:  # pylint: disable=broad-exception-caught
+        logging.warning("Could not initialize BigQuery client: %s", exc)
+    return self._bq_client
 
   def execute_trial(self, trial_id: int) -> Trial:
     """Executes a single trial by ID.
@@ -294,6 +308,7 @@ class ExecutionService:
           assertions=assertions,
           llm_client=self.gen_ai_client,
           question=question,
+          bq_client=self.bq_client,
       )
 
       # Save results to DB
@@ -386,6 +401,7 @@ class ExecutionService:
         assertions=assertions,
         llm_client=self.gen_ai_client,
         question=trial.example_snapshot.question,
+        bq_client=self.bq_client,
     )
 
     # Note: We are returning the results but NOT updating the trial in DB
@@ -499,6 +515,7 @@ class ExecutionService:
         assertions=assertions,
         llm_client=self.gen_ai_client,
         question=question,
+        bq_client=self.bq_client,
     )
 
     # 5. Construct Result
