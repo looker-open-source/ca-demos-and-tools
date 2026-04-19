@@ -2049,6 +2049,7 @@ def update_trial_suggestion_edit_ui(assert_type: str | None):
       "json_valid",
       "looker-query-match",
       "data-check-row",
+      "query-baseline-data-match",
   ]
   container_style = {"display": "block"} if example else {"display": "none"}
 
