@@ -748,6 +748,11 @@ def _compare_dataframes(
 
   # Multiset comparison: column names and order are irrelevant;
   # only the set of values in each row matters.
+  data_comparison = (
+      f"\nAgent data: {_df_to_json_str(agent_df)}\n"
+      f"Baseline data: {_df_to_json_str(baseline_df)}"
+  )
+
   if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(
       baseline_df, _precision
   ):
@@ -756,9 +761,8 @@ def _compare_dataframes(
         passed=False,
         score=0.0,
         reasoning=(
-            f"Value mismatch — agent result does not match {source_label}.\n"
-            f"Agent data: {_df_to_json_str(agent_df)}\n"
-            f"Baseline data: {_df_to_json_str(baseline_df)}"
+            f"Value mismatch — agent result does not match {source_label}."
+            f"{data_comparison}"
         ),
     )
 
@@ -769,6 +773,7 @@ def _compare_dataframes(
       reasoning=(
           f"Agent data matches {source_label} ({len(baseline_df)} rows,"
           f" {len(baseline_df.columns)} columns)."
+          f"{data_comparison}"
       ),
   )
 
