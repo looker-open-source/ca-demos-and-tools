@@ -192,7 +192,7 @@ class BaselineDataMatchSchema(AssertionSchema):
   type: Literal[AssertionType.BASELINE_DATA_MATCH] = (
       AssertionType.BASELINE_DATA_MATCH
   )
-  baseline_rows: list[dict[str, Any]] = pydantic.Field(min_length=1)
+  baseline_rows: list[dict[str, Any]] = pydantic.Field(default_factory=list)
   numeric_tolerance: float = 1e-9
 
 

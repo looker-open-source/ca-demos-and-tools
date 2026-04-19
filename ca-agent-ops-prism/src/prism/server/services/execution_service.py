@@ -185,7 +185,8 @@ class ExecutionService:
         self._bq_client = bigquery.Client(project=project)
       except Exception as exc:  # pylint: disable=broad-exception-caught
         logging.warning("Could not initialize BigQuery client: %s", exc)
-    return self._bq_client
+        self._bq_client = False
+    return self._bq_client if self._bq_client is not False else None
 
   def execute_trial(self, trial_id: int) -> Trial:
     """Executes a single trial by ID.

@@ -389,3 +389,17 @@ def test_check_query_baseline_data_match_pass():
   assert result.score == 1.0
   mock_bq.query.assert_called_once_with("SELECT id, val FROM table")
   mock_job.result.assert_called_once_with(timeout=60)
+
+
+def test_check_baseline_data_match_empty_pass():
+  """Tests that baseline match passes when both datasets are empty."""
+  agent_data = []
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  assertion = BaselineDataMatch(baseline_rows=[])
+
+  result = assert_engine.check_baseline_data_match(response, assertion)
+  assert result.passed
+  assert result.score == 1.0
+  assert "matches baseline (0 rows, 0 columns)" in result.reasoning

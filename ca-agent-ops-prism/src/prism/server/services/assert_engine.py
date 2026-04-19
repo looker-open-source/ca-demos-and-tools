@@ -704,6 +704,75 @@ def _df_to_row_multiset(
   return Counter(rows)
 
 
+def _compare_dataframes(
+    agent_rows: list[dict[str, Any]],
+    baseline_rows: list[dict[str, Any]],
+    assertion: BaselineDataMatch | QueryBaselineDataMatch,
+    source_label: str = "baseline",
+) -> AssertionResult:
+  """Shared logic for comparing agent results against a baseline dataset.
+
+  Implements execution-based accuracy by comparing DataFrames independent of
+  column order, row order, and column name casing.
+  """
+  tol = assertion.numeric_tolerance
+  _precision = max(0, round(-math.log10(tol))) if tol > 0 else 9
+
+  agent_df = _normalize_rows_to_df(agent_rows, tol)
+  baseline_df = _normalize_rows_to_df(baseline_rows, tol)
+
+  # Column-count check (names and order are ignored; only the number of
+  # columns must match so the multiset comparison is meaningful).
+  if len(agent_df.columns) != len(baseline_df.columns):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Column count mismatch — agent returned {len(agent_df.columns)}"
+            f" column(s), {source_label} has {len(baseline_df.columns)} column(s)."
+        ),
+    )
+
+  # Row-count check (fast-exit before multiset comparison)
+  if len(agent_df) != len(baseline_df):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Row count mismatch — agent returned {len(agent_df)} rows,"
+            f" {source_label} has {len(baseline_df)} rows."
+        ),
+    )
+
+  # Multiset comparison: column names and order are irrelevant;
+  # only the set of values in each row matters.
+  if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(
+      baseline_df, _precision
+  ):
+    return AssertionResult(
+        assertion=assertion,
+        passed=False,
+        score=0.0,
+        reasoning=(
+            f"Value mismatch — agent result does not match {source_label}.\n"
+            f"Agent data: {_df_to_json_str(agent_df)}\n"
+            f"Baseline data: {_df_to_json_str(baseline_df)}"
+        ),
+    )
+
+  return AssertionResult(
+      assertion=assertion,
+      passed=True,
+      score=1.0,
+      reasoning=(
+          f"Agent data matches {source_label} ({len(baseline_df)} rows,"
+          f" {len(baseline_df.columns)} columns)."
+      ),
+  )
+
+
 def check_baseline_data_match(
     response: AskQuestionResponse, assertion: BaselineDataMatch
 ) -> AssertionResult:
@@ -723,60 +792,8 @@ def check_baseline_data_match(
         reasoning="No data result found in trace.",
     )
 
-  tol = assertion.numeric_tolerance
-  _precision = (
-      max(0, round(-math.log10(tol))) if tol > 0 else 9
-  )
-  agent_df = _normalize_rows_to_df(agent_rows, tol)
-  baseline_df = _normalize_rows_to_df(assertion.baseline_rows, tol)
-
-  # Column-count check (names and order are ignored; only the number of
-  # columns must match so the multiset comparison is meaningful).
-  if len(agent_df.columns) != len(baseline_df.columns):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            f"Column count mismatch — agent returned {len(agent_df.columns)}"
-            f" column(s), baseline has {len(baseline_df.columns)} column(s)."
-        ),
-    )
-
-  # Row-count check (fast-exit before multiset comparison)
-  if len(agent_df) != len(baseline_df):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            f"Row count mismatch — agent returned {len(agent_df)} rows,"
-            f" baseline has {len(baseline_df)} rows."
-        ),
-    )
-
-  # Multiset comparison: column names and order are irrelevant;
-  # only the set of values in each row matters.
-  if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(baseline_df, _precision):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            "Value mismatch — agent result does not match baseline data.\n"
-            f"Agent data: {_df_to_json_str(agent_df)}\n"
-            f"Baseline data: {_df_to_json_str(baseline_df)}"
-        ),
-    )
-
-  return AssertionResult(
-      assertion=assertion,
-      passed=True,
-      score=1.0,
-      reasoning=(
-          f"Agent data matches baseline ({len(baseline_df)} rows,"
-          f" {len(baseline_df.columns)} columns)."
-      ),
+  return _compare_dataframes(
+      agent_rows, assertion.baseline_rows, assertion, source_label="baseline"
   )
 
 
@@ -836,67 +853,13 @@ def check_query_baseline_data_match(
         reasoning=f"BigQuery baseline query failed: {err_msg}",
     )
 
-  if not baseline_rows:
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning="BigQuery baseline query returned no rows.",
-    )
-
-  tol = assertion.numeric_tolerance
-  _precision = (
-      max(0, round(-math.log10(tol))) if tol > 0 else 9
+  return _compare_dataframes(
+      agent_rows,
+      baseline_rows,
+      assertion,
+      source_label="BigQuery baseline",
   )
-  agent_df = _normalize_rows_to_df(agent_rows, tol)
-  baseline_df = _normalize_rows_to_df(baseline_rows, tol)
 
-  # Column-count check (names and order are ignored).
-  if len(agent_df.columns) != len(baseline_df.columns):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            f"Column count mismatch — agent returned {len(agent_df.columns)}"
-            f" column(s), baseline query has {len(baseline_df.columns)} column(s)."
-        ),
-    )
-
-  # Row-count check (fast-exit before multiset comparison)
-  if len(agent_df) != len(baseline_df):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            f"Row count mismatch — agent returned {len(agent_df)} rows,"
-            f" baseline query returned {len(baseline_df)} rows."
-        ),
-    )
-
-  # Multiset comparison: column names and order are irrelevant.
-  if _df_to_row_multiset(agent_df, _precision) != _df_to_row_multiset(baseline_df, _precision):
-    return AssertionResult(
-        assertion=assertion,
-        passed=False,
-        score=0.0,
-        reasoning=(
-            "Value mismatch — agent result does not match BigQuery baseline.\n"
-            f"Agent data: {_df_to_json_str(agent_df)}\n"
-            f"Baseline data: {_df_to_json_str(baseline_df)}"
-        ),
-    )
-
-  return AssertionResult(
-      assertion=assertion,
-      passed=True,
-      score=1.0,
-      reasoning=(
-          f"Agent data matches BigQuery baseline ({len(baseline_df)} rows,"
-          f" {len(baseline_df.columns)} columns)."
-      ),
-  )
 
 
 def evaluate_all(
