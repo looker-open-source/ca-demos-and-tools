@@ -65,12 +65,21 @@ def cmd_list() -> None:
 def _import_file(cur, path: Path, dry_run: bool) -> tuple[str, int, str]:
     """Import one YAML file. Returns (suite_name, question_count, action)."""
     with open(path) as f:
-        cases = yaml.safe_load(f)
+        data = yaml.safe_load(f)
 
-    if not cases:
+    if not data:
         return path.stem, 0, "skipped (empty)"
 
-    suite_name = path.stem
+    # Support both the legacy bare-list format and the new {label, cases} mapping.
+    if isinstance(data, list):
+        suite_name = path.stem
+        cases = data
+    else:
+        suite_name = data.get("label") or path.stem
+        cases = data.get("cases") or []
+
+    if not cases:
+        return suite_name, 0, "skipped (no cases)"
 
     cur.execute(
         "SELECT id FROM test_suites WHERE name = %s AND NOT is_archived;",
