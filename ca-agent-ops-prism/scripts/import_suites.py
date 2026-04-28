@@ -123,7 +123,7 @@ def _import_file(cur, path: Path, dry_run: bool) -> tuple[str, int, str]:
         )
         example_id = cur.fetchone()["id"]
 
-        for a in case.get("asserts", []):
+        for a in case.get("assertions", case.get("asserts", [])):
             db_type = TYPE_MAP.get(a["type"])
             if db_type is None:
                 print(
