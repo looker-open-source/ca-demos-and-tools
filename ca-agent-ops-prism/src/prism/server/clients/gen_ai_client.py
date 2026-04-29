@@ -22,7 +22,7 @@ from google.genai import types
 import pydantic
 
 # Default model configuration
-DEFAULT_MODEL = "gemini-2.5-pro"
+DEFAULT_MODEL = "gemini-3-flash-preview"
 
 ResponseSchema = TypeVar("ResponseSchema", bound=pydantic.BaseModel)
 
