@@ -50,3 +50,12 @@ A comprehensive reference implementation and boilerplate for building AI-powered
 - Robust Authentication: Supports both Looker Service Account and User OAuth 2.0 (PKCE) with automatic token refresh.
 - Stateful Conversations: Demonstrates session persistence and history management across multiple interaction turns.
 - Developer-Centric UX: Includes real-time streaming logs for Looker API calls, Gemini "thought" process visibility, and multi-agent discovery.
+
+### [Conversational Analytics Slack Bot](/ca-slack-demo/README.md)
+
+A multi-agent Slack bot that routes natural language data questions to specialist agents backed by Google's Conversational Analytics (CA) API.
+
+- **Google ADK Orchestration**: Uses Google ADK for dynamic routing between multiple dataset-specialist agents.
+- **Slack Integration**: Built on Slack Bolt with Socket Mode support and in-place progress tracking.
+- **Actionable Workspace Integration**: Includes an MCP server that allows agents to export data to Google Sheets and create summary Slides.
+

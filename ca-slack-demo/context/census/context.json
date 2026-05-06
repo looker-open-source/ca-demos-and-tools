@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "description": "US Census ACS — table refs + glossary. Uses American Community Survey 5-year estimates.",
+    "source": "Authored from bigquery-public-data.census_bureau_acs schema research."
+  },
+  "bq": {
+    "tableReferences": [
+      {"projectId": "bigquery-public-data", "datasetId": "census_bureau_acs", "tableId": "state_2020_5yr"},
+      {"projectId": "bigquery-public-data", "datasetId": "census_bureau_acs", "tableId": "county_2020_5yr"},
+      {"projectId": "bigquery-public-data", "datasetId": "census_bureau_acs", "tableId": "zcta_2020_5yr"},
+      {"projectId": "bigquery-public-data", "datasetId": "census_bureau_acs", "tableId": "censustract_2020_5yr"}
+    ],
+    "exampleQueries": [
+      {
+        "natural_language_question": "What are the top 10 most populous states?",
+        "sql": "SELECT geo_id, total_pop FROM `bigquery-public-data.census_bureau_acs.state_2020_5yr` ORDER BY total_pop DESC LIMIT 10"
+      },
+      {
+        "natural_language_question": "Which counties have the highest median income?",
+        "sql": "SELECT geo_id, median_income, total_pop FROM `bigquery-public-data.census_bureau_acs.county_2020_5yr` WHERE median_income IS NOT NULL ORDER BY median_income DESC LIMIT 10"
+      },
+      {
+        "natural_language_question": "What is the median rent by state?",
+        "sql": "SELECT geo_id, median_rent, total_pop FROM `bigquery-public-data.census_bureau_acs.state_2020_5yr` WHERE median_rent IS NOT NULL ORDER BY median_rent DESC"
+      },
+      {
+        "natural_language_question": "Which states have the highest percentage of bachelor's degree holders?",
+        "sql": "SELECT geo_id, ROUND(SAFE_DIVIDE(bachelors_degree, total_pop) * 100, 1) AS bachelors_pct, total_pop FROM `bigquery-public-data.census_bureau_acs.state_2020_5yr` ORDER BY bachelors_pct DESC"
+      },
+      {
+        "natural_language_question": "What is the income inequality (Gini index) by state?",
+        "sql": "SELECT geo_id, gini_index, median_income FROM `bigquery-public-data.census_bureau_acs.state_2020_5yr` WHERE gini_index IS NOT NULL ORDER BY gini_index DESC"
+      }
+    ]
+  },
+  "glossary_terms": [
+    {"display_name": "ACS", "description": "American Community Survey — an ongoing annual survey by the US Census Bureau. 5-year estimates provide data for all geographies."},
+    {"display_name": "geo_id", "description": "FIPS geographic identifier. States are 2 digits (e.g. '06' = California), counties are 5 digits (state + county), tracts are 11 digits."},
+    {"display_name": "ZCTA", "description": "ZIP Code Tabulation Area — Census Bureau's approximation of USPS ZIP codes for statistical purposes."},
+    {"display_name": "total_pop", "description": "Total population count for the geographic area."},
+    {"display_name": "median_income", "description": "Median household income in dollars."},
+    {"display_name": "income_per_capita", "description": "Per capita income — total income divided by total population."},
+    {"display_name": "gini_index", "description": "Measure of income inequality. 0 = perfect equality, 1 = perfect inequality."},
+    {"display_name": "median_rent", "description": "Median gross rent in dollars for renter-occupied housing units."},
+    {"display_name": "Geographic levels", "description": "Data is available at state, county, census tract, and ZCTA levels. All tables share the same ~244 columns. Use the appropriate table for your geographic granularity."},
+    {"display_name": "5yr estimates", "description": "5-year estimates aggregate data over 5 years for reliable estimates at small geographies. The 2020_5yr tables cover 2016-2020."}
+  ],
+  "schema_relationships": []
+}
