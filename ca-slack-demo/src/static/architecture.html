@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADK Architecture Explorer</title>
+    <!-- Prism syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: rgba(22, 33, 54, 0.8);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --accent-color: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.3);
+            --text-color: #f8fafc;
+            --secondary-color: #94a3b8;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 30px;
+            width: 90vw;
+            max-width: 1400px;
+        }
+
+        .column {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 30px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--accent-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .agent-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+        }
+
+        .agent-tag {
+            font-size: 0.8rem;
+            background: rgba(56, 189, 248, 0.1);
+            color: var(--accent-color);
+            padding: 4px 8px;
+            border-radius: 6px;
+            float: right;
+        }
+
+        pre {
+            font-family: monospace;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            margin: 0;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .glow-btn {
+            background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.3s ease;
+            box-shadow: 0 0 20px var(--accent-glow);
+            margin-bottom: 30px;
+        }
+
+        .glow-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px var(--accent-glow);
+        }
+
+        .step {
+            opacity: 1;
+            /* Always fully visible */
+            transition: all 0.5s;
+        }
+
+        .step.active {
+            opacity: 1;
+            transform: translateY(0);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: 320px;
+            background-color: rgba(15, 23, 42, 0.98);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            padding: 12px;
+            position: absolute;
+            z-index: 100;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -160px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-family: monospace;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+            text-align: left;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Vertical flowchart styles */
+        .v-flowchart {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin: 20px auto 40px auto;
+            max-width: 800px;
+        }
+
+        .v-box {
+            background: rgba(22, 33, 54, 0.9);
+            border: 2px solid var(--accent-color);
+            border-radius: 12px;
+            padding: 15px 25px;
+            font-size: 1.1rem;
+            color: white;
+            text-align: center;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+            width: 200px;
+        }
+
+        .v-arrow {
+            color: var(--secondary-color);
+            font-size: 1.2rem;
+            opacity: 0.5;
+        }
+
+        /* Stacked inspector layout */
+        .playground-layout {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            margin: 20px auto;
+            max-width: 1000px;
+        }
+
+        .inspector-column {
+            width: 800px;
+            background: #0f172a;
+            border: 1px solid #38bdf8;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+
+        .inspector-title {
+            color: #64748b;
+            font-size: 0.85rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            font-family: monospace;
+        }
+
+        #inspector-content {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #e2e8f0;
+            white-space: pre-wrap;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 0;
+            height: 240px; /* Fixed height prevents layout shifts */
+            overflow-y: auto;
+        }
+
+        /* Flowchart setup */
+        .flowchart {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 40px;
+            width: 800px;
+            margin-bottom: 20px;
+        }
+
+        .node {
+            background: rgba(22, 33, 54, 0.95);
+            border: 2px solid var(--accent-color);
+            border-radius: 10px;
+            padding: 15px 25px;
+            color: white;
+            font-weight: 600;
+            text-align: center;
+            width: 180px;
+            z-index: 10;
+            cursor: pointer;
+        }
+
+        .split-row {
+            display: flex;
+            gap: 50px;
+            z-index: 10;
+        }
+
+        #flowchart-lines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .provisioner-box {
+            position: absolute;
+            left: -280px;
+            /* Positioned to the left of the flowchart */
+            top: 120px;
+            background: rgba(15, 23, 42, 0.8);
+            border: 2px dashed #64748b;
+            border-radius: 10px;
+            padding: 15px;
+            width: 220px;
+            color: white;
+            z-index: 10;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h1>ADK Multi-Agent Architecture Explorer</h1>
+        <!-- Vertical SVG Flowchart with real code on hover -->
+        <!-- Pure HTML/CSS Flowchart with tooltips -->
+        <div class="playground-layout">
+            <!-- HTML Flowchart with Background SVG Lines -->
+            <div class="flowchart">
+                <svg id="flowchart-lines"></svg>
+
+                <!-- Provisioner Box -->
+                <div class="provisioner-box" id="box-provisioner" data-code="# scripts/provision_agents.py
+def provision_agents(targets):
+    for name in targets:
+        context = load_context(name)
+        client.create_agent(
+            display_name=name,
+            instructions=context[&#34;instructions&#34;],
+            context=context
+        )">
+                    ⚙️ CA Agent Provisioner
+                    <div style="font-size: 0.8rem; color: #64748b; margin-top: 5px;">
+                        Pre-provisioned setup using context agent configs
+                    </div>
+                </div>
+
+                <div class="node" id="box-prompt" data-code="@app.post(&#34;/api/chat&#34;)
+async def chat_endpoint(req: ChatRequest):
+    content = types.Content(role=&#34;user&#34;, parts=[
+        types.Part(text=req.question)
+    ])
+    return StreamingResponse(runner.run_async(content))">
+                    User Prompt
+                </div>
+
+                <div class="node" id="box-router" data-code="@agent
+def root_agent(ctx: AgentContext, message: types.Content):
+    # Independently evaluate domain shift parameters
+    if is_temporal_comparison(message):
+        return delegate_parallel([alloydb, looker])">
+                    ADK Router
+                </div>
+
+                <div class="split-row">
+                    <div class="node" id="box-alloydb" style="border-color: #818cf8;" data-code="# gRPC API Call to AlloyDB Agent
+request = gda.ChatRequest(
+    agent=f&#34;projects/{PROJECT}/locations/global/agents/{ALLOYDB_AGENT_ID}&#34;,
+    message=gda.Message(
+        user_message=gda.Message.UserMessage(text=&#34;Compare smartwatch sales...&#34;)
+    )
+)
+async for msg in client.chat(request=request):
+    yield msg.system_message.text">
+                        AlloyDB Agent
+                    </div>
+                    <div class="node" id="box-looker" style="border-color: #fbbf24;" data-code="# HTTP REST Stream fallback to Looker Agent
+url = f&#34;https://dataanalytics.googleapis.com/v1beta1/{LOOKER_AGENT_ID}/conversations:chat&#34;
+body = {
+    &#34;messages&#34;: [{&#34;user_message&#34;: {&#34;text&#34;: &#34;Compare smartwatch sales...&#34;}}]
+}
+async with httpx_client.stream(&#34;POST&#34;, url, json=body) as resp:
+    async for line in resp.aiter_lines():
+        yield json.loads(line)[&#34;systemMessage&#34;]">
+                        Looker Agent
+                    </div>
+                    <div class="node" id="box-bq" style="border-color: #10b981;" data-code="# gRPC API Call to BigQuery Agent
+request = gda.ChatRequest(
+    agent=f&#34;projects/{PROJECT}/locations/global/agents/{BIGQUERY_AGENT_ID}&#34;,
+    message=gda.Message(
+        user_message=gda.Message.UserMessage(text=&#34;Compare smartwatch sales...&#34;)
+    )
+)
+async for msg in client.chat(request=request):
+    yield msg.system_message.text">
+                        BigQuery Agent
+                    </div>
+                </div>
+
+                <div class="node" id="box-synth" data-code="def synthesize_results(r1: Content, r2: Content) -&gt; Content:
+    growth = calculate_temporal_shift(r1.count, r2.benchmark)
+    return f&#34;Recorded {r1.count} orders. This represents {growth}% increase&#34;">
+                    Synthesizer
+                </div>
+
+                <div style="display: flex; gap: 30px; z-index: 10; align-items: center;">
+                    <!-- Spacer to center the Google Workspace MCP box -->
+                    <div class="node"
+                        style="visibility: hidden; pointer-events: none; display: flex; align-items: center; justify-content: center;">
+                        Google Workspace MCP</div>
+                
+                    <div class="node" id="box-mcp"
+                        style="border-color: #ec4899; display: flex; align-items: center; justify-content: center;" data-code="# Triggered explicitly upon user request
+                                from mcp_server import create_and_export_sheet, create_and_export_slides
+
+def trigger_export(data_matrix):
+    # Exports to Sheets
+    create_and_export_sheet(title=&#34;Metrics&#34;, data=data_matrix)
+    # Generates Slides
+    create_and_export_slides(title=&#34;Report&#34;, data=data_matrix)">
+                        Google Workspace MCP
+                    </div>
+                    <div class="node" id="box-mcp-future" style="border-color: #64748b; border-style: dashed; display: flex; align-items: center; justify-content: center;" data-code="# Potential Future Integrations
+# Connect to other enterprise tools
+
+# Jira: Create tickets from anomalies
+# jira_client.create_issue(...)
+
+# Workday: Log employee performance
+# workday.sync_metrics(...)">
+                        Potential Integrations (Workday, Jira...)
+                    </div>
+                </div>
+            </div>
+
+            <!-- Inspector Panel -->
+            <div class="inspector-column">
+                <div class="inspector-title">● ● ● Agent Source Inspect</div>
+                <pre
+                    id="inspector-content">Hover over any architectural component on the left to inspect its source code.</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- STEP 1: PROMPT & ROUTING -->
+        <div class="column step" id="col-1">
+            <div class="card-title">1. Prompt & Router Decision</div>
+            <div>
+                <strong>Example Prompt:</strong>
+                <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-top: 8px;">
+                    "How are smart watches selling in the last 7 days compared to the same week last year?"
+                </div>
+            </div>
+
+            <div class="agent-box">
+                <strong>ADK Router Reasoning</strong>
+                <div style="color: #10b981; margin-top: 5px; font-size: 0.9rem;">
+                    • <strong>Transactional & Realtime:</strong> Routes to AlloyDB for recent transactional metrics.<br>
+                    • <strong>Historical & Governed:</strong> Queries Looker semantic layer for governed benchmarks.<br>
+                    • <strong>Analytical:</strong> Accesses BigQuery for unstructured sentiment analysis.
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: SPECIALIST AGENTS -->
+        <div class="column step" id="col-2">
+            <div class="card-title">2. Specialist Execution</div>
+
+            <div class="agent-box">
+                <span class="agent-tag">Real-time</span>
+                <strong>💿 AlloyDB Agent</strong>
+                <pre style="color: #38bdf8; margin-top: 8px;">SELECT count(*) FROM orders 
+WHERE category = 'smartwatch' 
+AND created_at >= current_date - 7</pre>
+                <div style="font-size: 0.85rem; margin-top:5px; color: var(--secondary-color);">Returns: 4,258 orders
+                </div>
+            </div>
+
+            <div class="agent-box">
+                <span class="agent-tag">Historical</span>
+                <strong>👁️ Looker Agent</strong>
+                <pre style="color: #818cf8; margin-top: 8px;">Explore: gadgets_transactions
+Filters: smartwatch, week_of_year=15, 2025</pre>
+                <div style="font-size: 0.85rem; margin-top:5px; color: var(--secondary-color);">Returns: 3,890
+                    benchmarks</div>
+            </div>
+
+            <div class="agent-box">
+                <span class="agent-tag">Analytics</span>
+                <strong>📊 BigQuery Agent</strong>
+                <pre style="color: #10b981; margin-top: 8px;">SELECT sentiment, comment 
+FROM cymbal_gadgets.reviews</pre>
+                <div style="font-size: 0.85rem; margin-top:5px; color: var(--secondary-color);">Returns: 120 reviews
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: SYNTHESIS & RESPONSE -->
+        <div class="column step" id="col-3">
+            <div class="card-title">3. Final Response Synthesis</div>
+            <div class="agent-box">
+                <strong>ADK Aggregator</strong>
+                <p style="font-size: 0.9rem; color: var(--secondary-color);">Synthesizes transactional databases with
+                    aggregate explorers synchronously.</p>
+            </div>
+
+            <div
+                style="background: rgba(56, 189, 248, 0.1); border: 1px solid var(--accent-color); padding: 20px; border-radius: 12px;">
+                <strong>Markdown Output:</strong>
+                <p style="margin-bottom: 0; font-size: 0.95rem;">Smart watch sales are robust! We recorded 4,258
+                    transactions in the last 7 days.
+                    This represents a <strong>9.4% increase</strong> compared to the 3,890 benchmarked sales of the same
+                    week last year.</p>
+            </div>
+            <div
+                style="background: rgba(236, 72, 153, 0.1); border: 1px dashed #ec4899; padding: 15px; border-radius: 12px; margin-top: 15px;">
+                <strong>⚡ Model Context Protocol (MCP):</strong>
+                <p style="margin-bottom: 0; font-size: 0.85rem; color: #ec4899;">
+                    <em>Actions Executable upon user request:</em><br>
+                    • <code>create_and_export_sheet()</code> &rarr; Exports metrics to live Sheets.<br>
+                    • <code>create_and_export_slides()</code> &rarr; Generates presentations automatically.<br>
+                    <br>
+                    <em>Potential Integrations:</em><br>
+                    • <strong>Jira:</strong> Create tasks automatically from data anomalies.<br>
+                    • <strong>Workday:</strong> Sync performance metrics with HR reporting.<br>
+                    • <strong>Custom APIs:</strong> Connect to any enterprise tool.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function drawLines() {
+            const svg = document.getElementById('flowchart-lines');
+            svg.innerHTML = '';
+
+            const prompt = document.getElementById('box-prompt');
+            const router = document.getElementById('box-router');
+            const alloydb = document.getElementById('box-alloydb');
+            const looker = document.getElementById('box-looker');
+            const bq = document.getElementById('box-bq');
+            const synth = document.getElementById('box-synth');
+            const mcpBox = document.getElementById('box-mcp');
+
+            const getCenter = (el) => {
+                const rect = el.getBoundingClientRect();
+                const svgRect = svg.getBoundingClientRect();
+                return {
+                    x: rect.left + rect.width / 2 - svgRect.left,
+                    y: rect.top + rect.height / 2 - svgRect.top
+                };
+            };
+
+            const p1 = getCenter(prompt);
+            const p2 = getCenter(router);
+            const p3a = getCenter(alloydb);
+            const p3b = getCenter(looker);
+            const p3c = getCenter(bq);
+            const p4 = getCenter(synth);
+            const p5 = getCenter(mcpBox);
+
+            const createLine = (x1, y1, x2, y2) => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', x1);
+                line.setAttribute('y1', y1);
+                line.setAttribute('x2', x2);
+                line.setAttribute('y2', y2);
+                line.setAttribute('stroke', 'rgba(56, 189, 248, 0.4)');
+                line.setAttribute('stroke-width', '3');
+                svg.appendChild(line);
+            };
+
+            createLine(p1.x, p1.y, p2.x, p2.y);
+
+            const midY = (p2.y + p3b.y) / 2;
+            createLine(p2.x, p2.y, p2.x, midY);
+            createLine(p3a.x, midY, p3c.x, midY);
+            createLine(p3a.x, midY, p3a.x, p3a.y);
+            createLine(p3b.x, midY, p3b.x, p3b.y);
+            createLine(p3c.x, midY, p3c.x, p3c.y);
+
+            const midY2 = (p3b.y + p4.y) / 2;
+            createLine(p3a.x, p3a.y, p3a.x, midY2);
+            createLine(p3b.x, p3b.y, p3b.x, midY2);
+            createLine(p3c.x, p3c.y, p3c.x, midY2);
+            createLine(p3a.x, midY2, p3c.x, midY2);
+            createLine(p4.x, midY2, p4.x, p4.y);
+            
+            // Line to MCP action execution
+            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line2.setAttribute('x1', p4.x);
+            line2.setAttribute('y1', p4.y + 25); // Synthesizer bottom
+            line2.setAttribute('x2', p5.x);
+            line2.setAttribute('y2', p5.y - 25); // MCP top
+            line2.setAttribute('stroke', 'rgba(236, 72, 153, 0.8)');
+            line2.setAttribute('stroke-width', '3');
+            line2.setAttribute('stroke-dasharray', '3,3');
+            svg.appendChild(line2);
+
+            // Dotted line from provisioner to specialists
+            const prov = document.getElementById('box-provisioner');
+            const provCenter = getCenter(prov);
+
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', provCenter.x);
+            line.setAttribute('y1', provCenter.y);
+            line.setAttribute('x2', p3a.x - 30); // Point to the left side of parallel row
+            line.setAttribute('y2', midY);
+            line.setAttribute('stroke', 'rgba(100, 116, 139, 0.6)');
+            line.setAttribute('stroke-width', '3');
+            line.setAttribute('stroke-dasharray', '5,5');
+            svg.appendChild(line);
+        }
+
+        window.addEventListener('load', drawLines);
+        window.addEventListener('resize', drawLines);
+
+        // Setup node hover inspect
+        document.querySelectorAll('.node, .provisioner-box').forEach(node => {
+            node.addEventListener('mouseenter', () => {
+                const code = node.getAttribute('data-code');
+                const inspector = document.getElementById('inspector-content');
+                inspector.innerHTML = `<code class="language-python">${code.trim()}</code>`;
+                Prism.highlightElement(inspector.querySelector('code'));
+            });
+        });
+
+        function runSim() {
+            const cols = ['col-1', 'col-2', 'col-3'];
+            cols.forEach(id => document.getElementById(id).classList.remove('active'));
+
+            cols.forEach((id, idx) => {
+                setTimeout(() => {
+                    document.getElementById(id).classList.add('active');
+                }, idx * 2000);
+            });
+        }
+    </script>
+
+</body>
+
+</html>
