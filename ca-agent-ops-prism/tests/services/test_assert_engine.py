@@ -2,11 +2,13 @@
 
 import unittest.mock
 from prism.common.schemas.assertion import AIJudge
+from prism.common.schemas.assertion import BaselineDataMatch
 from prism.common.schemas.assertion import ChartCheckType
 from prism.common.schemas.assertion import DataCheckRow
 from prism.common.schemas.assertion import DataCheckRowCount
 from prism.common.schemas.assertion import DurationMaxMs
 from prism.common.schemas.assertion import LookerQueryMatch
+from prism.common.schemas.assertion import QueryBaselineDataMatch
 from prism.common.schemas.assertion import QueryContains
 from prism.common.schemas.assertion import TextContains
 from prism.common.schemas.trace import AskQuestionResponse
@@ -301,3 +303,103 @@ def test_check_ai_judge_pass():
   assert result.score == 1.0
   assert result.reasoning == "It said hello"
   mock_llm.generate_structured.assert_called_once()
+
+
+def test_canonical_cell_value():
+  """Tests canonical cell value normalization."""
+  # pylint: disable=protected-access
+  precision = 2
+  assert assert_engine._canonical_cell_value(None, precision) == "NULL"
+  assert assert_engine._canonical_cell_value(float("nan"), precision) == "NULL"
+  assert assert_engine._canonical_cell_value(123.456, precision) == "123.46"
+  assert assert_engine._canonical_cell_value(123.000, precision) == "123"
+  assert assert_engine._canonical_cell_value("123.456", precision) == "123.46"
+  assert assert_engine._canonical_cell_value(" Hello ", precision) == "hello"
+  assert assert_engine._canonical_cell_value("WORLD", precision) == "world"
+
+
+def test_check_baseline_data_match_pass():
+  """Tests baseline data match passing with flexible ordering."""
+  agent_data = [
+      {"id": 1, "val": 10.5},
+      {"id": 2, "val": 20.0},
+  ]
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  # Baseline has different column order and different row order
+  baseline_rows = [
+      {"val": 20.0, "id": 2},
+      {"val": 10.5, "id": 1},
+  ]
+  assertion = BaselineDataMatch(baseline_rows=baseline_rows)
+
+  result = assert_engine.check_baseline_data_match(response, assertion)
+  assert result.passed
+  assert result.score == 1.0
+
+
+def test_check_baseline_data_match_fail_values():
+  """Tests baseline data match failing due to value mismatch."""
+  agent_data = [{"id": 1, "val": 10.0}]
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  baseline_rows = [{"id": 1, "val": 11.0}]
+  assertion = BaselineDataMatch(baseline_rows=baseline_rows)
+
+  result = assert_engine.check_baseline_data_match(response, assertion)
+  assert not result.passed
+  assert "Value mismatch" in result.reasoning
+
+
+def test_check_baseline_data_match_fail_columns():
+  """Tests baseline data match failing due to column count mismatch."""
+  agent_data = [{"id": 1, "val": 10.0}]
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  baseline_rows = [{"id": 1}]  # Missing 'val' column
+  assertion = BaselineDataMatch(baseline_rows=baseline_rows)
+
+  result = assert_engine.check_baseline_data_match(response, assertion)
+  assert not result.passed
+  assert "Column count mismatch" in result.reasoning
+
+
+def test_check_query_baseline_data_match_pass():
+  """Tests query baseline data match passing with mocked BQ."""
+  agent_data = [{"id": 1, "val": 10.0}]
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  assertion = QueryBaselineDataMatch(value="SELECT id, val FROM table")
+
+  mock_bq = unittest.mock.MagicMock()
+  mock_job = unittest.mock.MagicMock()
+  mock_bq.query.return_value = mock_job
+  # mock_job.result() returns an iterable of Row-like objects
+  mock_job.result.return_value = [{"id": 1, "val": 10.0}]
+
+  result = assert_engine.check_query_baseline_data_match(
+      response, assertion, bq_client=mock_bq
+  )
+
+  assert result.passed
+  assert result.score == 1.0
+  mock_bq.query.assert_called_once_with("SELECT id, val FROM table")
+  mock_job.result.assert_called_once_with(timeout=60)
+
+
+def test_check_baseline_data_match_empty_pass():
+  """Tests that baseline match passes when both datasets are empty."""
+  agent_data = []
+  trace = [{"system_message": {"data": {"result": {"data": agent_data}}}}]
+  response = make_response(trace)
+
+  assertion = BaselineDataMatch(baseline_rows=[])
+
+  result = assert_engine.check_baseline_data_match(response, assertion)
+  assert result.passed
+  assert result.score == 1.0
+  assert "matches baseline (0 rows, 0 columns)" in result.reasoning

@@ -189,6 +189,25 @@ def _render_assertion_list():
               "LLM",
               "Uses an LLM to evaluate the response based on criteria.",
           ),
+          _assertion_item(
+              "material-symbols:compare-arrows",
+              "violet",
+              "Baseline Data Match",
+              "DATA",
+              "Compares the agent's result data against a fixed set of"
+              " pre-executed rows. Column order, row order, and column name"
+              " casing are ignored — only the values must match.",
+          ),
+          _assertion_item(
+              "material-symbols:database",
+              "green",
+              "Query Baseline Data Match",
+              "BIGQUERY",
+              "Executes a reference BigQuery SQL query at evaluation time and"
+              " compares its live results to the agent's data. Use this instead"
+              " of Baseline Data Match when the underlying dataset changes over"
+              " time. The query runs against the project configured for Prism.",
+          ),
       ],
   )
 

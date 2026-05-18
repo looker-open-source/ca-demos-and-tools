@@ -148,4 +148,34 @@ ASSERTS_GUIDE = [
             " placed."
         ),
     },
+    {
+        "name": "baseline-data-match",
+        "label": "Baseline Data Match",
+        "description": (
+            "Compares the agent's result data against a fixed set of"
+            " pre-executed rows. Column order, row order, and column name"
+            " casing are ignored — only the values must match."
+        ),
+        "example": (
+            "baseline_rows:\n"
+            "- region: US\n"
+            "  revenue: 1000.0\n"
+            "- region: EU\n"
+            "  revenue: 2500.5"
+        ),
+    },
+    {
+        "name": "query-baseline-data-match",
+        "label": "Query Baseline Data Match",
+        "description": (
+            "Executes a reference BigQuery SQL query at evaluation time and"
+            " compares its live results to the agent's data. Use this when"
+            " the underlying dataset changes over time."
+        ),
+        "example": (
+            "SELECT region, SUM(revenue) AS revenue"
+            " FROM `my_project.my_dataset.sales`"
+            " GROUP BY region"
+        ),
+    },
 ]

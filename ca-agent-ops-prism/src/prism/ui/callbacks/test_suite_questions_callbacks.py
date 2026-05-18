@@ -556,6 +556,7 @@ def update_assertion_ui(assert_type: str | None):
       "json_valid",
       "looker-query-match",
       "data-check-row",
+      "query-baseline-data-match",
   ]
   container_style = {"display": "block"} if example else {"display": "none"}
 
@@ -654,6 +655,7 @@ def update_suggestion_edit_ui(assert_type: str | None):
       "json_valid",
       "looker-query-match",
       "data-check-row",
+      "query-baseline-data-match",
   ]
   container_style = {"display": "block"} if example else {"display": "none"}
 
@@ -899,6 +901,7 @@ def save_assertion_from_modal(
   if assert_type in [
       "data-check-row",
       "looker-query-match",
+      "baseline-data-match",
       "custom",
       "json_valid",
   ]:
@@ -908,6 +911,16 @@ def save_assertion_from_modal(
           typed_callback.no_update,
           True,
           yaml_error,
+          {"display": "block"},
+      )
+  elif assert_type == "query-baseline-data-match":
+    # The textarea holds raw SQL (not YAML-encoded); use it as-is.
+    val = (assert_yaml_str or "").strip()
+    if not val:
+      return (
+          typed_callback.no_update,
+          True,
+          "SQL query cannot be empty.",
           {"display": "block"},
       )
   elif assert_type == "chart-check-type":

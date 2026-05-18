@@ -586,6 +586,30 @@ def get_assertion_style(a_type: str) -> dict[str, Any]:
         "badge": "LLM",
         "desc": "Uses an LLM to evaluate the response based on criteria.",
     })
+  elif a_type == "baseline-data-match":
+    style.update({
+        "icon": "material-symbols:compare-arrows",
+        "color": "violet",
+        "bg": "violet",
+        "label": "Baseline Data Match",
+        "badge": "DATA",
+        "desc": (
+            "Compares the agent's result data against a fixed set of"
+            " pre-executed rows."
+        ),
+    })
+  elif a_type == "query-baseline-data-match":
+    style.update({
+        "icon": "material-symbols:database",
+        "color": "green",
+        "bg": "green",
+        "label": "Query Baseline Data Match",
+        "badge": "BIGQUERY",
+        "desc": (
+            "Executes a live BigQuery SQL query and compares its results to"
+            " the agent's data."
+        ),
+    })
 
   return style
 
@@ -730,6 +754,59 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
             "border": "1px solid var(--mantine-color-grape-2)",
         },
         children=dmc.Text(val, size="sm", c="grape.9"),
+    )
+
+  elif a_type == "baseline-data-match":
+    rows = assertion.get("baseline_rows", [])
+    preview = f"{len(rows)} row(s)" if rows else "No rows defined"
+    return dmc.Box(
+        bg="violet.0",
+        p="md",
+        style={
+            "borderRadius": "8px",
+            "border": "1px solid var(--mantine-color-violet-2)",
+        },
+        children=[
+            dmc.Text(
+                "Baseline Rows",
+                size="10px",
+                fw=700,
+                c="dimmed",
+                tt="uppercase",
+                lts="0.1em",
+                mb="xs",
+            ),
+            dmc.Code(preview, c="violet", bg="transparent"),
+        ],
+    )
+
+  elif a_type == "query-baseline-data-match":
+    sql = assertion.get("value", "")
+    return dmc.Box(
+        bg="green.0",
+        p="md",
+        style={
+            "borderRadius": "8px",
+            "border": "1px solid var(--mantine-color-green-2)",
+        },
+        children=[
+            dmc.Text(
+                "BigQuery SQL",
+                size="10px",
+                fw=700,
+                c="dimmed",
+                tt="uppercase",
+                lts="0.1em",
+                mb="xs",
+            ),
+            dmc.Code(
+                sql,
+                block=True,
+                c="dark",
+                bg="transparent",
+                style={"fontSize": "12px", "maxHeight": "120px", "overflow": "auto"},
+            ),
+        ],
     )
 
   return None
