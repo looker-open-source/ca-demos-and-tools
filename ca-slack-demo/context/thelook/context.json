@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "description": "TheLook e-commerce — baseline table references only.",
+    "source": "Copied from ca-eval context/v0.0.0/context.json"
+  },
+  "bq": {
+    "tableReferences": [
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "orders"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "order_items"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "users"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "products"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "inventory_items"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "events"},
+      {"projectId": "bigquery-public-data", "datasetId": "thelook_ecommerce", "tableId": "distribution_centers"}
+    ]
+  }
+}

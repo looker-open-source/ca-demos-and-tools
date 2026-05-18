@@ -1,0 +1,101 @@
+{
+  "_meta": {
+    "description": "NCAA Men's Basketball — table refs + glossary + example queries.",
+    "source": "Authored from bigquery-public-data.ncaa_basketball schema research."
+  },
+  "bq": {
+    "tableReferences": [
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_games_sr"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_teams_games_sr"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_players_games_sr"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_teams"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_historical_tournament_games"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_historical_teams_games"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mbb_historical_teams_seasons"},
+      {"projectId": "bigquery-public-data", "datasetId": "ncaa_basketball", "tableId": "mascots"}
+    ],
+    "exampleQueries": [
+      {
+        "natural_language_question": "Which teams won the NCAA championship in each season?",
+        "sql": "SELECT season, win_market, win_name, win_pts, lose_market, lose_pts FROM `bigquery-public-data.ncaa_basketball.mbb_historical_tournament_games` WHERE round = 'Championship' ORDER BY season DESC"
+      },
+      {
+        "natural_language_question": "What are the top 10 highest-scoring NCAA tournament games?",
+        "sql": "SELECT season, h_market, a_market, h_points, a_points, (h_points + a_points) AS total_points FROM `bigquery-public-data.ncaa_basketball.mbb_games_sr` WHERE tournament = 'NCAA' ORDER BY total_points DESC LIMIT 10"
+      },
+      {
+        "natural_language_question": "Which team had the most wins in the 2017 season?",
+        "sql": "SELECT g.team_id, t.market, COUNT(*) AS wins FROM `bigquery-public-data.ncaa_basketball.mbb_teams_games_sr` g JOIN `bigquery-public-data.ncaa_basketball.mbb_teams` t ON g.team_id = t.id WHERE g.season = 2017 AND g.win = TRUE GROUP BY g.team_id, t.market ORDER BY wins DESC LIMIT 10"
+      },
+      {
+        "natural_language_question": "How has three-point shooting changed over the years?",
+        "sql": "SELECT season, AVG(three_points_pct) AS avg_three_pct, AVG(three_points_att) AS avg_three_att FROM `bigquery-public-data.ncaa_basketball.mbb_teams_games_sr` GROUP BY season ORDER BY season"
+      },
+      {
+        "natural_language_question": "Which team has the best all-time win-loss record?",
+        "sql": "SELECT h.team_id, t.market, SUM(h.wins) AS total_wins, SUM(h.losses) AS total_losses, ROUND(SUM(h.wins) / (SUM(h.wins) + SUM(h.losses)), 3) AS win_pct FROM `bigquery-public-data.ncaa_basketball.mbb_historical_teams_seasons` h JOIN `bigquery-public-data.ncaa_basketball.mbb_teams` t ON h.team_id = t.id GROUP BY h.team_id, t.market HAVING (SUM(h.wins) + SUM(h.losses)) > 500 ORDER BY win_pct DESC LIMIT 10"
+      }
+    ]
+  },
+  "glossary_terms": [
+    {"display_name": "Market", "description": "The school or city name associated with a team (e.g. 'Duke', 'North Carolina')."},
+    {"display_name": "Conference", "description": "Athletic conference a team belongs to (ACC, Big Ten, SEC, etc.). Stored in mbb_teams.conf_name."},
+    {"display_name": "Seed", "description": "Tournament seeding (1-16) assigned to teams in the NCAA March Madness bracket."},
+    {"display_name": "March Madness", "description": "The NCAA Division I men's basketball tournament. Filter on tournament = 'NCAA' in mbb_games_sr or use mbb_historical_tournament_games."},
+    {"display_name": "Final Four", "description": "The last four teams remaining in the NCAA tournament. tournament_type = 'Final Four'."},
+    {"display_name": "Box Score", "description": "Summary statistics for a game — points, rebounds, assists, etc. Available in mbb_teams_games_sr (team level) and mbb_players_games_sr (player level)."},
+    {"display_name": "Three-point percentage", "description": "three_points_made / three_points_att. Stored as three_points_pct."},
+    {"display_name": "Sportradar (sr)", "description": "Tables with _sr suffix contain detailed data from Sportradar, generally covering 2013-present."},
+    {"display_name": "Historical tables", "description": "Tables with _historical_ prefix contain data going back further: seasons from 1894-95, games from 1996-97."}
+  ],
+  "schema_relationships": [
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_games_sr",
+      "right_fields": ["h_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_games_sr",
+      "right_fields": ["a_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams_games_sr",
+      "right_fields": ["team_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_players_games_sr",
+      "right_fields": ["team_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_historical_tournament_games",
+      "right_fields": ["win_team_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams",
+      "left_fields": ["id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_historical_teams_seasons",
+      "right_fields": ["team_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_games_sr",
+      "left_fields": ["game_id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_teams_games_sr",
+      "right_fields": ["game_id"]
+    },
+    {
+      "left_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_games_sr",
+      "left_fields": ["game_id"],
+      "right_table_fqn": "bigquery-public-data.ncaa_basketball.mbb_players_games_sr",
+      "right_fields": ["game_id"]
+    }
+  ]
+}

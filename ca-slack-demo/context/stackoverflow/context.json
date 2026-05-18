@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "description": "Stack Overflow — baseline table references only.",
+    "source": "Copied from ca-eval evals/stackoverflow config"
+  },
+  "bq": {
+    "tableReferences": [
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "posts_questions"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "posts_answers"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "users"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "tags"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "votes"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "comments"},
+      {"projectId": "bigquery-public-data", "datasetId": "stackoverflow", "tableId": "badges"}
+    ]
+  }
+}
