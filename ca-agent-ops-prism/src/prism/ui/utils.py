@@ -19,7 +19,6 @@ from typing import Any
 
 import dash
 
-
 logger = logging.getLogger(__name__)
 
 

@@ -40,7 +40,6 @@ from prism.server.services import timeline_service
 from prism.server.services import worker
 from sqlalchemy import orm
 
-
 # --- Client Cache ---
 _GEN_AI_CLIENT: gen_ai_client.GenAIClient | None = None
 _GDA_CLIENT: gemini_data_analytics_client.GeminiDataAnalyticsClient | None = (
