@@ -19,7 +19,6 @@ from prism.client.prism_client import PrismClient
 from prism.client.run_client import RunsClient
 from prism.client.suite_client import SuitesClient
 
-
 __all__ = [
     "PrismClient",
     "AgentsClient",

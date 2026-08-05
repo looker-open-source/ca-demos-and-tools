@@ -46,7 +46,6 @@ from prism.ui.models.ui_state import RunDetailPageState
 from prism.ui.utils import handle_errors
 from prism.ui.utils import typed_callback
 
-
 logger = logging.getLogger(__name__)
 
 

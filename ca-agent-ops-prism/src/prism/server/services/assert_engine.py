@@ -33,7 +33,6 @@ from prism.common.schemas.execution import AssertionResult
 from prism.common.schemas.trace import AskQuestionResponse
 import pydantic
 
-
 LOOKER_QUERY_MATCH_THRESHOLD = 0.75
 
 

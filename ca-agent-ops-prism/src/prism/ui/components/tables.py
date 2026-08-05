@@ -898,7 +898,12 @@ def render_agent_table(
                 dmc.Group(
                     gap="xs",
                     children=[
-                        links.render_agent_link(agent.id, agent.name),
+                        links.render_agent_link(
+                            agent.id,
+                            agent.name
+                            or getattr(agent, "agent_resource_id", None)
+                            or f"Agent {agent.id}",
+                        ),
                         _render_archived_badge(
                             getattr(agent, "is_archived", False)
                         ),

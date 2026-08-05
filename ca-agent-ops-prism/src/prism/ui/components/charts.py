@@ -16,7 +16,6 @@
 
 import dash_mantine_components as dmc
 
-
 TOOL_COLORS = {
     "Agent Reasoning": "grape.6",
     "Search": "blue.6",

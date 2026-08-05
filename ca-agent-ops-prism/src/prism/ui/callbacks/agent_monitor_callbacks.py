@@ -198,7 +198,9 @@ def perform_discovery(
     rows.append(
         html.Tr([
             html.Td(
-                dmc.Text(a.name, fw=500, size="sm"),
+                dmc.Text(
+                    a.name or a.config.agent_resource_id, fw=500, size="sm"
+                ),
                 style={"padding": "16px 24px"},
             ),
             html.Td(
@@ -328,7 +330,10 @@ def monitor_selected_agent(
     selected = AgentBase.model_validate(selected_raw)
 
     client = get_client().agents
-    agent = client.onboard_gcp_agent(name=selected.name, config=selected.config)
+    agent = client.onboard_gcp_agent(
+        name=selected.name or selected.config.agent_resource_id,
+        config=selected.config,
+    )
 
     logger.info(
         "Successfully monitored agent: %s (ID: %d)", selected.name, agent.id
