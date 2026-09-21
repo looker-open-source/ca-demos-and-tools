@@ -37,15 +37,59 @@ from prism.common.schemas.trace import AskQuestionResponse
 from prism.common.schemas.trace import DurationMetrics
 
 
+def _resolve_location_from_parent(parent: str) -> str | None:
+  """Extracts the location segment from a 'projects/x/locations/y' string."""
+  match = re.search(r"locations/([^/]+)", parent or "")
+  if match:
+    return match.group(1)
+  return None
+
+
+def _build_client_options(
+    location: str | None,
+) -> client_options.ClientOptions | None:
+  """Builds regional ClientOptions for non-global locations.
+
+  The Gemini Data Analytics API serves regional resources from
+  region-specific endpoints (e.g. 'geminidataanalytics.us.rep.googleapis.com'
+  for location 'us'). The default/global endpoint
+  ('geminidataanalytics.googleapis.com') will NOT have visibility into
+  regional-only resources, and calls against it for a non-global location
+  can fail with a 403 "Read access... was denied" error even when IAM
+  permissions are otherwise correct.
+
+  Args:
+      location: The GCP location string, e.g. 'global', 'us', 'us-central1'.
+
+  Returns:
+      A ClientOptions instance pointing at the regional endpoint, or None
+      if the location is 'global' (or unspecified), which uses the SDK's
+      default endpoint.
+  """
+  if not location or location == "global":
+    return None
+
+  api_endpoint = f"geminidataanalytics.{location}.rep.googleapis.com"
+  logging.debug(
+      "[GeminiDataAnalyticsClient] Using regional endpoint: %s", api_endpoint
+  )
+  return client_options.ClientOptions(api_endpoint=api_endpoint)
+
+
 class GeminiDataAnalyticsClient:
   """A client for interacting with the Google Gemini Data Analytics API."""
 
-  def __init__(self, project: str):
+  def __init__(self, project: str, location: str | None = None):
     """Initializes the GeminiDataAnalyticsClient.
 
     Args:
         project: The project and location, e.g.,
           'projects/my-project/locations/us-central1'.
+        location: Optional explicit location (e.g. 'us', 'us-central1',
+          'global'). If not provided, it will be parsed out of `project`.
+          Non-global locations route requests to the corresponding regional
+          API endpoint, since the global endpoint does not have access to
+          regional-only resources.
     """
     try:
       _, project_id = google.auth.default()
@@ -57,7 +101,9 @@ class GeminiDataAnalyticsClient:
       logging.error("[Auth] Failed to find default credentials: %s", e)
 
     self.project = project
-    options = None
+
+    resolved_location = location or _resolve_location_from_parent(project)
+    options = _build_client_options(resolved_location)
 
     self.chat_client = geminidataanalytics.DataChatServiceClient(
         client_options=options
