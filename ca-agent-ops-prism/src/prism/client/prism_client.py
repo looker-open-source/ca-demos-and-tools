@@ -16,24 +16,29 @@
 
 from prism.client.agent_client import AgentsClient
 from prism.client.comparison_client import ComparisonClient
+from prism.client.dashboard_client import DashboardClient
 from prism.client.playground_client import PlaygroundClient
 from prism.client.run_client import RunsClient
-from prism.client.suggestion_client import SuggestionClient
 from prism.client.suite_client import SuitesClient
 from prism.client.system_client import SystemClient
 
 
 class PrismClient:
-  """Main Prism Client combining all sub-clients."""
+  """Main Prism Client combining all sub-clients.
+
+  Everything the UI reads or writes goes through a property here. Importing a
+  sub-client directly builds a second one outside get_client()'s singleton.
+  """
 
   def __init__(self):
     self._agents = AgentsClient()
     self._suites = SuitesClient()
     self._runs = RunsClient()
     self._playground = PlaygroundClient()
-    self._suggestion = SuggestionClient()
     self._comparison = ComparisonClient()
+    self._dashboard = DashboardClient()
     self._system = SystemClient()
+    # Same object as runs. Some call sites still say client.trials.
     self._trials = self._runs
 
   @property
@@ -57,12 +62,12 @@ class PrismClient:
     return self._playground
 
   @property
-  def suggestion(self) -> SuggestionClient:
-    return self._suggestion
-
-  @property
   def comparison(self) -> ComparisonClient:
     return self._comparison
+
+  @property
+  def dashboard(self) -> DashboardClient:
+    return self._dashboard
 
   @property
   def system(self) -> SystemClient:

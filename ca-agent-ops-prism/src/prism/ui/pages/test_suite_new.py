@@ -15,7 +15,6 @@
 """Page for creating a new test suite."""
 
 import dash
-from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
@@ -23,7 +22,6 @@ from prism.ui.ids import TestSuiteIds as Ids
 
 
 def layout():
-  """Renders the Create New Test Suite layout."""
   return render_page(
       title="Create New Test Suite",
       description="Configure the initial details for your new test suite.",
@@ -61,13 +59,11 @@ def layout():
           ),
       ],
       children=[
-          # Main Content Card
           dmc.Paper(
               radius="md",
               withBorder=True,
               className="max-w-[1000px] mx-auto overflow-hidden",
               children=[
-                  # Section 1: Configuration
                   dmc.Stack(
                       p=40,
                       gap="xl",
@@ -96,12 +92,7 @@ def layout():
                   ),
               ],
           ),
-          # Hidden stores & placeholders
           dash.dcc.Store(id=Ids.STORE_BUILDER, data=[]),
-          dash.dcc.Store(id=Ids.STORE_MODAL, data={}),
-          html.Div(id=Ids.SAVE_EDIT_BTN, style={"display": "none"}),
-          html.Div(id=Ids.CANCEL_EDIT_BTN, style={"display": "none"}),
-          html.Div(id=Ids.PLACEHOLDER_SAVE_BTN, style={"display": "none"}),
       ],
   )
 

@@ -14,6 +14,7 @@
 
 """Agents Client implementation."""
 
+import logging
 from typing import Any
 from typing import Sequence
 
@@ -24,32 +25,40 @@ from prism.common.schemas import agent as agent_schemas
 from prism.server.services import ai_service
 from prism.server.services.agent_service import AgentService
 
+logger = logging.getLogger(__name__)
+
 
 def _map_agent(model: Any) -> agent_schemas.Agent:
-  """Maps an agent model to an agent schema."""
+  """Returns an Agent schema for a row, a dict or an Agent.
+
+  The ORM row is flat and the schema nests the connection settings under
+  config, so a row has to be rebuilt field by field. Anything else is handed
+  to pydantic.
+  """
 
   if isinstance(model, agent_schemas.Agent):
     return model
 
-  # If it looks like a flat SQLAlchemy model (has project_id)
+  # A dict gets the same treatment, because the edit form round-trips the row
+  # as one.
   if hasattr(model, "project_id") or (
       isinstance(model, dict) and "project_id" in model
   ):
-    # Helper to get values from either object or dict
+
     def gv(key: str, default: Any = None) -> Any:
       if isinstance(model, dict):
         return model.get(key, default)
       return getattr(model, key, default)
 
-    ds_config = gv("datasource_config")
-    datasource = None
-    if ds_config:
-      if "tables" in ds_config:
-        datasource = agent_schemas.BigQueryConfig(**ds_config)
-      elif "instance_uri" in ds_config:
-        datasource = agent_schemas.LookerConfig(**ds_config)
-
     try:
+      ds_config = gv("datasource_config")
+      datasource = None
+      if ds_config:
+        if "tables" in ds_config:
+          datasource = agent_schemas.BigQueryConfig(**ds_config)
+        elif "instance_uri" in ds_config:
+          datasource = agent_schemas.LookerConfig(**ds_config)
+
       return agent_schemas.Agent(
           id=gv("id"),
           name=gv("name"),
@@ -57,7 +66,6 @@ def _map_agent(model: Any) -> agent_schemas.Agent:
               project_id=gv("project_id"),
               location=gv("location"),
               agent_resource_id=gv("agent_resource_id"),
-              env=gv("env"),
               datasource=datasource,
               looker_client_id=gv("looker_client_id"),
               looker_client_secret=gv("looker_client_secret"),
@@ -69,15 +77,21 @@ def _map_agent(model: Any) -> agent_schemas.Agent:
           modified_at=gv("modified_at"),
           is_archived=gv("is_archived", False),
       )
-    except Exception:  # pylint: disable=broad-exception-caught
-      pass
+    except Exception:
+      # Raise, do not fall through. The ORM row carries no config attribute, so
+      # the model_validate below always succeeded and handed back an Agent with
+      # an empty AgentConfig. A row whose datasource_config failed validation
+      # then rendered with no project, no resource id, no datasource and no
+      # golden queries, and saving Edit wrote that empty config back over the
+      # real one.
+      logger.exception("Could not map agent row %s field by field", gv("id"))
+      raise
 
-  # Fallback to standard validation
   return agent_schemas.Agent.model_validate(model)
 
 
 class AgentsClient:
-  """Agents Client implementation."""
+  """Local agent rows, and the GCP agents they are registered against."""
 
   @inject
   def list_agents(
@@ -85,6 +99,7 @@ class AgentsClient:
       include_archived: bool = False,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> Sequence[agent_schemas.Agent]:
+    """Lists agents, archived ones only when asked for."""
     models = service.list_agents(include_archived=include_archived)
     return [_map_agent(m) for m in models]
 
@@ -94,24 +109,9 @@ class AgentsClient:
       agent_id: int,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent | None:
+    """Returns the agent, or None if there is no row with that id."""
     model = service.get_agent(agent_id)
-    result = _map_agent(model) if model else None
-    print(result)
-    return result
-
-  @inject
-  def create_agent(
-      self,
-      name: str,
-      config: agent_schemas.AgentConfig,
-      service: AgentService = Depends(dependencies.get_agent_service),
-  ) -> agent_schemas.Agent:
-    """Creates a new agent."""
-    model = service.create_agent(
-        name=name,
-        config=config,
-    )
-    return _map_agent(model)
+    return _map_agent(model) if model else None
 
   @inject
   def update_agent(
@@ -121,7 +121,7 @@ class AgentsClient:
       config: agent_schemas.AgentConfig | None = None,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
-    """Updates an agent."""
+    """Updates the agent locally, and on GCP when the config changed."""
     model = service.update_agent(
         agent_id=agent_id,
         name=name,
@@ -135,7 +135,7 @@ class AgentsClient:
       agent_id: int,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
-    """Archives an agent."""
+    """Archives the agent, so it drops out of the default listings."""
     model = service.archive_agent(agent_id=agent_id)
     return _map_agent(model)
 
@@ -145,29 +145,16 @@ class AgentsClient:
       agent_id: int,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
-    """Unarchives an agent."""
+    """Unarchives the agent, putting it back in the default listings."""
     model = service.unarchive_agent(agent_id=agent_id)
     return _map_agent(model)
-
-  @inject
-  def get_unique_datasources(
-      self,
-      service: AgentService = Depends(dependencies.get_agent_service),
-  ) -> agent_schemas.UniqueDatasources:
-    return service.get_unique_datasources()
-
-  @inject
-  def get_unique_project_ids(
-      self,
-      service: AgentService = Depends(dependencies.get_agent_service),
-  ) -> list[str]:
-    return service.get_unique_project_ids()
 
   @inject
   def get_configured_gda_projects(
       self,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> list[str]:
+    """Returns the GDA projects the app is configured with."""
     return service.get_configured_gda_projects()
 
   @inject
@@ -177,6 +164,7 @@ class AgentsClient:
       config: agent_schemas.AgentConfig,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
+    """Creates the agent on GCP, then stores it locally."""
     model = service.register_gcp_agent(name=name, config=config)
     return _map_agent(model)
 
@@ -187,6 +175,7 @@ class AgentsClient:
       config: agent_schemas.AgentConfig,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
+    """Stores an agent that already exists on GCP in the local database."""
     model = service.onboard_gcp_agent(name=name, config=config)
     return _map_agent(model)
 
@@ -195,16 +184,17 @@ class AgentsClient:
       self,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> str | None:
-    """Identifies the current GCP project ID."""
+    """Returns the project ADC is configured for, or None if it has none."""
     return service.get_current_gcp_project()
 
   @inject
   def discover_gcp_agents(
       self,
       project_id: str,
-      location: str,
+      location: str | None = None,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> Sequence[agent_schemas.AgentBase]:
+    """Lists a project's GCP agents across the supported locations."""
     return service.discover_gcp_agents(project_id=project_id, location=location)
 
   @inject
@@ -213,6 +203,7 @@ class AgentsClient:
       agent_id: int,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.AgentBase | None:
+    """Reads the agent's live definition from GCP, not from the local row."""
     return service.get_gcp_agent_details(agent_id)
 
   @inject
@@ -225,31 +216,13 @@ class AgentsClient:
     return service.get_published_context(agent_id)
 
   @inject
-  def is_looker_agent(
-      self,
-      agent_id: int,
-      service: AgentService = Depends(dependencies.get_agent_service),
-  ) -> bool:
-    """Returns True if the agent is a Looker agent."""
-    return service.is_looker_agent(agent_id)
-
-  @inject
-  def has_looker_credentials(
-      self,
-      agent_id: int,
-      service: AgentService = Depends(dependencies.get_agent_service),
-  ) -> bool:
-    """Returns True if the Looker agent has valid credentials."""
-    return service.has_looker_credentials(agent_id)
-
-  @inject
   def duplicate_agent(
       self,
       agent_id: int,
       new_name: str,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> agent_schemas.Agent:
-    """Duplicates an agent."""
+    """Copies an existing agent's config under a new name."""
     model = service.duplicate_agent(agent_id=agent_id, new_name=new_name)
     return _map_agent(model)
 
@@ -259,14 +232,30 @@ class AgentsClient:
       instance_uri: str,
       client_id: str,
       client_secret: str,
+      agent_id: int | None = None,
       service: AgentService = Depends(dependencies.get_agent_service),
   ) -> dict[str, Any]:
-    """Tests Looker credentials."""
+    """Tries the credentials against the instance.
+
+    A blank client_secret with an agent_id tests the secret already stored
+    against that agent. Returns a dict with 'success' and a 'message', rather
+    than raising.
+    """
     return service.test_looker_credentials(
         instance_uri=instance_uri,
         client_id=client_id,
         client_secret=client_secret,
+        agent_id=agent_id,
     )
+
+  @inject
+  def check_bigquery_tables(
+      self,
+      tables: Sequence[str],
+      service: AgentService = Depends(dependencies.get_agent_service),
+  ) -> list[dict[str, str]]:
+    """Checks BigQuery tables exist and are readable."""
+    return service.check_bigquery_tables(tables=tables)
 
   @inject
   def format_golden_queries_with_ai(
@@ -274,5 +263,5 @@ class AgentsClient:
       text: str,
       service: ai_service.AIService = Depends(dependencies.get_ai_service),
   ) -> str:
-    """Formats golden queries using AI."""
+    """Asks Gemini to rewrite pasted text as golden queries."""
     return service.format_golden_queries(text)

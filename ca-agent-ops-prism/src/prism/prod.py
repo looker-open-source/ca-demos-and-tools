@@ -25,90 +25,73 @@ from prism.server.db import engine
 import prism.ui.app
 import sqlalchemy
 
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+
+def configure_logging() -> None:
+  """Points application logging at stdout at INFO.
+
+  force=True because this has to win. Three modules call basicConfig, and
+  ``alembic upgrade`` rewrites the root logger wholesale from the [loggers]
+  section of alembic.ini (WARN level, stderr, alembic's own format). Whoever
+  runs last owns the configuration, so this is called again after migrations.
+  """
+  logging.basicConfig(
+      stream=sys.stdout,
+      level=logging.INFO,
+      format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+      force=True,
+  )
+
+
+configure_logging()
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
-logger.info("Initializing Prism Production Server")
+logger.info("Initializing Prism production server")
 
 
-def check_db_connection():
-  """Quick canary test to see if we can connect to the DB."""
-  print("Running canary DB connection test...")
-  sys.stdout.flush()
-
+def check_db_connection() -> bool:
+  """Opens one connection and runs SELECT 1. False if that fails."""
   try:
-    print("Canary: Calling engine.connect()...")
-    sys.stdout.flush()
     with engine.connect() as conn:
-      print("Canary: engine.connect() successful, executing SELECT 1...")
-      sys.stdout.flush()
-      result = conn.execute(sqlalchemy.text("SELECT 1")).scalar()
-      print(f"Canary connection test successful! Result: {result}")
-      sys.stdout.flush()
+      conn.execute(sqlalchemy.text("SELECT 1"))
       return True
-  except Exception as e:  # pylint: disable=broad-except
-    print(f"Canary connection test FAILED: {e}")
-    sys.stdout.flush()
-    logger.exception("Canary connection test FAILED: %s", e)
+  except Exception:  # pylint: disable=broad-except
+    logger.exception("Canary connection test failed")
     return False
 
 
-def run_migrations():
-  """Run database migrations."""
-  try:
-    # alembic.ini is in the project root
-    # When running via gunicorn prism.prod:app, the CWD should be the root
-    config_path = "alembic.ini"
-    print(f"Checking for alembic.ini at: {config_path}")
-    sys.stdout.flush()
-    if not os.path.exists(config_path):
-      # Try to find it relative to this file
-      config_path = os.path.abspath(
-          os.path.join(os.path.dirname(__file__), "../../../alembic.ini")
-      )
-      print(f"Relative alembic.ini not found, trying: {config_path}")
-      sys.stdout.flush()
+def run_migrations() -> None:
+  """Upgrades the database to head."""
+  # Under gunicorn the working directory is the project root, so the relative
+  # path is the normal case. The fallback covers importing prism.prod from
+  # anywhere else. This file is src/prism/prod.py, so the project root is two
+  # levels up. It used to be three, which landed on the parent of the checkout
+  # and raised at import from any cwd that was not the root.
+  config_path = "alembic.ini"
+  if not os.path.exists(config_path):
+    config_path = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "../../alembic.ini")
+    )
 
-    logger.info("Running migrations using config: %s", config_path)
-    print(f"Initializing Alembic config with: {config_path}")
-    sys.stdout.flush()
-    alembic_cfg = alembic.config.Config(config_path)
-    print("Calling alembic.command.upgrade(head)...")
-    sys.stdout.flush()
-    alembic.command.upgrade(alembic_cfg, "head")
-    print("Alembic upgrade finished.")
-    sys.stdout.flush()
-    logger.info("Migrations completed successfully.")
-  except Exception as e:
-    print(f"Migrations FAILED: {e}")
-    sys.stdout.flush()
-    logger.exception("Failed to run migrations: %s", e)
+  logger.info("Running migrations using config: %s", config_path)
+  alembic.command.upgrade(alembic.config.Config(config_path), "head")
 
 
-# Run migrations on module load
-print("Starting database migration flow...")
-sys.stdout.flush()
-logger.info("Starting database migrations...")
-if check_db_connection():
-  run_migrations()
-else:
-  print("Skipping migrations due to connection failure.")
-  sys.stdout.flush()
-  logger.error("Skipping migrations due to connection failure.")
-logger.info("Database migrations finished.")
-print("Database migration flow finished.")
-sys.stdout.flush()
+# Fail closed. Serving on a database that is unreachable or behind the schema
+# gives an error on every page, and Cloud Run keeps the revision in rotation
+# because the port is open. Raising here makes the deploy fail instead, and the
+# previous revision keeps serving.
+if not check_db_connection():
+  raise RuntimeError("Database canary failed, refusing to start.")
 
-logger.info("Exporting Dash server instance...")
+run_migrations()
+
+# Migrations reconfigure logging out from under us, so take it back before the
+# app starts serving.
+configure_logging()
+
 app = prism.ui.app.server
 
-logger.info("Starting background worker pool...")
-PrismClient().system.start_worker_pool(num_workers=2)
+PrismClient().system.start_worker_pool()
 
-logger.info("Prism App ready.")
+logger.info("Prism app ready.")

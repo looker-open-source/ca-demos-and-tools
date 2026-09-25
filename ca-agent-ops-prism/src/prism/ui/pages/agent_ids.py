@@ -14,8 +14,6 @@
 
 """IDs for Agent Management Pages."""
 
-import dash
-
 
 def agent_monitor_btn_add_id(index: str):
   return {"type": "agent-monitor-btn-add", "index": index}
@@ -32,44 +30,42 @@ class AgentIds:
     SWITCH_ARCHIVED = "agent-home-switch-archived"
 
     class ChoiceModal:
+      """IDs for the Create or Discover choice modal."""
+
       ROOT = "agent-choice-modal-root"
       BTN_CREATE = "agent-choice-btn-create"
       BTN_EXISTING = "agent-choice-btn-existing"
       BTN_CANCEL = "agent-choice-btn-cancel"
 
   class Add:
+    """IDs for Agent Add Page."""
+
     BTN_SUBMIT = "agent-add-btn-submit"
     BTN_CANCEL = "agent-add-btn-cancel"
-    REDIRECT = "agent-add-redirect"
+    LOADING_OVERLAY = "agent-add-loading-overlay"
+    CONTAINER_BQ_DATASOURCE = "bq-datasource-container"
+    CONTAINER_LOOKER_DATASOURCE = "looker-datasource-container"
 
   class Monitor:
+    """IDs for the Discover Existing Agents page."""
+
     INPUT_PROJECT = "agent-monitor-input-project"
-    INPUT_LOCATION = "agent-monitor-input-location"
     BTN_FETCH = "agent-monitor-btn-fetch"
     TABLE_ROOT = "agent-monitor-table-root"
-    REDIRECT = "agent-monitor-redirect"
-    SELECT_ENV = "agent-monitor-select-env"
-    PREVIEW = "agent-monitor-preview"
     STORE_FETCH_TRIGGER = "agent-monitor-store-fetch-trigger"
-
-    BTN_ADD = {
-        "type": "agent-monitor-btn-add",
-        "index": dash.dependencies.MATCH,
-    }
+    STORE_DISCOVERED = "discovered-agents-store"
 
   class Form:
     """IDs for Agent form fields."""
 
     INPUT_NAME = "agent-form-input-name"
     INPUT_PROJECT = "agent-form-input-project"
-    INPUT_LOCATION = "agent-form-input-location"
-    INPUT_RESOURCE_ID = "agent-form-input-resource-id"
-    SELECT_ENV = "agent-form-select-env"
     TEXTAREA_INSTRUCTION = "agent-form-textarea-instruction"
-    PREVIEW = "agent-form-preview"
     SELECT_DATASOURCE_TYPE = "agent-form-select-datasource-type"
     INPUT_BQ_TABLES = "agent-form-input-bq-tables"
     INPUT_BQ_TABLES_PREVIEW = "agent-form-input-bq-tables-preview"
+    BTN_TEST_BQ = "agent-form-btn-test-bq"
+    ALERT_BQ_TEST = "agent-form-alert-bq-test"
     INPUT_LOOKER_URI = "agent-form-input-looker-uri"
     INPUT_LOOKER_EXPLORES = "agent-form-input-looker-explores"
     INPUT_LOOKER_EXPLORES_PREVIEW = "agent-form-input-looker-explores-preview"
@@ -82,11 +78,11 @@ class AgentIds:
     """IDs for Agent Detail Page."""
 
     ROOT = "agent-detail-root"
+    LOADING = "agent-detail-loading"
     BREADCRUMBS = "agent-detail-breadcrumbs"
     TITLE = "agent-detail-title"
     DESCRIPTION = "agent-detail-description"
     ACTIONS = "agent-detail-actions"
-    HEADER_CONTAINER = "agent-detail-header-container"
     CONTENT = "agent-detail-content"
     INSTRUCTION = "agent-detail-instruction"
     STORE_GCP_CONFIG = "agent-detail-store-gcp-config"
@@ -103,14 +99,12 @@ class AgentIds:
     INPUT_EDIT_LOOKER_CLIENT_SECRET = (
         "agent-detail-input-edit-looker-client-secret"
     )
-    INPUT_EDIT_PROJECT = "agent-detail-input-edit-project"
-    INPUT_EDIT_RESOURCE_ID = "agent-detail-input-edit-resource-id"
-    INPUT_EDIT_LOCATION = "agent-detail-input-edit-location"
-    INPUT_EDIT_ENV = "agent-detail-input-edit-env"
     CONTAINER_EDIT_LOOKER_CONFIG = "agent-detail-container-edit-looker-config"
     CONTAINER_EDIT_BQ_CONFIG = "agent-detail-container-edit-bq-config"
     INPUT_EDIT_BQ_TABLES = "agent-detail-input-edit-bq-tables"
     INPUT_EDIT_BQ_TABLES_PREVIEW = "agent-detail-input-edit-bq-tables-preview"
+    BTN_TEST_BQ = "agent-detail-btn-test-bq"
+    ALERT_BQ_TEST = "agent-detail-alert-bq-test"
     INPUT_EDIT_LOOKER_URI = "agent-detail-input-edit-looker-uri"
     INPUT_EDIT_LOOKER_EXPLORES = "agent-detail-input-edit-looker-explores"
     INPUT_EDIT_GOLDEN_QUERIES = "agent-detail-input-edit-golden-queries"
@@ -136,7 +130,6 @@ class AgentIds:
     BTN_ARCHIVE = "agent-detail-btn-archive"
     BTN_RESTORE = "agent-detail-btn-restore"
 
-    MAX_WIDTH = "100%"
     CONTAINER_DATASOURCE = "agent-detail-container-datasource"
     BADGE_DATASOURCE = "agent-detail-badge-datasource"
     STORE_REMOTE_TRIGGER = "agent-detail-store-remote-trigger"
@@ -150,10 +143,13 @@ class AgentIds:
     CHART_DURATION_ROOT = "agent-detail-chart-duration-root"
 
     class EvalModal:
+      """IDs for the Run Evaluation modal on the Agent Detail page."""
+
       ROOT = "agent-detail-eval-modal"
       SELECT_SUITE = "agent-detail-eval-select-suite"
       BTN_START = "agent-detail-eval-btn-start"
       BTN_CANCEL = "agent-detail-eval-btn-cancel"
+      BTN_CLOSE = "agent-detail-eval-btn-close"
       SUITE_DETAILS = "agent-detail-eval-suite-details"
       ALERT_VALIDATION = "agent-detail-eval-alert-validation"
       TOGGLE_SUGGESTIONS = "agent-detail-eval-toggle-suggestions"

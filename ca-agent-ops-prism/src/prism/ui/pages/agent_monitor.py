@@ -23,7 +23,7 @@ from prism.ui.pages.agent_ids import AgentIds
 
 
 def _discovery_form():
-  """Returns the discovery form."""
+  """The project and location to list agents from, and the button to do it."""
   return dmc.Paper(
       withBorder=True,
       shadow="sm",
@@ -33,37 +33,19 @@ def _discovery_form():
               p="xl",
               gap="md",
               children=[
-                  dmc.SimpleGrid(
-                      cols={"base": 1, "sm": 2},
-                      spacing="xl",
-                      children=[
-                          dmc.Select(
-                              label="GCP Project",
-                              description=(
-                                  "The Google Cloud project ID containing the"
-                                  " agent resources."
-                              ),
-                              placeholder="Select project",
-                              id=AgentIds.Monitor.INPUT_PROJECT,
-                              required=True,
-                              withAsterisk=True,
-                              data=[],  # Populated via callback
-                              size="md",
-                          ),
-                          dmc.TextInput(
-                              label="GCP Location",
-                              description=(
-                                  "The Google Cloud region where the agent"
-                                  " resources are located."
-                              ),
-                              placeholder="e.g. us-central1",
-                              id=AgentIds.Monitor.INPUT_LOCATION,
-                              required=True,
-                              withAsterisk=True,
-                              value="global",
-                              size="md",
-                          ),
-                      ],
+                  dmc.Select(
+                      label="GCP Project",
+                      description=(
+                          "The Google Cloud project ID containing agent"
+                          " resources. Prism scans all configured locations"
+                          " (global, us, eu) in parallel."
+                      ),
+                      placeholder="Select project",
+                      id=AgentIds.Monitor.INPUT_PROJECT,
+                      required=True,
+                      withAsterisk=True,
+                      data=[],  # Populated via callback
+                      size="md",
                   ),
                   dmc.Button(
                       "Discover Agents",
@@ -74,7 +56,6 @@ def _discovery_form():
                   ),
               ],
           ),
-          # Results area
           dmc.Box(
               style={"borderTop": "1px solid var(--mantine-color-gray-3)"},
               children=[
@@ -84,8 +65,7 @@ def _discovery_form():
                       children=[
                           dmc.Center(
                               dmc.Text(
-                                  "Enter project and location to discover"
-                                  " agents.",
+                                  "Select a project to discover agents.",
                                   c="dimmed",
                                   py=100,
                               )
@@ -94,8 +74,7 @@ def _discovery_form():
                   )
               ],
           ),
-          # State storage
-          dash.dcc.Store(id="discovered-agents-store"),
+          dash.dcc.Store(id=AgentIds.Monitor.STORE_DISCOVERED),
           dash.dcc.Store(id=AgentIds.Monitor.STORE_FETCH_TRIGGER),
       ],
   )
@@ -106,7 +85,7 @@ def layout():
       title="Discover Existing Agents",
       description=(
           "Discover and connect to agents already deployed in your Google Cloud"
-          " projects."
+          " projects across all supported locations (global, us, eu)."
       ),
       breadcrumbs=dmc.Breadcrumbs(
           children=[

@@ -27,7 +27,7 @@ from sqlalchemy import orm
 
 
 class TrialRepository:
-  """Repository for Trial entities."""
+  """Trial queries, including the claim the worker uses to pick one up."""
 
   def __init__(self, session: orm.Session):
     self.session = session
@@ -49,7 +49,7 @@ class TrialRepository:
       run_id: int,
       example_snapshot_id: int,
   ) -> Trial:
-    """Creates a new Trial."""
+    """Inserts a PENDING trial and commits, so a worker can claim it."""
     trial = Trial(
         run_id=run_id,
         example_snapshot_id=example_snapshot_id,
@@ -81,7 +81,7 @@ class TrialRepository:
     return self.session.scalars(stmt).unique().all()
 
   def get_trial(self, trial_id: int) -> Trial | None:
-    """Gets a trial by ID."""
+    """Reads one trial with eager_options applied. None if there is no row."""
     stmt = (
         sqlalchemy.select(Trial)
         .options(*self.eager_options())
@@ -99,33 +99,42 @@ class TrialRepository:
       The claimed Trial object, or None if no trials are available.
     """
 
-    # Subquery: Find the ID of the next pending trial
-    # If run_id is provided, only look for trials in that run.
-    # Otherwise, look in any PENDING or RUNNING run.
+    # The run filter applies whether or not a run was named. Naming one used to
+    # replace it, and the worker reads its run once at the top of a pass and
+    # then claims trials in a loop. A Pause or a Cancel that landed mid loop was
+    # not seen, so the rest of the run's capacity was spawned anyway and the
+    # user watched trials keep starting after pressing the button.
     subq_stmt = (
         sqlalchemy.select(Trial.id)
         .join(Run, Trial.run_id == Run.id)
         .where(Trial.status == RunStatus.PENDING)
+        .where(Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
     )
 
     if run_id is not None:
       subq_stmt = subq_stmt.where(Trial.run_id == run_id)
-    else:
-      subq_stmt = subq_stmt.where(
-          Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING])
-      )
 
     subq = (
         subq_stmt.where(Run.is_archived.is_not(True))
         .order_by(Trial.id.asc())
         .limit(1)
+        # Locks the candidate row, and hands the next one to a worker that
+        # finds it already locked instead of making it queue behind the
+        # winner. OF Trial because locking the joined run row as well would
+        # serialise every worker on the run.
+        .with_for_update(skip_locked=True, of=Trial)
         .scalar_subquery()
     )
 
-    # Atomic Update
+    # The status test in the outer WHERE is what makes this a claim. Under READ
+    # COMMITTED the loser of a race re-evaluates its WHERE against the row the
+    # winner just committed, so matching on the id alone matched a second time:
+    # both workers got the row back from RETURNING, both ran the trial, both
+    # billed the agent API and both wrote assertion results.
     stmt = (
         sqlalchemy.update(Trial)
         .where(Trial.id == subq)
+        .where(Trial.status == RunStatus.PENDING)
         .values(
             status=RunStatus.RUNNING,
             started_at=datetime.datetime.now(datetime.timezone.utc),
@@ -135,15 +144,25 @@ class TrialRepository:
 
     trial = self.session.scalars(stmt).first()
     if trial:
-      # If the run was PENDING, mark it as RUNNING
+
       if trial.run.status == RunStatus.PENDING:
-        trial.run.status = RunStatus.RUNNING
-        trial.run.started_at = datetime.datetime.now(datetime.timezone.utc)
+        # Conditional, the same way promote_next_run is. The read above and
+        # this write are two statements, and cancel arrives on the web request
+        # thread in between. The plain assignment wrote RUNNING over the cancel
+        # and the run came back with every one of its trials CANCELLED.
+        self.session.execute(
+            sqlalchemy.update(Run)
+            .where(Run.id == trial.run_id)
+            .where(Run.status == RunStatus.PENDING)
+            .values(
+                status=RunStatus.RUNNING,
+                started_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+        )
 
       self.session.commit()
-      # Re-fetch with eager options or just return it? returning usually gives
-      # us the object.
-      # To get full relations, we might need a refresh or another fetch.
+      # RETURNING gives us the row but not the eager loaded relations, so
+      # re-fetch.
       return self.get_trial(trial.id)
 
     return None
@@ -158,7 +177,11 @@ class TrialRepository:
       trace_results: list[dict[str, Any]] | None = None,
       status: RunStatus = RunStatus.COMPLETED,
   ) -> Trial:
-    """Updates the result of a trial."""
+    """Writes whatever the caller passed and stamps completed_at.
+
+    Raises:
+      ValueError: If there is no trial with that id.
+    """
     trial = self.session.get(Trial, trial_id)
     if not trial:
       raise ValueError(f"Trial with id {trial_id} not found")
@@ -184,9 +207,6 @@ class TrialRepository:
       self, original_example_id: int
   ) -> list[Trial]:
     """Lists recent trials for a question that have suggestions."""
-    # We want to find trials where suggested_asserts is not empty/null
-    # and joined with Run -> Agent
-    # and Match ExampleSnapshot.original_example_id
     stmt = (
         sqlalchemy.select(Trial)
         .join(Trial.run)
@@ -195,16 +215,15 @@ class TrialRepository:
             Trial.example_snapshot.has(original_example_id=original_example_id)
         )
         .where(Run.is_archived.is_not(True))
-        .where(Trial.suggested_asserts.is_not(None))
-        # .where(func.json_array_length(Trial.suggested_asserts) > 0)
-        # SQLite/PG specific?
-        # Just filter in logic if needed, or check validity
+        # .any(), not .is_not(None). suggested_asserts is a one-to-many
+        # relationship and a relationship has no IS NOT NULL, so this raised
+        # NotImplementedError on every call. That is why the "Suggestions from
+        # recent runs" modal 500'd instead of listing anything.
+        .where(Trial.suggested_asserts.any())
         .order_by(Trial.created_at.desc())
-        .limit(20)  # Cap at 20 recent trials
+        .limit(20)
     )
-    trials = self.session.execute(stmt).scalars().all()
-    # Filter empty ones in python to be safe for all DBs
-    return [t for t in trials if t.suggested_asserts]
+    return list(self.session.execute(stmt).scalars().all())
 
   def update_suggestion(
       self, trial_id: int, suggestion_index: int, new_suggestion: dict[str, Any]
@@ -214,15 +233,11 @@ class TrialRepository:
     if not trial:
       raise ValueError(f"Trial {trial_id} not found")
 
-    # Access relationship
     suggestions = trial.suggested_asserts
     if suggestion_index < 0 or suggestion_index >= len(suggestions):
       raise IndexError(f"Suggestion index {suggestion_index} out of bounds")
 
-    # Update object fields
     suggestion = suggestions[suggestion_index]
-    # new_suggestion is a dict with keys like 'type', 'weight', 'params',
-    # 'reasoning'
     if "type" in new_suggestion:
       suggestion.type = new_suggestion["type"]
     if "weight" in new_suggestion:

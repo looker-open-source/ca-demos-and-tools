@@ -22,7 +22,7 @@ from prism.server.services.comparison_service import ComparisonService
 
 
 class ComparisonClient:
-  """Comparison Client implementation."""
+  """Two runs of one suite, read side by side."""
 
   @inject
   def compare_runs(
@@ -31,5 +31,8 @@ class ComparisonClient:
       challenger_run_id: int,
       service: ComparisonService = Depends(dependencies.get_comparison_service),
   ) -> comparison_schemas.RunComparison:
-    """Compares two runs and generates a comparison report."""
+    """Compares two runs question by question.
+
+    Raises ValueError if either run is missing.
+    """
     return service.compare_runs(base_run_id, challenger_run_id)

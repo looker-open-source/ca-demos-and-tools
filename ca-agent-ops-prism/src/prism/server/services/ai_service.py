@@ -15,21 +15,18 @@
 """Service for AI-assisted operations like formatting and generation."""
 
 import json
-import logging
 import os
 
 from prism.common.schemas import agent as agent_schemas
 from prism.server.clients import gen_ai_client
 import pydantic
-import yaml
 
-# Path to the prompt templates
 PROMPTS_DIR = os.path.join(os.path.dirname(__file__), "prompts")
 GOLDEN_QUERY_PROMPT_PATH = os.path.join(PROMPTS_DIR, "golden_query_prompt.txt")
 
 
 class AIService:
-  """Service for AI-assisted operations."""
+  """Holds the prompt templates and runs them through GenAIClient."""
 
   def __init__(self, gen_ai_client_inst: gen_ai_client.GenAIClient):
     self.gen_ai_client = gen_ai_client_inst
@@ -38,37 +35,40 @@ class AIService:
     )
 
   def _load_prompt_template(self, path: str) -> str:
-    """Loads a prompt template from the file system."""
-    try:
-      with open(path, "r") as f:
-        return f.read()
-    except FileNotFoundError:
-      logging.error("Prompt template not found at %s", path)
-      return ""
+    """Loads a prompt template from the file system.
+
+    A missing template is a packaging fault, not a runtime condition. Swallowing
+    it would send the model an empty prompt and report whatever came back as a
+    result, so let it raise.
+    """
+    with open(path, "r") as f:
+      return f.read()
 
   def format_golden_queries(self, input_text: str) -> str:
-    """Uses Gemini to format text into a list of LookerGoldenQuery objects."""
+    """Uses Gemini to format text into a LookerGoldenQuery JSON string.
+
+    The editor takes text, so the parsed queries go back out as JSON. Blank
+    input gives "".
+
+    A failure raises. This used to log and hand the input back, which the
+    callback read as success: it cleared the validation error under the box
+    and left the text as it was. A quota error looked exactly like a model
+    that had nothing to change, and the only record was a log line.
+    """
     if not input_text.strip():
       return ""
 
     prompt = self._golden_query_template.replace("{{input_text}}", input_text)
 
-    try:
-      # Pydantic schema for the list of golden queries
-      class GoldenQueriesResponse(pydantic.BaseModel):
-        golden_queries: list[agent_schemas.LookerGoldenQuery]
+    class GoldenQueriesResponse(pydantic.BaseModel):
+      golden_queries: list[agent_schemas.LookerGoldenQuery]
 
-      response = self.gen_ai_client.generate_structured(
-          prompt, GoldenQueriesResponse
-      )
+    response = self.gen_ai_client.generate_structured(
+        prompt, GoldenQueriesResponse
+    )
 
-      if not response or not response.golden_queries:
-        return input_text
+    if not response or not response.golden_queries:
+      raise RuntimeError("The model returned no golden queries.")
 
-      # Convert to JSON for the editor
-      data = [gq.model_dump(mode="json") for gq in response.golden_queries]
-      return json.dumps(data, indent=2)
-
-    except Exception:  # pylint: disable=broad-except
-      logging.exception("Failed to format golden queries with AI")
-      return input_text
+    data = [gq.model_dump(mode="json") for gq in response.golden_queries]
+    return json.dumps(data, indent=2)

@@ -22,8 +22,229 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.pages.agent_ids import AgentIds
 
 
+def _agent_identity():
+  """Renders the agent name and system instruction section."""
+  return dmc.Stack(
+      p=40,
+      gap="xl",
+      style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
+      children=[
+          dmc.Text("Agent Identity", fw=700, size="lg"),
+          dmc.TextInput(
+              label="Agent Name",
+              placeholder="e.g., Customer Support Bot V1",
+              id=AgentIds.Form.INPUT_NAME,
+              required=True,
+              size="md",
+          ),
+          dmc.Stack(
+              gap=4,
+              children=[
+                  dmc.Text("System Instruction", size="sm", fw=500),
+                  dmc.Textarea(
+                      placeholder=(
+                          "Define the persona, tone, and behavioral"
+                          " instructions for the agent..."
+                      ),
+                      id=AgentIds.Form.TEXTAREA_INSTRUCTION,
+                      minRows=6,
+                      autosize=True,
+                      size="md",
+                  ),
+              ],
+          ),
+      ],
+  )
+
+
+def _infrastructure():
+  """Renders the GCP project picker."""
+  return dmc.Box(
+      p=40,
+      style={
+          "backgroundColor": "rgba(248, 249, 250, 0.5)",
+          "borderBottom": "1px solid var(--mantine-color-gray-3)",
+      },
+      children=[
+          dmc.Text("Infrastructure", fw=700, size="lg", mb="xl"),
+          dmc.Select(
+              label="GCP Project",
+              description=(
+                  "The Google Cloud project ID containing the agent resources."
+              ),
+              placeholder="Select project",
+              id=AgentIds.Form.INPUT_PROJECT,
+              required=True,
+              size="md",
+              data=[],  # Populated via callback
+          ),
+      ],
+  )
+
+
+def _bq_datasource():
+  """Renders the BigQuery table inputs."""
+  return html.Div(
+      id=AgentIds.Add.CONTAINER_BQ_DATASOURCE,
+      children=[
+          dmc.Stack(
+              gap="md",
+              children=[
+                  dmc.Textarea(
+                      label="BigQuery Tables",
+                      description=(
+                          "Enter full table paths (project.dataset.table),"
+                          " one per line."
+                      ),
+                      placeholder=(
+                          "project.dataset.table_1\nproject.dataset.table_2"
+                      ),
+                      id=AgentIds.Form.INPUT_BQ_TABLES,
+                      required=True,
+                      size="md",
+                      minRows=3,
+                      autosize=True,
+                  ),
+                  dmc.Group(
+                      id=AgentIds.Form.INPUT_BQ_TABLES_PREVIEW,
+                      gap="xs",
+                      mt="xs",
+                  ),
+                  dmc.Group(
+                      justify="flex-end",
+                      mt="md",
+                      children=[
+                          dmc.Button(
+                              "Test Tables",
+                              id=AgentIds.Form.BTN_TEST_BQ,
+                              variant="subtle",
+                              size="sm",
+                              radius="md",
+                              leftSection=DashIconify(icon="bi:database-check"),
+                          ),
+                      ],
+                  ),
+                  dmc.Alert(
+                      id=AgentIds.Form.ALERT_BQ_TEST,
+                      hide=True,
+                      radius="md",
+                  ),
+              ],
+          )
+      ],
+  )
+
+
+def _looker_datasource():
+  """Renders the Looker instance, explore and credential inputs."""
+  return html.Div(
+      id=AgentIds.Add.CONTAINER_LOOKER_DATASOURCE,
+      style={"display": "none"},
+      children=[
+          dmc.Stack(
+              gap="md",
+              children=[
+                  dmc.TextInput(
+                      label="Looker Instance URI",
+                      placeholder="https://your-looker.com",
+                      id=AgentIds.Form.INPUT_LOOKER_URI,
+                      required=True,
+                      size="md",
+                  ),
+                  dmc.Textarea(
+                      label="Looker Explores",
+                      description="Enter model.explore paths, one per line.",
+                      placeholder="model_1.explore_1\nmodel_2.explore_2",
+                      id=AgentIds.Form.INPUT_LOOKER_EXPLORES,
+                      required=True,
+                      size="md",
+                      minRows=3,
+                      autosize=True,
+                  ),
+                  dmc.Group(
+                      id=AgentIds.Form.INPUT_LOOKER_EXPLORES_PREVIEW,
+                      gap="xs",
+                      mt="xs",
+                  ),
+                  dmc.SimpleGrid(
+                      cols=2,
+                      spacing="xl",
+                      children=[
+                          dmc.TextInput(
+                              label="Looker Client ID",
+                              id=AgentIds.Form.INPUT_LOOKER_CLIENT_ID,
+                              size="md",
+                          ),
+                          dmc.PasswordInput(
+                              label="Looker Client Secret",
+                              id=AgentIds.Form.INPUT_LOOKER_CLIENT_SECRET,
+                              size="md",
+                          ),
+                      ],
+                  ),
+                  dmc.Group(
+                      justify="flex-end",
+                      mt="md",
+                      children=[
+                          dmc.Button(
+                              "Test Connection",
+                              id=AgentIds.Form.BTN_TEST_LOOKER,
+                              variant="subtle",
+                              size="sm",
+                              radius="md",
+                              leftSection=DashIconify(
+                                  icon="material-symbols:vpn-key"
+                              ),
+                          ),
+                      ],
+                  ),
+                  dmc.Alert(
+                      id=AgentIds.Form.ALERT_LOOKER_TEST,
+                      hide=True,
+                      radius="md",
+                  ),
+              ],
+          )
+      ],
+  )
+
+
+def _datasource_section():
+  """Renders the datasource picker and both provider forms."""
+  return dmc.Stack(
+      p=40,
+      gap="xl",
+      children=[
+          dmc.Group(
+              justify="space-between",
+              children=[
+                  dmc.Text("Datasource Configuration", fw=700, size="lg"),
+                  dmc.SegmentedControl(
+                      id=AgentIds.Form.SELECT_DATASOURCE_TYPE,
+                      data=[
+                          {"label": "BigQuery", "value": "bq"},
+                          {"label": "Looker", "value": "looker"},
+                      ],
+                      value="bq",
+                      size="sm",
+                      radius="md",
+                  ),
+              ],
+          ),
+          dmc.Text(
+              "Choose the source of truth for your agent's analytics.",
+              size="sm",
+              c="dimmed",
+              mt=-15,
+          ),
+          _bq_datasource(),
+          _looker_datasource(),
+      ],
+  )
+
+
 def _create_form():
-  """Returns the agent creation form."""
+  """Renders the agent creation form."""
   return dmc.Paper(
       withBorder=True,
       radius="md",
@@ -32,222 +253,12 @@ def _create_form():
       children=[
           dmc.LoadingOverlay(
               visible=False,
-              id="agent-add-loading-overlay",
+              id=AgentIds.Add.LOADING_OVERLAY,
               overlayProps={"blur": 2},
           ),
-          # Section 1: Agent Identity
-          dmc.Stack(
-              p=40,
-              gap="xl",
-              style={"borderBottom": "1px solid var(--mantine-color-gray-3)"},
-              children=[
-                  dmc.Text("Agent Identity", fw=700, size="lg"),
-                  dmc.TextInput(
-                      label="Agent Name",
-                      placeholder="e.g., Customer Support Bot V1",
-                      id=AgentIds.Form.INPUT_NAME,
-                      required=True,
-                      size="md",
-                  ),
-                  dmc.Stack(
-                      gap=4,
-                      children=[
-                          dmc.Text("System Instruction", size="sm", fw=500),
-                          dmc.Textarea(
-                              placeholder=(
-                                  "Define the persona, tone, and behavioral"
-                                  " instructions for the agent..."
-                              ),
-                              id=AgentIds.Form.TEXTAREA_INSTRUCTION,
-                              minRows=6,
-                              autosize=True,
-                              size="md",
-                          ),
-                      ],
-                  ),
-              ],
-          ),
-          # Section 2: Infrastructure
-          dmc.Box(
-              p=40,
-              style={
-                  "backgroundColor": "rgba(248, 249, 250, 0.5)",
-                  "borderBottom": "1px solid var(--mantine-color-gray-3)",
-              },
-              children=[
-                  dmc.Text("Infrastructure", fw=700, size="lg", mb="xl"),
-                  dmc.SimpleGrid(
-                      cols=2,
-                      spacing="xl",
-                      children=[
-                          dmc.Select(
-                              label="GCP Project",
-                              description=(
-                                  "The Google Cloud project ID containing the"
-                                  " agent resources."
-                              ),
-                              placeholder="Select project",
-                              id=AgentIds.Form.INPUT_PROJECT,
-                              required=True,
-                              size="md",
-                              data=[],  # Populated via callback
-                          ),
-                          dmc.TextInput(
-                              label="GCP Location",
-                              description=(
-                                  "The Google Cloud region where the agent"
-                                  " resources are located."
-                              ),
-                              placeholder="global",
-                              id=AgentIds.Form.INPUT_LOCATION,
-                              value="global",
-                              required=True,
-                              size="md",
-                          ),
-                      ],
-                  ),
-              ],
-          ),
-          # Section 3: Datasource Configuration
-          dmc.Stack(
-              p=40,
-              gap="xl",
-              children=[
-                  dmc.Group(
-                      justify="space-between",
-                      children=[
-                          dmc.Text(
-                              "Datasource Configuration", fw=700, size="lg"
-                          ),
-                          dmc.SegmentedControl(
-                              id=AgentIds.Form.SELECT_DATASOURCE_TYPE,
-                              data=[
-                                  {"label": "BigQuery", "value": "bq"},
-                                  {"label": "Looker", "value": "looker"},
-                              ],
-                              value="bq",
-                              size="sm",
-                              radius="md",
-                          ),
-                      ],
-                  ),
-                  dmc.Text(
-                      "Choose the source of truth for your agent's analytics.",
-                      size="sm",
-                      c="dimmed",
-                      mt=-15,
-                  ),
-                  # BigQuery Configuration
-                  html.Div(
-                      id="bq-datasource-container",
-                      children=[
-                          dmc.Stack(
-                              gap="md",
-                              children=[
-                                  dmc.Textarea(
-                                      label="BigQuery Tables",
-                                      description=(
-                                          "Enter full table paths"
-                                          " (project.dataset.table), one per"
-                                          " line."
-                                      ),
-                                      placeholder="project.dataset.table_1\nproject.dataset.table_2",
-                                      id=AgentIds.Form.INPUT_BQ_TABLES,
-                                      required=True,
-                                      size="md",
-                                      minRows=3,
-                                      autosize=True,
-                                  ),
-                                  dmc.Group(
-                                      id=AgentIds.Form.INPUT_BQ_TABLES_PREVIEW,
-                                      gap="xs",
-                                      mt="xs",
-                                  ),
-                              ],
-                          )
-                      ],
-                  ),
-                  # Looker Configuration
-                  html.Div(
-                      id="looker-datasource-container",
-                      style={"display": "none"},
-                      children=[
-                          dmc.Stack(
-                              gap="md",
-                              children=[
-                                  dmc.TextInput(
-                                      label="Looker Instance URI",
-                                      placeholder="https://your-looker.com",
-                                      id=AgentIds.Form.INPUT_LOOKER_URI,
-                                      required=True,
-                                      size="md",
-                                  ),
-                                  dmc.Textarea(
-                                      label="Looker Explores",
-                                      description=(
-                                          "Enter model.explore paths, one per"
-                                          " line."
-                                      ),
-                                      placeholder=(
-                                          "model_1.explore_1\nmodel_2.explore_2"
-                                      ),
-                                      id=AgentIds.Form.INPUT_LOOKER_EXPLORES,
-                                      required=True,
-                                      size="md",
-                                      minRows=3,
-                                      autosize=True,
-                                  ),
-                                  dmc.Group(
-                                      id=AgentIds.Form.INPUT_LOOKER_EXPLORES_PREVIEW,
-                                      gap="xs",
-                                      mt="xs",
-                                  ),
-                                  dmc.SimpleGrid(
-                                      cols=2,
-                                      spacing="xl",
-                                      children=[
-                                          dmc.TextInput(
-                                              label="Looker Client ID",
-                                              id=AgentIds.Form.INPUT_LOOKER_CLIENT_ID,
-                                              size="md",
-                                          ),
-                                          dmc.PasswordInput(
-                                              label="Looker Client Secret",
-                                              id=AgentIds.Form.INPUT_LOOKER_CLIENT_SECRET,
-                                              size="md",
-                                          ),
-                                      ],
-                                  ),
-                                  dmc.Group(
-                                      justify="flex-end",
-                                      mt="md",
-                                      children=[
-                                          dmc.Button(
-                                              "Test Connection",
-                                              id=AgentIds.Form.BTN_TEST_LOOKER,
-                                              variant="subtle",
-                                              size="sm",
-                                              radius="md",
-                                              leftSection=DashIconify(
-                                                  icon=(
-                                                      "material-symbols:vpn-key"
-                                                  )
-                                              ),
-                                          ),
-                                      ],
-                                  ),
-                                  dmc.Alert(
-                                      id=AgentIds.Form.ALERT_LOOKER_TEST,
-                                      hide=True,
-                                      radius="md",
-                                  ),
-                              ],
-                          )
-                      ],
-                  ),
-              ],
-          ),
-          # Footer
+          _agent_identity(),
+          _infrastructure(),
+          _datasource_section(),
           dmc.Group(
               p=40,
               justify="flex-end",

@@ -26,11 +26,16 @@ class SystemClient:
   @inject
   def start_worker_pool(
       self,
-      num_workers: int = 2,
       service: WorkerProcessManager = Depends(
           dependencies.get_worker_pool_service
       ),
   ) -> None:
-    """Starts the background worker manager."""
-    service.max_concurrent_trials = num_workers
+    """Starts the WorkerManager thread, which spawns the trial processes.
+
+    The trials themselves run in child processes, started with the "spawn"
+    context, not on the thread. That process boundary is why the cassette
+    layer is driven by environment variables rather than a monkeypatch.
+
+    Does nothing if it is already running, so a caller need not check.
+    """
     service.start()

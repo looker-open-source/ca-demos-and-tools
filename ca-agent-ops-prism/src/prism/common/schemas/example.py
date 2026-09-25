@@ -21,30 +21,16 @@ from prism.common.schemas.assertion import AssertionRequest
 import pydantic
 
 
-class ExampleCreate(pydantic.BaseModel):
-  """Schema for creating a new Example."""
-
-  test_suite_id: int
-  logical_id: str | None = None  # Optional, can be auto-generated
-  question: str = pydantic.Field(..., description="The input question")
-  asserts: list[AssertionRequest] = pydantic.Field(
-      default_factory=list, description="List of assert definitions"
-  )
-
-
-class ExampleUpdate(pydantic.BaseModel):
-  """Schema for updating an existing Example."""
-
-  question: str | None = None
-  asserts: list[AssertionRequest] | None = None
-
-
-class Example(ExampleCreate):
+class Example(pydantic.BaseModel):
   """Schema for a persisted Example."""
 
-  id: int
+  test_suite_id: int
   logical_id: str
-  asserts: list[Assertion] = pydantic.Field(default_factory=list)
+  question: str = pydantic.Field(..., description="The input question")
+  asserts: list[Assertion] = pydantic.Field(
+      default_factory=list, description="List of assert definitions"
+  )
+  id: int
   created_at: datetime.datetime
   modified_at: datetime.datetime | None = None
   is_archived: bool = False

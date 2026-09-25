@@ -1,41 +1,64 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Smoke test for the Prism UI.
 
-This test ensures that the Dash application and all its components (pages,
-callbacks) can be imported without syntax or import errors.
+Importing the app pulls in every page and callback, so a syntax or import
+error anywhere in the UI fails here.
 """
 
+import inspect
+
+import dash
+from prism.ui import pages
 from prism.ui.app import app
-# Import a representative set of pages and callbacks to ensure syntax check
-# Most callbacks are already imported in prism.ui.app
-
-# pylint: disable=unused-import
-from prism.ui.pages import agent_add
-from prism.ui.pages import agent_detail
-from prism.ui.pages import agent_home
-from prism.ui.pages import agent_monitor
-from prism.ui.pages import agent_trace
-from prism.ui import ids
-from prism.ui.pages import test_suite_home
-from prism.ui.pages import test_suite_new
-from prism.ui.pages import test_suite_questions
-from prism.ui.pages import test_suite_view
-from prism.ui.pages import evaluation_detail
-from prism.ui.pages import evaluations
-from prism.ui.pages import home
-from prism.ui.pages import run_comparison
-from prism.ui.pages import trial_detail
-# pylint: enable=unused-import
 
 
-def test_ui_imports():
-  """Verifies that the main app and key pages can be imported."""
-  assert app is not None
-  assert home.layout is not None
-  assert evaluations.layout is not None
-  assert test_suite_questions.layout is not None
+def test_every_page_module_is_registered():
+  """A page module left out of register_all_pages gets no coverage at all.
+
+  Registration is a hand-written list, not a scan of the package, so a new
+  page can be imported by prism.ui.pages and never reach dash.page_registry.
+  Nothing downstream notices. test_callback_dispatch.py and the page-layout
+  contract in test_callback_contracts.py both parametrize over the registry,
+  so the missing page drops out of those runs and they stay green.
+  """
+  registered = {page["module"] for page in dash.page_registry.values()}
+  # A module carrying register_page is a page. The *_ids modules beside them
+  # are not.
+  declared = {
+      module.__name__
+      for module in vars(pages).values()
+      if inspect.ismodule(module) and hasattr(module, "register_page")
+  }
+
+  assert declared, "prism.ui.pages exposed no page modules"
+  assert declared - registered == set(), (
+      "page modules that never call register_page(): "
+      f"{sorted(declared - registered)}"
+  )
 
 
 def test_app_configured():
-  """Verifies basic Dash app configuration."""
+  """suppress_callback_exceptions is what test_callback_contracts.py covers for.
+
+  With it on, Dash prunes callbacks whose components are missing instead of
+  raising, so the contract tests are the only thing that notices.
+
+  The title is checked here too. Every page overrides it with "Prism | X", so
+  the app-level one only shows before a page resolves, and nothing else would
+  catch it changing.
+  """
   assert app.config.title == "Prism"
   assert app.config.suppress_callback_exceptions is True

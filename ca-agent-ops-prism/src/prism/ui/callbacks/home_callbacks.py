@@ -16,7 +16,7 @@
 
 from dash import Input
 from dash import Output
-from prism.client.dashboard_client import DashboardClient
+from prism.client import get_client
 from prism.ui.components.dashboard_components import render_evaluation_chart
 from prism.ui.components.dashboard_components import render_run_volume_chart
 from prism.ui.components.tables import render_run_table
@@ -34,25 +34,24 @@ from prism.ui.utils import typed_callback
 )
 def update_dashboard(n_intervals: int):
   """Updates dashboard statistics and components."""
-  del n_intervals  # Unused argument
+  del n_intervals  # The interval is just a timer; its count is unused.
 
-  client = DashboardClient()
-  stats = client.get_dashboard_stats()
+  # Through the singleton, like every other callback. Building a
+  # DashboardClient here made a second one every 30s tick.
+  stats = get_client().dashboard.get_dashboard_stats()
 
-  # 2. Performance Chart
   chart_data = [item.model_dump() for item in stats.accuracy_history]
   chart = render_evaluation_chart(chart_data)
 
-  # 3. Volume Chart
   volume_data = [item.model_dump() for item in stats.run_volume_history]
   volume_chart = render_run_volume_chart(volume_data)
 
-  # 4. Recent Runs
-  # Names are now included in the RunSchema via the Client/Service
-  recent_runs = render_run_table(
-      stats.recent_runs,
-      table_id=HomeIds.RECENT_RUNS_CONTAINER,
-  )
+  # Run names come from the RunSchema, so the table needs no extra lookup.
+  #
+  # No table_id. This callback writes the children of the div that already
+  # carries RECENT_RUNS_CONTAINER, so stamping the same id on the table inside
+  # it put two nodes with one id on the page, once per 30s tick.
+  recent_runs = render_run_table(stats.recent_runs, table_id=None)
 
   return (
       chart,

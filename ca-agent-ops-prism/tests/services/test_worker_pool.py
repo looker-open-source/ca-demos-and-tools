@@ -1,6 +1,18 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import datetime
-import logging
-import multiprocessing
 import os
 import threading
 import time
@@ -14,12 +26,15 @@ from prism.server.models import run as run_models
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
-from prism.server.repositories.trial_repository import TrialRepository
 from prism.server.services.execution_service import ExecutionService
 from prism.server.services.snapshot_service import SnapshotService
 from prism.server.services.worker import WorkerProcessManager
 import psutil
 import pytest
+
+# The pid written on the wedged trial. Nothing looks it up on the host, so the
+# value only has to be recognisable in an assertion.
+_STALE_PID = 99999
 
 
 class MockProcess:
@@ -54,7 +69,6 @@ def mock_gda_client():
   ) as mock:
     client_instance = mock.return_value
     client_instance.get_agent_context.return_value = {"sys": "test"}
-    # Mock ask_question
     response_mock = unittest.mock.MagicMock()
     response_mock.protobuf_response = []
     response_mock.duration = unittest.mock.MagicMock(total_duration=50)
@@ -68,29 +82,28 @@ def test_worker_pool_resiliency(
     mock_gda_client: unittest.mock.MagicMock,
     session_factory: Any,
 ):
-  """Tests that worker manager picks up trials and handles basic execution."""
-  # Reset singleton
+  """The manager picks a trial up and runs it to COMPLETED."""
+  # The manager is a singleton, so without this the constructor hands back a
+  # leftover from an earlier test, session factory and all.
   WorkerProcessManager._instance = None
-  worker_service = WorkerProcessManager(
-      max_concurrent_trials=2, session_factory=session_factory
-  )
+  worker_service = WorkerProcessManager(session_factory=session_factory)
 
-  # Mock multiprocessing and psutil
   mock_ctx = unittest.mock.MagicMock()
   mock_ctx.Process = MockProcess
 
   mock_psutil_p = unittest.mock.MagicMock()
   mock_psutil_p.is_running.return_value = True
   mock_psutil_p.status.return_value = psutil.STATUS_RUNNING
+  # The manager records this beside the PID and the column is a Float, so a
+  # bare MagicMock here fails the commit instead of the test.
+  mock_psutil_p.create_time.return_value = 1000.0
 
   with (
       unittest.mock.patch("multiprocessing.get_context", return_value=mock_ctx),
       unittest.mock.patch("psutil.Process", return_value=mock_psutil_p),
   ):
-    # Start manager
     worker_service.start()
     try:
-      # 1. Setup Data
       agent_repo = AgentRepository(db_session)
       suite_repo = SuiteRepository(db_session)
       example_repo = ExampleRepository(db_session)
@@ -113,7 +126,7 @@ def test_worker_pool_resiliency(
       db_session.commit()
       trial_id = run.trials[0].id
 
-      # 2. Wait for manager to spawn and thread to finish
+      # Wait for the manager to spawn and the thread to finish
       max_wait = 20
       start_time = time.time()
       found = False
@@ -121,8 +134,6 @@ def test_worker_pool_resiliency(
         db_session.commit()
         db_session.expire_all()
         t = db_session.get(run_models.Trial, trial_id)
-        if t:
-          print(f"DEBUG: Trial {trial_id} status: {t.status}")
         if t and t.status == execution.RunStatus.COMPLETED:
           found = True
           break
@@ -140,10 +151,9 @@ def test_stale_trial_recovery(
     session_factory: Any,
     mock_gda_client: unittest.mock.MagicMock,
 ):
-  """Tests fallback recovery for very old trials."""
+  """A stale RUNNING trial is reset to PENDING with its pid cleared."""
   WorkerProcessManager._instance = None
 
-  # Setup Data
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -171,14 +181,27 @@ def test_stale_trial_recovery(
   trial = run.trials[0]
   trial.status = execution.RunStatus.RUNNING
   trial.started_at = stale_time
-  trial.trial_pid = 99999
+  trial.trial_pid = _STALE_PID
+  trial.trial_pid_started_at = 1000.0
   db_session.commit()
 
-  worker_service = WorkerProcessManager(
-      max_concurrent_trials=1, session_factory=session_factory
-  )
-  # One loop pass including recovery
-  worker_service._recover_stale_trials()
+  worker_service = WorkerProcessManager(session_factory=session_factory)
+  # psutil is patched, so the host's process table decides nothing here. The
+  # pid used to be handed to the real psutil and the branch _kill_trial_process
+  # took depended on whether the number happened to be free on the machine.
+  # Recycled is the interesting one: 30 minutes is long enough for the pid to
+  # belong to someone else. The start time is what proves it, and it proves the
+  # trial's own process is gone, so the row is freed without a kill.
+  recycled = unittest.mock.MagicMock()
+  recycled.ppid.return_value = os.getpid() + 1
+  recycled.create_time.return_value = 2000.0
+  with unittest.mock.patch(
+      "psutil.Process", return_value=recycled
+  ) as psutil_process:
+    worker_service._recover_stale_trials()
+
+  psutil_process.assert_called_once_with(_STALE_PID)
+  recycled.kill.assert_not_called()
 
   db_session.refresh(trial)
   assert trial.status == execution.RunStatus.PENDING

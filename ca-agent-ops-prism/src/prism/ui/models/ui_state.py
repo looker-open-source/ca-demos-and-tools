@@ -21,15 +21,6 @@ from prism.common.schemas import execution
 import pydantic
 
 
-class AgentCreateForm(pydantic.BaseModel):
-  """Form data for creating a new agent."""
-
-  project_id: str
-  location: str
-  agent_resource_id: str
-  name: str
-
-
 class AssertItem(pydantic.BaseModel):
   """Represents a single assert in the UI builder."""
 
@@ -46,15 +37,6 @@ class TestCaseState(pydantic.BaseModel):
   id: int | None = None
   logical_id: str = pydantic.Field(default_factory=lambda: str(uuid.uuid4()))
   question: str
-  asserts: list[AssertItem] = []
-
-
-class TestCaseModalState(pydantic.BaseModel):
-  """State for the test case editor modal."""
-
-  mode: str = "add"  # "add" or "edit"
-  index: int | None = None
-  question_id: int | None = None
   asserts: list[AssertItem] = []
 
 
@@ -76,7 +58,7 @@ class AssertionSummary(pydantic.BaseModel):
 
 
 class RunDetailPageState(pydantic.BaseModel):
-  """State for the Run Detail page, containing run and trials data."""
+  """State for the Run Detail page."""
 
   run: execution.RunSchema
   trials: list[execution.Trial]

@@ -29,8 +29,12 @@ class PlaygroundTrace(Base, BaseMixin):
   __tablename__ = "playground_traces"
 
   id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
+  # timezone=True, because this was the only naive timestamp in the schema.
+  # Every other column is aware, including modified_at on this same table, so
+  # a trace read back here came out naive and could not be compared against
+  # anything else without raising.
   created_at: orm.Mapped[datetime.datetime] = orm.mapped_column(
-      sqlalchemy.DateTime,
+      sqlalchemy.DateTime(timezone=True),
       default=lambda: datetime.datetime.now(datetime.timezone.utc),
       nullable=False,
   )

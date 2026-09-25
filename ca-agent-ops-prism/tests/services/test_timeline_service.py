@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tests for TimelineService."""
 
 from prism.server.services.timeline_service import TimelineService
@@ -7,7 +21,6 @@ class TestTimelineService:
   """Unit tests for TimelineService."""
 
   def test_create_timeline_empty(self):
-    """Verifies that an empty trace returns an empty timeline."""
     service = TimelineService()
     timeline = service.create_timeline_from_trace(
         trace=[], ttfr_ms=100, total_duration_ms=500
@@ -16,10 +29,9 @@ class TestTimelineService:
     assert not timeline.events
 
   def test_create_timeline_basic(self):
-    """Verifies basic timeline creation with thought and response."""
     service = TimelineService()
     trace = [
-        # Note: timestamps must be ISO format
+        # Timestamps must be ISO format.
         {
             "timestamp": "2023-10-27T10:00:00Z",
             "system_message": {
@@ -39,14 +51,12 @@ class TestTimelineService:
 
     assert len(timeline.events) == 2
 
-    # First event
     e1 = timeline.events[0]
     assert e1.duration_ms == 50  # TTFR
     assert "thought" in e1.title.lower()
     assert e1.content == "Hello"
     assert e1.icon == "bi:lightbulb"
 
-    # Second event
     e2 = timeline.events[1]
     assert e2.duration_ms == 1000  # 1s diff
     assert "response" in e2.title.lower()
@@ -54,7 +64,7 @@ class TestTimelineService:
     assert e2.icon == "bi:chat-left-text"
 
   def test_parse_json_content(self):
-    """Verifies parsing of JSON content in schema events."""
+    """A schema event's content is parsed as JSON."""
     service = TimelineService()
     trace = [{
         "timestamp": "2023-10-27T10:00:00Z",
@@ -70,7 +80,7 @@ class TestTimelineService:
     assert e1.icon == "bi:database-check"
 
   def test_parse_sql_content(self):
-    """Verifies parsing of SQL content in data events."""
+    """A data event's generated_sql is parsed as SQL."""
     service = TimelineService()
     trace = [{
         "timestamp": "2023-10-27T10:00:00Z",
@@ -85,8 +95,41 @@ class TestTimelineService:
     assert e1.content == "SELECT * FROM table"
     assert e1.icon == "bi:code-slash"
 
+  def test_an_event_with_a_null_message_is_still_an_event(self):
+    """A trace can carry an event whose message key is present and null.
+
+    The fallback chain ended on event.get("system_message", {}), which is
+    reached only when system_message is falsy. An explicit null came back out
+    of it as None, and the membership test below it raised TypeError, taking
+    the whole timeline with it.
+    """
+    service = TimelineService()
+    trace = [{"timestamp": "2023-10-27T10:00:00Z", "system_message": None}]
+
+    timeline = service.create_timeline_from_trace(
+        trace=trace, ttfr_ms=0, total_duration_ms=100
+    )
+
+    assert len(timeline.events) == 1
+
+  def test_a_camel_case_server_message_is_read(self):
+    """The trace arrives as JSON from the API, so the keys are camelCase."""
+    service = TimelineService()
+    trace = [{
+        "timestamp": "2023-10-27T10:00:00Z",
+        "serverMessage": {
+            "text": {"parts": ["Hello"], "textType": "FINAL_RESPONSE"}
+        },
+    }]
+
+    timeline = service.create_timeline_from_trace(
+        trace=trace, ttfr_ms=0, total_duration_ms=100
+    )
+
+    assert timeline.events[0].content == "Hello"
+    assert timeline.events[0].title == "Final Response"
+
   def test_parse_new_event_types(self):
-    """Verifies parsing of newly added event types."""
     service = TimelineService()
     trace = [
         {
@@ -114,7 +157,9 @@ class TestTimelineService:
         },
         {
             "timestamp": "2023-10-27T10:00:03Z",
-            "system_message": {"keyDriverAnalysis": {"name": "kda"}},
+            "system_message": {
+                "data": {"generated_looker_query": {"model": "thelook"}}
+            },
         },
     ]
     timeline = service.create_timeline_from_trace(
@@ -131,11 +176,11 @@ class TestTimelineService:
     assert timeline.events[2].title == "Agent Progress"
     assert timeline.events[2].icon == "bi:info-circle"
 
-    assert timeline.events[3].title == "Key Driver Analysis"
-    assert timeline.events[3].icon == "bi:diagram-3"
+    assert timeline.events[3].title == "Generated Looker Query"
+    assert timeline.events[3].icon == "bi:funnel"
 
   def test_trace_grouping_heuristic(self):
-    """Verifies that events are grouped based on lookahead heuristic."""
+    """A thought takes the title of the call that follows it."""
     service = TimelineService()
     trace = [
         {
@@ -178,7 +223,7 @@ class TestTimelineService:
     assert timeline.events[3].group_title == "Agent Reasoning - Data Query"
 
   def test_trace_grouping_request_vs_result(self):
-    """Verifies that requests are grouped with reasoning while results are separate."""
+    """The request joins the reasoning group, the result starts its own."""
     service = TimelineService()
     trace = [
         {
@@ -212,7 +257,7 @@ class TestTimelineService:
     assert timeline.events[2].group_title == "Schema Fetch"
 
   def test_trace_grouping_explicit_id(self):
-    """Verifies that explicit group_id is respected over heuristic."""
+    """An explicit group_id wins over the heuristic."""
     service = TimelineService()
     trace = [
         {
@@ -229,8 +274,7 @@ class TestTimelineService:
     assert len(timeline.events) == 1
     assert timeline.events[0].group_title == "Group 42"
 
-  def test_clarification_and_advanced_insight(self):
-    """Verifies parsing of clarification and advanced_insight messages."""
+  def test_clarification_and_error(self):
     service = TimelineService()
     trace = [
         {
@@ -239,9 +283,7 @@ class TestTimelineService:
         },
         {
             "timestamp": "2023-10-27T10:00:01Z",
-            "system_message": {
-                "advanced_insight": {"insight": "This is special"}
-            },
+            "system_message": {"error": {"text": "Query failed"}},
         },
     ]
     timeline = service.create_timeline_from_trace(
@@ -250,11 +292,11 @@ class TestTimelineService:
     assert len(timeline.events) == 2
     assert timeline.events[0].title == "Clarification Question"
     assert timeline.events[0].icon == "bi:question-circle-fill"
-    assert timeline.events[1].title == "Advanced Insight"
-    assert timeline.events[1].icon == "bi:journal-text"
+    assert timeline.events[1].title == "Error"
+    assert timeline.events[1].content == "Query failed"
 
   def test_calculate_tool_timings_grouped(self):
-    """Verifies that tool timings aggregate by group_title parity."""
+    """Tool timings aggregate by group_title."""
     service = TimelineService()
     trace = [
         {
@@ -298,3 +340,35 @@ class TestTimelineService:
         "Data Query": 1000,
         "Final Response": 1500,
     }
+
+  def test_a_run_that_ends_on_its_last_event_gets_no_padding(self):
+    """The last group used to be given 100ms so its bar had a width.
+
+    calculate_tool_timings sums the same groups, so the padding was charged to
+    whichever tool went last and the run detail page printed it as a measured
+    duration. Here the events account for the whole run, so there is nothing
+    left to hand out.
+    """
+    service = TimelineService()
+    trace = [
+        {
+            "timestamp": "2023-10-27T10:00:00Z",
+            "system_message": {
+                "text": {"parts": ["Thinking..."], "text_type": "THOUGHT"}
+            },
+        },
+        {
+            "timestamp": "2023-10-27T10:00:01Z",
+            "system_message": {
+                "text": {"parts": ["Done"], "text_type": "FINAL_RESPONSE"}
+            },
+        },
+    ]
+
+    # ttfr 500 for the first event, a 1000ms gap to the second, so the trace
+    # fills all 1500ms of the run and the final gap is zero.
+    timings = service.calculate_tool_timings(
+        trace=trace, ttfr_ms=500, total_duration_ms=1500
+    )
+
+    assert timings == {"Agent Thought": 500, "Final Response": 1000}

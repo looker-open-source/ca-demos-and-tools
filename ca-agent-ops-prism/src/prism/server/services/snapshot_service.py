@@ -54,32 +54,24 @@ class SnapshotService:
     if not suite:
       raise ValueError(f"TestSuite with id {suite_id} not found")
 
-    # 1. Create Suite Snapshot
-    # We use explicit field copying rather than __dict__ to be safe and explicit
-    # about what is being snapshotted.
+    # Copy fields explicitly, not __dict__, so what gets snapshotted is
+    # visible here.
     suite_snapshot = TestSuiteSnapshot(
         original_suite_id=suite.id,
         name=suite.name,
         description=suite.description,
-        tags=suite.tags.copy(),  # Deep copy tags
+        tags=suite.tags.copy(),
         created_at=datetime.datetime.now(datetime.timezone.utc),
     )
     self.session.add(suite_snapshot)
-    self.session.flush()  # Flush to get snapshot ID
+    self.session.flush()  # The example snapshots need suite_snapshot.id.
 
-    # 2. Fetch all live examples
-    # We could likely optimize this with a bulk insert if needed, but for now
-    # explicit object creation is safer and clearer.
     examples = self.example_repository.list_by_suite_id(test_suite_id=suite.id)
 
-    # 3. Create Example Snapshots
     example_snapshots = []
     for example in examples:
-      # Pydantic models (assertions) are converted to ORM via repository usually,
-      # but here we are snapshotting existing models.
-      # We rely on the DB value being correct.
-      # We just copy the fields directly.
-      # (No mapper needed here actually since we are Model -> ModelSnapshot, not Schema -> Model)
+      # Assertion to AssertionSnapshot, so no assertion mapper is involved
+      # here.
       asserts_snapshot = []
       for a in example.asserts:
         asserts_snapshot.append(

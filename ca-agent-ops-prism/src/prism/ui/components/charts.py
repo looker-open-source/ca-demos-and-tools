@@ -16,24 +16,6 @@
 
 import dash_mantine_components as dmc
 
-TOOL_COLORS = {
-    "Agent Reasoning": "grape.6",
-    "Search": "blue.6",
-    "Calculator": "green.6",
-    "Schema Fetch": "orange.6",
-    "Query Execution": "indigo.6",
-    "Data Exploration": "teal.6",
-}
-
-FALLBACK_COLORS = [
-    "red.6",
-    "pink.6",
-    "violet.6",
-    "cyan.6",
-    "lime.6",
-    "yellow.6",
-]
-
 
 def render_tool_timing_chart(
     tool_timings: dict[str, int], title: str = "Tool Timing Distribution"
@@ -47,10 +29,9 @@ def render_tool_timing_chart(
         radius="md",
     )
 
-  # Transform dict to list of dicts for dmc.BarChart
-  # Filter out tools with 0 duration to keep chart clean
+  # dmc.BarChart wants a list of dicts. Drop tools with 0 duration so the
+  # chart stays readable.
   data = [{"tool": k, "duration": v} for k, v in tool_timings.items() if v > 0]
-  # Sort by duration descending
   data.sort(key=lambda x: x["duration"], reverse=True)
 
   if not data:
@@ -96,7 +77,7 @@ def render_tool_timing_chart(
 def render_trial_profiling(
     tool_timings: dict[str, int], title: str = "Trial Profiling"
 ) -> dmc.Paper:
-  """Renders a comprehensive profiling card with timeline and bar chart."""
+  """Renders a profiling card with a bar chart of tool durations."""
   if not tool_timings:
     return dmc.Paper(
         dmc.Text("No profiling data available", c="dimmed", size="sm"),
@@ -114,15 +95,17 @@ def render_trial_profiling(
         radius="md",
     )
 
-  bar_data = []
-  bar_series = []
-  for tool, duration in tool_timings.items():
-    bar_data.append({"tool": tool, "duration": duration})
+  # Drop tools with 0 duration, like render_tool_timing_chart does. Keeping
+  # them drew a labelled zero-width bar here for a tool the run detail page
+  # left out of the same chart.
+  bar_data = [
+      {"tool": tool, "duration": duration}
+      for tool, duration in tool_timings.items()
+      if duration > 0
+  ]
 
-  # Sort by total duration descending
   bar_data.sort(key=lambda x: x["duration"], reverse=True)
 
-  # Standard series with single blue color
   bar_series = [{"name": "duration", "color": "blue", "label": "Duration (ms)"}]
 
   bar_chart_content = [
@@ -149,7 +132,11 @@ def render_trial_profiling(
                   [
                       dmc.Text(title, fw=700, size="lg"),
                       dmc.Badge(
-                          f"{len(tool_timings)} tools",
+                          # bar_data, not tool_timings. The badge counted the
+                          # zero-duration tools the chart below it drops, so a
+                          # trial with one idle tool read "4 tools" over three
+                          # bars.
+                          f"{len(bar_data)} tools",
                           color="blue",
                           variant="light",
                       ),

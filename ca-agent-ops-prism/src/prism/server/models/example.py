@@ -14,8 +14,6 @@
 
 """SQLAlchemy model for the Example entity."""
 
-from typing import Any
-
 from prism.server.db import Base
 from prism.server.models.base_mixin import BaseMixin
 import sqlalchemy
@@ -42,7 +40,6 @@ class Example(Base, BaseMixin, BaseExample):
   )
 
   # Relationships
-  # lazy='selectin' allows accessing suite.examples efficiently
   test_suite = orm.relationship("TestSuite", backref="examples")
   asserts = orm.relationship(
       "Assertion",

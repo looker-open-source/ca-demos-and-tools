@@ -22,7 +22,6 @@ from fast_depends import inject
 from prism.client import dependencies
 from prism.common.schemas import example as example_schemas
 from prism.common.schemas import suite as suite_schemas
-from prism.common.schemas.assertion import Assertion
 from prism.common.schemas.assertion import AssertionRequest
 from prism.common.schemas.suite import SuiteDetail
 from prism.server.services import validation_service
@@ -39,7 +38,7 @@ def _map_suite_detail(model: Any) -> SuiteDetail:
 
 
 class SuitesClient:
-  """Suites Client implementation."""
+  """Suites, the examples in them, and bulk import of both."""
 
   @inject
   def list_suites(
@@ -47,7 +46,7 @@ class SuitesClient:
       include_archived: bool = False,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> Sequence[suite_schemas.Suite]:
-    """Lists all test suites."""
+    """Lists test suites, archived ones only when asked for."""
 
     models = service.list_suites(include_archived=include_archived)
     return [_map_suite(m) for m in models]
@@ -58,10 +57,22 @@ class SuitesClient:
       suite_id: int,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> SuiteDetail | None:
-    """Gets a test suite by its ID."""
+    """Gets a suite and its live examples, or None if there is no such suite."""
 
     model = service.get_suite(suite_id)
-    return _map_suite_detail(model) if model else None
+    if not model:
+      return None
+
+    detail = _map_suite_detail(model)
+    # The backref the validation above reads is unfiltered, and a delete here
+    # is an archive. A suite three of whose ten questions were deleted counted
+    # ten in the Run Evaluation modal and then ran seven trials. Every other
+    # read path goes through list_examples.
+    detail.examples = [
+        example_schemas.Example.model_validate(e)
+        for e in service.list_examples(suite_id, include_archived=False)
+    ]
+    return detail
 
   @inject
   def get_suites_with_stats(
@@ -82,7 +93,7 @@ class SuitesClient:
       description: str | None = None,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> suite_schemas.Suite:
-    """Creates a new test suite."""
+    """Creates a suite and returns it with the id the database assigned."""
 
     model = service.create_suite(name=name, description=description)
     return _map_suite(model)
@@ -95,7 +106,7 @@ class SuitesClient:
       description: str | None = None,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> suite_schemas.Suite:
-    """Updates an existing test suite."""
+    """Updates a suite. A field left as None keeps its current value."""
 
     model = service.update_suite(
         suite_id=suite_id, name=name, description=description
@@ -108,7 +119,7 @@ class SuitesClient:
       suite_id: int,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> suite_schemas.Suite:
-    """Archives a test suite."""
+    """Hides a suite from the default listing. Nothing is deleted."""
     model = service.archive_suite(suite_id=suite_id)
     return _map_suite(model)
 
@@ -118,7 +129,7 @@ class SuitesClient:
       suite_id: int,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> suite_schemas.Suite:
-    """Unarchives a test suite."""
+    """Puts an archived suite back in the default listing."""
     model = service.unarchive_suite(suite_id=suite_id)
     return _map_suite(model)
 
@@ -129,7 +140,7 @@ class SuitesClient:
       include_archived: bool = False,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> Sequence[example_schemas.Example]:
-    """Lists all examples in a test suite."""
+    """Lists a suite's examples, archived ones only when asked for."""
     models = service.list_examples(
         suite_id=suite_id, include_archived=include_archived
     )
@@ -142,7 +153,12 @@ class SuitesClient:
       questions: list[dict[str, Any]],
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> list[dict[str, Any]]:
-    """Synchronizes a suite's examples."""
+    """Makes a suite's examples match the questions given.
+
+    Questions carrying an id are updated, the rest are added, and any example
+    not in the list is archived. Returns the saved questions, which is how the
+    builder learns the ids of the ones it just added.
+    """
     return service.sync_suite(suite_id=suite_id, questions=questions)
 
   @inject
@@ -152,12 +168,10 @@ class SuitesClient:
       question: str,
       asserts: list[AssertionRequest] | None = None,
       service: SuiteService = Depends(dependencies.get_suite_service),
-  ) -> suite_schemas.Example:
-    """Adds a new example to a test suite."""
-    # We pass AssertionRequest objects (or dicts) to the service which expects
-    # list[Assertion]. Pydantic allows this as they are compatible.
+  ) -> example_schemas.Example:
+    """Adds a question, with any assertions it already has, to a suite."""
     example = service.add_example(suite_id, question, asserts or [])
-    return suite_schemas.Example.model_validate(example)
+    return example_schemas.Example.model_validate(example)
 
   @inject
   def delete_example(
@@ -165,23 +179,25 @@ class SuitesClient:
       example_id: int,
       service: SuiteService = Depends(dependencies.get_suite_service),
   ) -> None:
-    """Deletes an example by its ID."""
+    """Archives an example. The row is kept, the default listings hide it."""
     service.delete_example(example_id)
 
-  @inject
   def validate_assertion(
       self,
       assertion_data: dict[str, Any],
   ) -> str | None:
-    """Validates assertion data against Pydantic schemas."""
+    """Returns why an assertion is invalid, or None if it validates."""
     return validation_service.validate_assertion(assertion_data)
 
-  @inject
   def parse_yaml_safely(
       self,
       yaml_str: str,
   ) -> tuple[dict[str, Any] | None, str | None]:
-    """Parses YAML string safely."""
+    """Parses YAML into a mapping, returning (data, error_message).
+
+    Never raises. An empty string gives ({}, None). Anything that is not YAML,
+    or is YAML but not a mapping, gives (None, message) for the form to show.
+    """
     return validation_service.parse_yaml_safely(yaml_str)
 
   @inject
@@ -192,7 +208,7 @@ class SuitesClient:
           dependencies.get_bulk_import_service
       ),
   ) -> str:
-    """Formats bulk import text using AI."""
+    """Asks Gemini to rewrite pasted text as bulk import YAML."""
     return service.format_with_ai(text)
 
   @inject

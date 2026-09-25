@@ -22,7 +22,6 @@ from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(**_kwargs):
-  """Renders the Agent Trace layout."""
   return render_page(
       title="Agent Trace",
       title_id=Ids.AGENT_TRACE_TITLE,

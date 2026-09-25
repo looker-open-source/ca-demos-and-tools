@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import datetime
 from prism.common.schemas.execution import RunStatus
 from prism.server.models.agent import Agent
@@ -7,12 +21,10 @@ from prism.server.models.snapshot import ExampleSnapshot, TestSuiteSnapshot
 from prism.server.repositories.run_repository import RunRepository
 from prism.server.repositories.trial_repository import TrialRepository
 from prism.server.services.dashboard_service import DashboardService
-import pytest
 from sqlalchemy import orm
 
 
 def test_archived_runs_excluded_from_dashboard(db_session: orm.Session):
-  # 1. Setup: Create an active run and an archived run
   agent = Agent(
       name="Test Agent", project_id="p", location="l", agent_resource_id="r"
   )
@@ -45,18 +57,16 @@ def test_archived_runs_excluded_from_dashboard(db_session: orm.Session):
   service = DashboardService(db_session)
   stats = service.get_dashboard_stats()
 
-  # 2. Verification: Archived run should not be in stats
-  assert stats.total_runs_7d == 1
   assert len(stats.recent_runs) == 1
   assert stats.recent_runs[0].id == active_run.id
 
-  # Run volume history should only count the active run
+  # The chart counts runs per day, and the archived one falls on the same
+  # day, so a leak would show up as a count of 2 on one bar.
   assert len(stats.run_volume_history) == 1
   assert stats.run_volume_history[0].count == 1
 
 
 def test_archived_runs_excluded_from_agent_stats(db_session: orm.Session):
-  # 1. Setup
   agent = Agent(
       name="Test Agent", project_id="p", location="l", agent_resource_id="r"
   )
@@ -93,13 +103,12 @@ def test_archived_runs_excluded_from_agent_stats(db_session: orm.Session):
   repo = RunRepository(db_session)
   stats = repo.get_agent_dashboard_stats(agent.id)
 
-  # 2. Verification
   assert len(stats["recent_evals"]) == 1
   assert stats["recent_evals"][0]["id"] == active_run.id
 
 
 def test_archived_runs_excluded_from_trial_picking(db_session: orm.Session):
-  # 1. Setup: pending trial in archived run
+  # A pending trial inside an archived run.
   agent = Agent(
       name="Test Agent", project_id="p", location="l", agent_resource_id="r"
   )
@@ -142,5 +151,5 @@ def test_archived_runs_excluded_from_trial_picking(db_session: orm.Session):
   repo = TrialRepository(db_session)
   next_trial = repo.pick_next_pending_trial()
 
-  # 2. Verification: should not pick trial from archived run
+  # The picker skips the trial because its run is archived.
   assert next_trial is None

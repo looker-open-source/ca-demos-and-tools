@@ -27,22 +27,21 @@ def layout():
   return render_page(
       title="Welcome back",
       description=(
-          "Prism provides a comprehensive toolkit for evaluating and monitoring"
-          " Gemini Data Analytics agents."
+          "Prism provides a toolkit for evaluating and monitoring Gemini Data"
+          " Analytics agents."
       ),
       children=[
           dcc.Interval(
               id=HomeIds.INTERVAL, interval=30000, n_intervals=0
           ),  # Refresh every 30s
-          # Hero: Getting Started
           dmc.Alert(
               title="New to Prism?",
               children=[
                   dmc.Group(
                       [
                           dmc.Text(
-                              "Check out our comprehensive Getting Started"
-                              " guide to learn the ropes of Agent Evaluation.",
+                              "Check out our Getting Started guide to learn"
+                              " the ropes of Agent Evaluation.",
                               size="sm",
                           ),
                           dmc.Anchor(
@@ -71,7 +70,6 @@ def layout():
               icon=DashIconify(icon="bi:stars", width=24),
               id=HomeIds.GETTING_STARTED_CARD,
           ),
-          # Charts Grid
           dmc.Grid(
               children=[
                   dmc.GridCol(
@@ -96,7 +94,6 @@ def layout():
               gutter="md",
               mb="xl",
           ),
-          # Recent Runs
           html.Div(
               children=[
                   dmc.Group(

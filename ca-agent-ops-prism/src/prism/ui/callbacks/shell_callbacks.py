@@ -15,13 +15,13 @@
 """Callbacks for the application shell."""
 
 import dash
-from dash import callback
 from dash import Input
 from dash import Output
 from dash import State
 from prism.client import get_client
 from prism.ui.constants import CP
 from prism.ui.constants import GLOBAL_PROJECT_ID_STORE
+from prism.ui.ids import ShellIds
 from prism.ui.utils import typed_callback
 
 
@@ -30,7 +30,7 @@ from prism.ui.utils import typed_callback
     [Input("url", CP.PATHNAME)],
     state=[State(GLOBAL_PROJECT_ID_STORE, "data")],
 )
-def fetch_current_project_id(pathname, current_data):
+def fetch_current_project_id(unused_pathname, current_data):
   """Fetches the current GCP project ID on app load."""
   if current_data is not None:
     return dash.no_update
@@ -42,13 +42,13 @@ def fetch_current_project_id(pathname, current_data):
     return None
 
 
-@callback(
-    output=[
-        Output("nav-overview", "c"),
-        Output("nav-agents", "c"),
-        Output("nav-evaluations", "c"),
-        Output("nav-test-suites", "c"),
-        Output("nav-comparison", "c"),
+@typed_callback(
+    [
+        Output(ShellIds.NAV_OVERVIEW, "c"),
+        Output(ShellIds.NAV_AGENTS, "c"),
+        Output(ShellIds.NAV_EVALUATIONS, "c"),
+        Output(ShellIds.NAV_TEST_SUITES, "c"),
+        Output(ShellIds.NAV_COMPARISON, "c"),
     ],
     inputs=[Input("url", CP.PATHNAME)],
 )

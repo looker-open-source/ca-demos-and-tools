@@ -22,12 +22,12 @@ from prism.server.services.dashboard_service import DashboardService
 
 
 class DashboardClient:
-  """Dashboard Client implementation."""
+  """Read-only view of the aggregate stats the home page renders."""
 
   @inject
   def get_dashboard_stats(
       self,
       service: DashboardService = Depends(dependencies.get_dashboard_service),
   ) -> dashboard_schemas.DashboardStats:
-    """Calculates and returns dashboard statistics."""
+    """Gets the counts, charts and recent runs the home page renders."""
     return service.get_dashboard_stats()

@@ -18,16 +18,7 @@ import dash_mantine_components as dmc
 
 
 def render_status_badge(label: str, color: str, size: str = "sm") -> dmc.Badge:
-  """Renders a standardized status badge.
-
-  Args:
-      label: The text to display in the badge.
-      color: The Mantine color to use.
-      size: The size of the badge.
-
-  Returns:
-      A styled dmc.Badge component.
-  """
+  """Renders a standardized status badge."""
   return dmc.Badge(
       label,
       color=color,
@@ -36,7 +27,8 @@ def render_status_badge(label: str, color: str, size: str = "sm") -> dmc.Badge:
       size=size,
       tt="uppercase",
       fw=700,
-      # Specific styles to match the mockup's high-density look
+      # Drops Mantine's default border and trims the padding so badges stay
+      # short enough to sit inline in dense table rows.
       style={
           "border": "none",
           "padding": "0 10px",
@@ -48,16 +40,7 @@ def render_status_badge(label: str, color: str, size: str = "sm") -> dmc.Badge:
 def render_coverage_badge(
     label: str, color: str, size: str = "sm"
 ) -> dmc.Tooltip:
-  """Renders a coverage badge with an explanatory tooltip.
-
-  Args:
-      label: The coverage label (Full, Partial, No).
-      color: The badge color.
-      size: The badge size.
-
-  Returns:
-      A dmc.Tooltip wrapping the badge.
-  """
+  """Renders a coverage badge with an explanatory tooltip."""
   descriptions = {
       "Full Coverage": (
           "All test cases in this test suite have at least one assertion."

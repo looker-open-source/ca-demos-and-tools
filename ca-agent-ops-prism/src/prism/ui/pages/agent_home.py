@@ -14,9 +14,7 @@
 
 """Monitoring Dashboard (Agent Management Home)."""
 
-# pylint: disable=unused-import
 import dash
-from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.ui.components.page_layout import render_page
@@ -53,7 +51,6 @@ def _choice_modal():
           dmc.Stack(
               gap="md",
               children=[
-                  # Create New Agent
                   dmc.Anchor(
                       dmc.UnstyledButton(
                           id=AgentIds.Home.ChoiceModal.BTN_CREATE,
@@ -111,7 +108,6 @@ def _choice_modal():
                       href="/agents/onboard/new",
                       underline=False,
                   ),
-                  # Monitor Existing
                   dmc.Anchor(
                       dmc.UnstyledButton(
                           id=AgentIds.Home.ChoiceModal.BTN_EXISTING,
@@ -185,7 +181,6 @@ def _choice_modal():
 
 
 def layout():
-  """Returns the monitoring dashboard layout."""
   return render_page(
       title="Monitored Agents",
       description=(

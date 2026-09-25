@@ -1,0 +1,38 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# The Dockerfile does `COPY . .`, so this is an allowlist. Everything is
+# excluded and only what the build needs comes back. A new file at the root
+# stays out of the image until someone adds it here. The old form was a
+# denylist, which meant every secret and every scratch file had to be
+# remembered one at a time.
+**
+
+!src/**
+!alembic/**
+!alembic.ini
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+
+# Re-including a directory re-includes everything under it.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.egg-info/
+**/*.orig
+**/*.rej
+**/*.bak

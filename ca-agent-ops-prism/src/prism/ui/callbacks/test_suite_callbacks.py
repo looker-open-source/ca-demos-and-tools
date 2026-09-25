@@ -14,7 +14,6 @@
 
 """Callbacks for the Test Suites UI."""
 
-import traceback
 from typing import Any
 import urllib.parse
 
@@ -34,6 +33,7 @@ from prism.ui.constants import REDIRECT_HANDLER
 from prism.ui.ids import EvaluationIds
 from prism.ui.ids import TestSuiteHomeIds
 from prism.ui.models import ui_state
+from prism.ui.utils import id_from_pathname
 from prism.ui.utils import typed_callback
 
 
@@ -42,14 +42,12 @@ from prism.ui.utils import typed_callback
     inputs=[
         (EvaluationIds.BTN_OPEN_RUN_MODAL, CP.N_CLICKS),
         (EvaluationIds.BTN_CANCEL_RUN, CP.N_CLICKS),
-        (EvaluationIds.BTN_CANCEL_RUN + "-x", CP.N_CLICKS),
     ],
     prevent_initial_call=True,
-    allow_duplicate=True,
 )
-def toggle_run_eval_modal(open_clicks, cancel_clicks, x_clicks):
+def toggle_run_eval_modal(open_clicks, cancel_clicks):
   """Toggles the Run Evaluation modal."""
-  del open_clicks, cancel_clicks, x_clicks
+  del open_clicks, cancel_clicks
   ctx = dash.callback_context
   if not ctx.triggered:
     return typed_callback.no_update
@@ -63,19 +61,20 @@ def toggle_run_eval_modal(open_clicks, cancel_clicks, x_clicks):
 @typed_callback(
     (EvaluationIds.AGENT_SELECT, CP.DATA),
     inputs=[(EvaluationIds.MODAL_RUN_EVAL, "opened")],
-    state=[("url", CP.PATHNAME)],
     prevent_initial_call=True,
-    allow_duplicate=True,
 )
-def populate_eval_agents(is_open, _):
-  """Populates agent options filtering by compatible datasource."""
+def populate_eval_agents(is_open):
+  """Populates the agent options for the Run Evaluation modal."""
   if not is_open:
     return typed_callback.no_update
 
   client = get_client()
   all_agents = client.agents.list_agents()
 
-  return [{"label": agent.name, "value": str(agent.id)} for agent in all_agents]
+  return [
+      {"label": agent.name or f"Agent {agent.id}", "value": str(agent.id)}
+      for agent in all_agents
+  ]
 
 
 @typed_callback(
@@ -120,22 +119,23 @@ def render_eval_agent_details(agent_id):
 
 
 @typed_callback(
-    [
-        (TestSuiteHomeIds.TEST_SUITES_LIST, CP.CHILDREN),
-        (TestSuiteHomeIds.LOADING, CP.VISIBLE),
-    ],
+    (TestSuiteHomeIds.TEST_SUITES_LIST, CP.CHILDREN),
     inputs=[
         ("url", CP.PATHNAME),
         ("url", CP.SEARCH),
     ],
+    # The overlay used to be an output this returned False to, and nothing set
+    # it True, so toggling Show Archived re-queried with the stale table on
+    # screen and no sign anything was happening. Dash raises it for the
+    # lifetime of the call, the way the run-start and connectivity buttons do.
+    running=[(dash.Output(TestSuiteHomeIds.LOADING, CP.VISIBLE), True, False)],
 )
 def update_test_suites_list(pathname: str, search: str):
   """Renders the list of test suites on the dashboard."""
 
   if pathname != "/test_suites":
-    return typed_callback.no_update, typed_callback.no_update
+    return typed_callback.no_update
 
-  # Parse Filters from URL
   parsed_qs = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
   coverage = parsed_qs.get("coverage", [None])[0]
 
@@ -147,23 +147,18 @@ def update_test_suites_list(pathname: str, search: str):
   )
 
   if not suites_with_stats:
-    return (
-        empty_states.render_empty_state(
-            title="No Test Suites Found",
-            description=(
-                "Create your first test suite to start defining evaluation"
-                " criteria."
-            ),
-            button_label="Create Test Suite",
-            href="/test_suites/new",
-            icon="bi:collection",
+    return empty_states.render_empty_state(
+        title="No Test Suites Found",
+        description=(
+            "Create your first test suite to start defining evaluation"
+            " criteria."
         ),
-        False,
+        button_label="Create Test Suite",
+        href="/test_suites/new",
+        icon="bi:collection",
     )
 
-  table = tables.render_test_suite_table(suites_with_stats)
-
-  return table, False
+  return tables.render_test_suite_table(suites_with_stats)
 
 
 @typed_callback(
@@ -259,7 +254,7 @@ def toggle_suite_archive(archive_clicks, restore_clicks, pathname):
     return dash.no_update
 
   try:
-    suite_id = int(pathname.split("/")[-1])
+    suite_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update
 
@@ -293,7 +288,7 @@ def load_test_suite_data(_, pathname: str):
     return typed_callback.no_update
 
   try:
-    suite_id = int(pathname.split("/")[-1])
+    suite_id = id_from_pathname(pathname)
   except ValueError:
     return typed_callback.no_update
 
@@ -305,19 +300,8 @@ def load_test_suite_data(_, pathname: str):
   test_cases_data = client.suites.list_examples(suite_id)
   test_cases = []
   for tc in test_cases_data:
-    q_asserts = []
-    for a in tc.asserts:
-      # Map Model to AssertItem structure
-      if hasattr(a, "model_dump"):
-        a_dict = a.model_dump()
-        # id and type are top-level.
-        q_asserts.append(a_dict)
-      else:
-        q_asserts.append({
-            "id": getattr(a, "id", None),
-            "type": a.type.value if hasattr(a.type, "value") else a.type,
-            "params": getattr(a, "params", {}),
-        })
+    # tc.asserts are Assertion models, so the dump matches AssertItem.
+    q_asserts = [a.model_dump() for a in tc.asserts]
     test_cases.append({
         "id": tc.id,
         "question": tc.question,
@@ -332,7 +316,10 @@ def load_test_suite_data(_, pathname: str):
 
 
 @typed_callback(
-    (REDIRECT_HANDLER, CP.HREF),
+    [
+        (REDIRECT_HANDLER, CP.HREF),
+        (test_suite_ids.TestSuiteIds.NAME, "error"),
+    ],
     inputs=[
         (test_suite_ids.TestSuiteIds.SAVE_NEW_BTN, CP.N_CLICKS),
     ],
@@ -350,69 +337,53 @@ def create_test_suite(
 ):
   """Handles creation of a new test suite."""
   if not save_clicks:
-    return typed_callback.no_update
+    return typed_callback.no_update, typed_callback.no_update
 
-  if not name:
-    return typed_callback.no_update
+  if not name or not name.strip():
+    # This used to be a second no_update. Save & Continue with the name empty
+    # did nothing at all: no message, no navigation. The required flag on the
+    # input is a Mantine asterisk and does not stop the click. The field error
+    # is how the agent forms report the same thing.
+    return typed_callback.no_update, "Give the test suite a name."
 
-  try:
-    client = get_client()
-    # Create suite
-    ds = client.suites.create_suite(
-        name=name,
-        description=desc,
-    )
-    # Redirect to view page
-    return f"/test_suites/view/{ds.id}"
-  except Exception:  # pylint: disable=broad-exception-caught
-    traceback.print_exc()
-    return typed_callback.no_update
+  client = get_client()
+
+  ds = client.suites.create_suite(
+      name=name,
+      description=desc,
+  )
+
+  return f"/test_suites/view/{ds.id}", False
 
 
-@typed_callback(
-    (REDIRECT_HANDLER, CP.HREF),
-    inputs=[
-        (test_suite_ids.TestSuiteIds.SAVE_EDIT_BTN, CP.N_CLICKS),
-    ],
-    state=[
-        ("url", CP.PATHNAME),
-        (test_suite_ids.TestSuiteIds.NAME, CP.VALUE),
-        (test_suite_ids.TestSuiteIds.DESC, CP.VALUE),
-        (test_suite_ids.TestSuiteIds.STORE_BUILDER, CP.DATA),
-    ],
-    allow_duplicate=True,
-    prevent_initial_call=True,
-)
-def update_test_suite(
-    save_clicks: int | None,
+def _rename_suite(
     pathname: str,
     name: str | None,
     desc: str | None,
-    test_cases: list[dict[str, Any]] | None,
 ):
-  """Handles updating an existing test suite."""
-  if not save_clicks:
-    return typed_callback.no_update
+  """Writes a suite's name and description, and returns where to go next.
 
+  Returns no_update when the name is blank or the path carries no suite id.
+  ``id_from_pathname`` raising here reached nothing but the blanket
+  ``handle_errors``, which gives an error toast rather than the no-op a stale
+  URL should get.
+  """
   if not name:
     return typed_callback.no_update
 
   try:
-    suite_id = int(pathname.split("/")[-1])
-    client = get_client()
-    client.suites.update_suite(
-        suite_id=suite_id,
-        name=name,
-        description=desc,
-    )
-    # Sync test cases
-    if test_cases:
-      client.suites.sync_suite(suite_id, test_cases)
-
-    return f"/test_suites/view/{suite_id}"
-  except Exception:  # pylint: disable=broad-exception-caught
-    traceback.print_exc()
+    suite_id = id_from_pathname(pathname)
+  except (ValueError, IndexError):
     return typed_callback.no_update
+
+  client = get_client()
+  client.suites.update_suite(
+      suite_id=suite_id,
+      name=name,
+      description=desc,
+  )
+
+  return f"/test_suites/view/{suite_id}"
 
 
 @typed_callback(
@@ -430,7 +401,7 @@ def render_test_case_list(test_cases: list[dict[str, Any]], pathname: str):
   if not test_cases:
     try:
       suite_id = pathname.rstrip("/").split("/")[-1]
-    except (IndexError, AttributeError):
+    except AttributeError:
       suite_id = "new"
 
     return empty_states.render_empty_state(
@@ -447,7 +418,7 @@ def render_test_case_list(test_cases: list[dict[str, Any]], pathname: str):
   read_only = "/view/" in pathname
   if read_only:
     try:
-      suite_id = int(pathname.rstrip("/").split("/")[-1])
+      suite_id = id_from_pathname(pathname)
     except (ValueError, IndexError):
       suite_id = 0
 
@@ -502,15 +473,12 @@ def toggle_edit_config_modal(
   """Toggles the Edit Configuration modal."""
   del edit_clicks, cancel_clicks, x_clicks, save_clicks
   trigger = typed_callback.triggered_id()
-  # If edit was clicked, open. If cancel, close.
   if trigger == test_suite_ids.TestSuiteIds.BTN_CONFIG_EDIT:
-    # Open and Populate
     return (
         True,
         current_name,
         current_desc,
     )
-  # Close
   return (
       False,
       typed_callback.no_update,
@@ -537,15 +505,13 @@ def save_edit_config(
     name,
     desc,
 ):
-  """Saves the test suite configuration from the modal."""
+  """Saves the test suite configuration from the modal.
+
+  The modal is the only way to rename a suite. A second callback took a page
+  Save button as its input, and that id was rendered as a hidden html.Div on
+  both pages that carried it. A Div has no n_clicks, so nothing could fire it.
+  """
   if not save_clicks:
     return typed_callback.no_update
 
-  # Reuse the update logic from `update_test_suite` but for config only
-  return update_test_suite(
-      save_clicks=save_clicks,
-      pathname=pathname,
-      name=name,
-      desc=desc,
-      test_cases=None,
-  )
+  return _rename_suite(pathname, name, desc)

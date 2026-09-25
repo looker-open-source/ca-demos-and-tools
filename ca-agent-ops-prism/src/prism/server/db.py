@@ -23,20 +23,28 @@ import sqlalchemy.orm
 
 logger = logging.getLogger(__name__)
 
-# Lazy initialize connector
 _connector = None
 
 
 def get_conn():
-  """Creates a connection using the Cloud SQL Connector if configured."""
+  """Connects through the Cloud SQL Connector, or returns None if unconfigured.
+
+  make_engine only installs this as the creator when an instance is
+  configured, so the None is never handed back to SQLAlchemy.
+  """
   global _connector
-  logger.info("get_conn called: instance=%s", settings.instance_connection_name)
+  logger.debug(
+      "get_conn called: instance=%s", settings.instance_connection_name
+  )
   if settings.instance_connection_name:
     if _connector is None:
       # Initialize Connector with a higher timeout for cold starts
       _connector = google.cloud.sql.connector.Connector(timeout=60)
 
-    logger.info(
+    # DEBUG, not INFO. pool_pre_ping and pool_recycle mean this runs on every
+    # reconnect, and the line carries the instance connection name and the
+    # database user into the log each time.
+    logger.debug(
         "Attempting Cloud SQL connection: instance=%s, db=%s, user=%s,"
         " ip_type=%s",
         settings.instance_connection_name,
@@ -54,34 +62,43 @@ def get_conn():
         db=settings.db_name,
         ip_type=settings.db_ip_type,
     )
-  logger.info("No instance_connection_name, returning None")
+
   return None
 
 
-logging.info("")
+def make_engine(url: str) -> sqlalchemy.Engine:
+  """Builds an engine with the pooling the deployment needs.
 
-# Create engine with optional custom creator
-if settings.instance_connection_name:
-  engine = sqlalchemy.create_engine(
-      settings.final_database_url,
-      creator=get_conn,
+  Cloud Run scales to zero and Cloud SQL closes connections it considers idle,
+  so a pooled connection is often already dead by the time the next request
+  picks it up. pool_pre_ping pays a round trip to find out. pool_recycle
+  retires the connection before the server gets the chance.
+
+  tests/db_guard.py rebinds ``engine`` onto the test database and comes back
+  through here, so the tests run on the same pool settings production does.
+  """
+  options = {}
+  if settings.instance_connection_name and url == settings.final_database_url:
+    # The connector dials the instance itself, so the URL carries no host.
+    # Only for the configured url: a creator makes SQLAlchemy ignore the url
+    # altogether, so attaching one to any other url would quietly open the
+    # Cloud SQL database instead. db_guard rebinds onto a test url through
+    # here, and it checks that url on the understanding that it is the one
+    # that gets opened.
+    options["creator"] = get_conn
+
+  return sqlalchemy.create_engine(
+      url,
+      pool_pre_ping=True,
+      pool_recycle=1800,
+      **options,
   )
-else:
-  engine = sqlalchemy.create_engine(
-      settings.final_database_url,
-  )
+
+
+engine = make_engine(settings.final_database_url)
 
 SessionLocal = sqlalchemy.orm.sessionmaker(
     autocommit=False, autoflush=False, bind=engine
 )
 
 Base = sqlalchemy.orm.declarative_base()
-
-
-def get_db():
-  """Dependency for getting DB session."""
-  db = SessionLocal()
-  try:
-    yield db
-  finally:
-    db.close()

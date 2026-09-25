@@ -25,12 +25,8 @@ class PlaygroundRepository:
     self._session = session
 
   def save_trace(self, trace: PlaygroundTrace) -> PlaygroundTrace:
-    """Saves a PlaygroundTrace."""
+    """Inserts a trace and commits, so the caller gets its id back populated."""
     self._session.add(trace)
     self._session.commit()
     self._session.refresh(trace)
     return trace
-
-  def get_trace(self, trace_id: int) -> PlaygroundTrace | None:
-    """Gets a PlaygroundTrace by ID."""
-    return self._session.get(PlaygroundTrace, trace_id)

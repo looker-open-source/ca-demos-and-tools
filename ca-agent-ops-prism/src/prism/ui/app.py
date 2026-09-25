@@ -16,8 +16,8 @@
 
 import logging
 import os
+import secrets
 import sys
-
 import dash
 import dash_mantine_components as dmc
 from prism.client.prism_client import PrismClient
@@ -25,8 +25,9 @@ from prism.ui import callbacks
 from prism.ui import pages
 from prism.ui.components import shell
 from prism.ui.constants import GLOBAL_PROJECT_ID_STORE
+from prism.ui.constants import NOTIFICATION_CONTAINER
+from prism.ui.constants import REDIRECT_HANDLER
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -34,7 +35,6 @@ logging.basicConfig(
     force=True,
 )
 logger = logging.getLogger(__name__)
-
 
 app = dash.Dash(
     __name__,
@@ -47,11 +47,20 @@ app = dash.Dash(
 pages.register_all_pages()
 callbacks.register_all_callbacks()
 
+# Flask will not open a session without a signing key, and utils keeps the
+# error-toast throttle in the session so one reader's failure cannot silence
+# another's toast. A key generated per process is enough: the Dockerfile runs a
+# single gunicorn worker, and a restart only reopens the throttle. Nothing
+# sensitive goes in the session.
+app.server.secret_key = secrets.token_bytes(32)
+
 app.layout = dmc.MantineProvider(
     theme={
         "colorScheme": "light",
         "fontFamily": "Inter, sans-serif",
-        "primaryColor": "indigo",  # #135bec is close to indigo
+        # The brand blue #135bec sits at shade 6 of the indigo scale below,
+        # so indigo is the primary.
+        "primaryColor": "indigo",
         "defaultRadius": "md",
         "colors": {
             "slate": [
@@ -94,16 +103,16 @@ app.layout = dmc.MantineProvider(
     },
     children=[
         dash.dcc.Location(id="url", refresh=False),
-        dash.dcc.Location(id="redirect-handler", refresh=True),
+        dash.dcc.Location(id=REDIRECT_HANDLER, refresh=True),
         dash.dcc.Store(id=GLOBAL_PROJECT_ID_STORE, storage_type="session"),
-        dmc.NotificationContainer(id="notification-container"),
+        dmc.NotificationContainer(id=NOTIFICATION_CONTAINER),
         dmc.AppShell(
             header={"height": 64},
             padding="md",
             children=[
                 shell.render_header(),
                 dmc.AppShellMain(
-                    style={"backgroundColor": "#f8fafc"},  # slate-50
+                    style={"backgroundColor": "#f8fafc"},
                     children=[dash.page_container],
                 ),
             ],
@@ -111,16 +120,24 @@ app.layout = dmc.MantineProvider(
     ],
 )
 
-# Export the server instance, used in prod.py
+# prod.py serves this under gunicorn.
 server = app.server
 
 if __name__ == "__main__":
-  # Start the background worker pool
-  # We check WERKZEUG_RUN_MAIN to prevent starting the worker twice.
-  # Reloader starts a second process; we only want the worker in 'main'.
-  debug = True
+  # Development server only. Deployments run prism.prod:app under gunicorn.
+  #
+  # The Werkzeug debugger runs arbitrary Python for anyone who can reach the
+  # port, and Prism has no auth of its own, so debug is off and the bind
+  # address is loopback unless PRISM_DEBUG / PRISM_HOST say otherwise.
+  #
+  # Read the environment directly: prism.ui can't import prism.server
+  # (tests/test_ui_isolation.py).
+  debug = os.environ.get("PRISM_DEBUG", "false").lower() == "true"
+  # WERKZEUG_RUN_MAIN keeps the worker out of the reloader's second process,
+  # so it only starts once.
   if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not debug:
-    PrismClient().system.start_worker_pool(num_workers=2)
+    PrismClient().system.start_worker_pool()
 
+  host = os.environ.get("PRISM_HOST", "127.0.0.1")
   port = int(os.environ.get("PORT", 8080))
-  app.run(host="0.0.0.0", port=port, debug=debug)
+  app.run(host=host, port=port, debug=debug)

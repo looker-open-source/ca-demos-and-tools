@@ -34,9 +34,6 @@ class TimelineEvent(pydantic.BaseModel):
   timestamp: datetime.datetime | None = None
   group_title: str | None = None
 
-  # For internal storage of original data if needed, but not sent to UI usually
-  # metadata: dict[str, Any] = pydantic.Field(default_factory=dict)
-
 
 class TimelineGroup(pydantic.BaseModel):
   """A group of adjacent events sharing a common theme or tool."""

@@ -15,6 +15,7 @@
 """Pydantic schemas for the Assertion entity."""
 
 import enum
+import re
 from typing import Annotated, Any, Literal, Union
 
 import pydantic
@@ -41,6 +42,13 @@ class AssertionType(str, enum.Enum):
   AI_JUDGE = "ai-judge"
 
 
+class MatchMode(str, enum.Enum):
+  """How a contains assertion compares its value against the trace."""
+
+  CONTAINS = "contains"
+  REGEX = "regex"
+
+
 class AssertionSchema(pydantic.BaseModel):
   """Base schema for assertion logic (no ID)."""
 
@@ -53,16 +61,17 @@ class AssertionSchema(pydantic.BaseModel):
   def flatten_params(cls, data: Any) -> Any:
     """Flattens the 'params' field from SQLAlchemy objects if present."""
     if hasattr(data, "params") and isinstance(data.params, dict):
-      # Create a dict from the object attributes
-      # This handles SQLAlchemy objects during model_validate
-      data_dict = {
-          "type": data.type,
-          "weight": data.weight,
-          "id": getattr(data, "id", None),
-          "original_assertion_id": getattr(data, "original_assertion_id", None),
-          "reasoning": getattr(data, "reasoning", None),
-          **data.params,
-      }
+      data_dict = {**data.params, "type": data.type, "weight": data.weight}
+      # A column wins over the params copy of the same name. add_assertion
+      # dumps the whole schema into params, so a snapshot's params carry the
+      # live row's original_assertion_id, which is always None. Spreading
+      # params last overwrote the real one and every snapshot came back
+      # unlinked. Only override from a column that exists: the live Assertion
+      # has no original_assertion_id or reasoning, and there params is the
+      # only copy.
+      for name in ("id", "original_assertion_id", "reasoning"):
+        if hasattr(data, name):
+          data_dict[name] = getattr(data, name)
       return data_dict
     return data
 
@@ -75,21 +84,33 @@ class BaseAssertion(AssertionSchema):
   reasoning: str | None = None
 
 
-# --- Specific Assertion Types (Schema Only) ---
+class ContainsSchema(AssertionSchema):
+  """Shared shape of the two substring assertions."""
+
+  value: str = pydantic.Field(min_length=1)
+  mode: MatchMode = MatchMode.CONTAINS
+
+  @pydantic.model_validator(mode="after")
+  def check_pattern_compiles(self) -> "ContainsSchema":
+    """Rejects a broken pattern here, so the run does not carry it."""
+    if self.mode == MatchMode.REGEX:
+      try:
+        re.compile(self.value)
+      except re.error as e:
+        raise ValueError(f"Invalid regular expression: {e}") from e
+    return self
 
 
-class TextContainsSchema(AssertionSchema):
+class TextContainsSchema(ContainsSchema):
   """Checks if the result text contains a value."""
 
   type: Literal[AssertionType.TEXT_CONTAINS] = AssertionType.TEXT_CONTAINS
-  value: str = pydantic.Field(min_length=1)
 
 
-class QueryContainsSchema(AssertionSchema):
+class QueryContainsSchema(ContainsSchema):
   """Checks if the generated query contains a value."""
 
   type: Literal[AssertionType.QUERY_CONTAINS] = AssertionType.QUERY_CONTAINS
-  value: str = pydantic.Field(min_length=1)
 
 
 class ChartCheckTypeSchema(AssertionSchema):
@@ -178,9 +199,6 @@ class AIJudgeSchema(AssertionSchema):
   value: str = pydantic.Field(min_length=1)
 
 
-# --- Persisted Versions (Inherit from Schema + BaseAssertion) ---
-
-
 class TextContains(TextContainsSchema, BaseAssertion):
   pass
 
@@ -217,22 +235,23 @@ class AIJudge(AIJudgeSchema, BaseAssertion):
   pass
 
 
-# Discriminated Unions
-
-# Using schemas for Generation
-AssertionRequest = Union[
-    TextContainsSchema,
-    QueryContainsSchema,
-    ChartCheckTypeSchema,
-    DurationMaxMsSchema,
-    LatencyMaxMsSchema,
-    DataCheckRowCountSchema,
-    DataCheckRowSchema,
-    LookerQueryMatchSchema,
-    AIJudgeSchema,
+# Schemas, for generating new assertions.
+AssertionRequest = Annotated[
+    Union[
+        TextContainsSchema,
+        QueryContainsSchema,
+        ChartCheckTypeSchema,
+        DurationMaxMsSchema,
+        LatencyMaxMsSchema,
+        DataCheckRowCountSchema,
+        DataCheckRowSchema,
+        LookerQueryMatchSchema,
+        AIJudgeSchema,
+    ],
+    pydantic.Discriminator("type"),
 ]
 
-# Using persisted models for Storage/API
+# Persisted models, for storage and the API.
 Assertion = Annotated[
     Union[
         TextContains,

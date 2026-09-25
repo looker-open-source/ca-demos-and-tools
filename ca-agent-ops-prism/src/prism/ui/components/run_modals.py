@@ -48,7 +48,7 @@ def render_compare_run_modal():
                   ),
                   dmc.Group(
                       justify="center",
-                      my=10,  # Explicit equal vertical margin
+                      my=10,
                       children=dmc.ActionIcon(
                           DashIconify(icon="material-symbols:swap-vert"),
                           id=Ids.BTN_SWAP_COMPARE_MODAL,

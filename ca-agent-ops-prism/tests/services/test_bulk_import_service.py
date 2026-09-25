@@ -1,17 +1,26 @@
-import logging
-from typing import TYPE_CHECKING
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 from unittest import mock
 
 from prism.common.schemas.example import TestCaseInput
 from prism.server.clients.gen_ai_client import GenAIClient
 from prism.server.services.bulk_import_service import BulkImportService
-import pydantic
 import pytest
-import yaml
 
 
 def test_parse_yaml_success():
-  """Tests parsing valid structured YAML."""
   yaml_str = """
 - question: "What is the capital of France?"
   assertions:
@@ -35,7 +44,6 @@ def test_parse_yaml_success():
 
 
 def test_parse_yaml_invalid_yaml():
-  """Tests parsing invalid YAML."""
   yaml_str = "invalid: : yaml"
   service = BulkImportService(mock.MagicMock())
   try:
@@ -46,7 +54,6 @@ def test_parse_yaml_invalid_yaml():
 
 
 def test_parse_yaml_not_a_list():
-  """Tests parsing YAML that isn't a list."""
   yaml_str = "question: single"
   service = BulkImportService(mock.MagicMock())
   try:
@@ -57,7 +64,6 @@ def test_parse_yaml_not_a_list():
 
 
 def test_parse_yaml_schema_mismatch():
-  """Tests parsing YAML that doesn't match the schema."""
   yaml_str = "- wrong_field: oops"
   service = BulkImportService(mock.MagicMock())
   try:
@@ -68,7 +74,6 @@ def test_parse_yaml_schema_mismatch():
 
 
 def test_parse_yaml_extra_fields_forbidden():
-  """Tests that extra fields in assertions are forbidden."""
   yaml_str = """
 - question: "Extra field test"
   assertions:
@@ -85,11 +90,9 @@ def test_parse_yaml_extra_fields_forbidden():
 
 
 def test_format_with_ai():
-  """Tests the AI fix functionality."""
   mock_client = mock.MagicMock(spec=GenAIClient)
   service = BulkImportService(mock_client)
 
-  # Mock the response model
   class MockResponse:
     test_cases = [
         TestCaseInput(
@@ -111,11 +114,69 @@ def test_format_with_ai():
   assert "question: Q1" in result
   assert "type: text-contains" in result
   assert "value: A1" in result
-  assert "id:" not in result  # Ensure no ID is present
-  assert "weight:" not in result  # Ensure no weight is present
+  # The model is asked for questions and assertions. Anything it invents
+  # around them has to be dropped before the YAML reaches the user. A weight
+  # equal to the default goes too, because re-parse puts it back.
+  assert "id:" not in result
+  assert "weight:" not in result
 
   assert "question: Q2" in result
-  # The YAML for Q2 should NOT have an assertions key
+  # Q2 has no assertions, so the key is left out rather than written empty.
   assert "assertions:" not in result.split("question: Q2")[-1]
 
   mock_client.generate_structured.assert_called_once()
+
+
+def test_format_with_ai_keeps_a_weight_the_user_set():
+  """A diagnostic assertion has to survive AI Fix.
+
+  Every weight used to be stripped before the YAML went back to the textarea,
+  so a 0.0 the user had typed came back as the schema default of 1.0 on
+  re-parse and the assertion started counting toward the trial score.
+  """
+  mock_client = mock.MagicMock(spec=GenAIClient)
+  service = BulkImportService(mock_client)
+
+  class MockResponse:
+    test_cases = [
+        TestCaseInput(
+            question="Q1",
+            assertions=[
+                {"type": "text-contains", "value": "A1", "weight": 0.0},
+                {"type": "text-contains", "value": "A2", "weight": 0.25},
+            ],
+        ),
+    ]
+
+  mock_client.generate_structured.return_value = MockResponse()
+
+  result = service.format_with_ai("Fix me")
+  weights = [a.weight for a in service.parse_yaml(result)[0].assertions]
+
+  assert weights == [0.0, 0.25]
+
+
+def test_format_with_ai_raises_when_the_model_returns_nothing():
+  """A failure has to reach the callback as one.
+
+  format_with_ai used to hand the input text back. The callback wrote that
+  into the textarea unchanged and showed nothing, so a model that returned
+  nothing looked like a model that found nothing to fix, and the AI Fix Failed
+  toast was never reached.
+  """
+  mock_client = mock.MagicMock(spec=GenAIClient)
+  mock_client.generate_structured.return_value = None
+  service = BulkImportService(mock_client)
+
+  with pytest.raises(RuntimeError):
+    service.format_with_ai("Fix me")
+
+
+def test_format_with_ai_lets_a_client_error_out():
+  """Same reason, for the quota errors that are the common case."""
+  mock_client = mock.MagicMock(spec=GenAIClient)
+  mock_client.generate_structured.side_effect = RuntimeError("Quota exceeded")
+  service = BulkImportService(mock_client)
+
+  with pytest.raises(RuntimeError, match="Quota exceeded"):
+    service.format_with_ai("Fix me")

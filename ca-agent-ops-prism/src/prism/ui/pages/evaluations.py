@@ -18,12 +18,25 @@ import dash
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+from prism.common.schemas.execution import RunStatus
 from prism.ui.components.page_layout import render_page
 from prism.ui.ids import EvaluationIds as Ids
+from prism.ui.utils import run_status_display
+
+# EXECUTING and EVALUATING are trial statuses, so no run ever carries one and
+# filtering on either returns nothing. Everything else a run can reach belongs
+# here. PAUSED was the one missing: a paused run could not be filtered for, and
+# "Running" left it out without saying so.
+_TRIAL_ONLY_STATUSES = (RunStatus.EXECUTING, RunStatus.EVALUATING)
+
+_STATUS_OPTIONS = [
+    {"label": run_status_display(s)[1], "value": s.value}
+    for s in RunStatus
+    if s not in _TRIAL_ONLY_STATUSES
+]
 
 
-def layout(**kwargs):  # pylint: disable=unused-argument
-  """Renders the Evaluations list layout."""
+def layout(**_kwargs):
   return render_page(
       title="Evaluations",
       description=(
@@ -67,28 +80,7 @@ def layout(**kwargs):  # pylint: disable=unused-argument
                                       id=Ids.FILTER_STATUS,
                                       label="Filter by Status",
                                       placeholder="All Statuses",
-                                      data=[
-                                          {
-                                              "label": "Pending",
-                                              "value": "PENDING",
-                                          },
-                                          {
-                                              "label": "Running",
-                                              "value": "RUNNING",
-                                          },
-                                          {
-                                              "label": "Completed",
-                                              "value": "COMPLETED",
-                                          },
-                                          {
-                                              "label": "Failed",
-                                              "value": "FAILED",
-                                          },
-                                          {
-                                              "label": "Cancelled",
-                                              "value": "CANCELLED",
-                                          },
-                                      ],
+                                      data=_STATUS_OPTIONS,
                                       clearable=True,
                                       style={"width": 200},
                                   ),
@@ -133,7 +125,7 @@ def render_new_run_modal():
   return dmc.Modal(
       id=Ids.MODAL_NEW_EVAL,
       title="Start New Evaluation",
-      size="md",
+      size="lg",
       children=[
           dmc.Stack(
               children=[
@@ -164,7 +156,7 @@ def render_new_run_modal():
                       label="Generate Suggested Assertions",
                       description=(
                           "Automatically suggest new assertions based on trace"
-                          " results (Uses LLM)."
+                          " results (uses Gemini)."
                       ),
                       checked=False,
                       mb="sm",

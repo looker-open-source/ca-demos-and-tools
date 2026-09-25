@@ -84,69 +84,39 @@ def render_run_context(
   )
 
 
-def render_context_diff(
-    snapshot_context: dict[str, Any], live_context: dict[str, Any]
-):
-  """Renders a side-by-side or line-by-line diff of two contexts."""
-  s_json = json.dumps(snapshot_context, indent=2).splitlines()
-  l_json = json.dumps(live_context, indent=2).splitlines()
-
-  diff = difflib.unified_diff(s_json, l_json, lineterm="")
-  diff_lines = list(diff)
-
-  if not diff_lines:
-    return dmc.Alert(
-        "No changes detected between snapshot and live context.",
-        color="blue",
-        title="Context Matches",
-        icon=DashIconify(icon="lucide:check-circle"),
-    )
-
-  return dmc.Stack([
-      dmc.Group(
-          [
-              DashIconify(icon="lucide:git-diff", width=16),
-              dmc.Text("Context Changes (Snapshot vs Live)", fw=600, size="sm"),
-          ],
-          gap="xs",
-      ),
-      dmc.Paper(
-          html.Pre(
-              "\n".join(diff_lines),
-              style={
-                  "whiteSpace": "pre-wrap",
-                  "wordBreak": "break-all",
-                  "fontSize": "12px",
-                  "margin": 0,
-                  "color": "var(--mantine-color-gray-8)",
-              },
-          ),
-          withBorder=True,
-          p="md",
-          radius="md",
-          bg="gray.0",
-      ),
-  ])
-
-
-def render_diff_modal(change_count: int = 0):
-  # Renders the modern modal container for the context diff.
+def render_diff_modal():
+  """Renders the modal container for the context diff."""
   return dmc.Modal(
       title=dmc.Group(
           [
               dmc.Group(
                   [
                       dmc.Text("Context Comparison", fw=700, size="lg"),
+                      # Placeholder. The callback that fills the modal replaces
+                      # the whole title group with the real verdict.
                       dmc.Badge(
-                          f"{change_count} changes",
+                          "Comparing",
                           id=EvaluationIds.RUN_CONTEXT_DIFF_BADGE,
-                          color="orange",
+                          color="gray",
                           variant="light",
                           size="sm",
                       ),
                   ],
                   id=EvaluationIds.RUN_CONTEXT_DIFF_TITLE,
                   gap="md",
+              ),
+              dmc.Button(
+                  "Download diff",
+                  id=EvaluationIds.BTN_DOWNLOAD_DIFF,
+                  variant="subtle",
+                  size="compact-sm",
+                  leftSection=DashIconify(
+                      icon="material-symbols:download", width=16
+                  ),
+                  # There is no diff until the live context arrives, and the
+                  # download callback returns no_update without it: no file, no
+                  # toast, nothing. The callbacks that fill the modal enable it.
+                  disabled=True,
               ),
           ],
           gap="md",
@@ -172,8 +142,13 @@ def render_diff_modal(change_count: int = 0):
 
 def render_modern_context_diff(
     snapshot_context: dict[str, Any], live_context: dict[str, Any]
-):
-  """Renders a modern unified diff view of two contexts."""
+) -> tuple[html.Table, bool]:
+  """Renders a unified diff view of two contexts.
+
+  Returns the table and whether the two differ. Not a line count: ndiff emits
+  a - and a + for one changed line, so any count taken off these rows is
+  doubled, and every caller only wants the yes or no.
+  """
   s_json = json.dumps(snapshot_context, indent=2).splitlines()
   l_json = json.dumps(live_context, indent=2).splitlines()
 
@@ -227,7 +202,7 @@ def render_modern_context_diff(
         style={"backgroundColor": bg} if bg else {},
     )
 
-  change_count = 0
+  has_changes = False
   for line in diff:
     op = line[0]
     content = line[2:]
@@ -241,13 +216,13 @@ def render_modern_context_diff(
           add_row(s_num, None, "-", content, bg="#fff5f5", color="#e03131")
       )
       s_num += 1
-      change_count += 1
+      has_changes = True
     elif op == "+":
       rows.append(
           add_row(None, l_num, "+", content, bg="#f0fff4", color="#2f855a")
       )
       l_num += 1
-      change_count += 1
+      has_changes = True
 
   return (
       html.Table(
@@ -260,69 +235,17 @@ def render_modern_context_diff(
               "overflow": "hidden",
           },
       ),
-      change_count,
+      has_changes,
   )
 
 
 def generate_text_diff(
     snapshot_context: dict[str, Any], live_context: dict[str, Any]
 ):
-  # Generates a raw text unified diff of two contexts.
+  """Generates a raw text unified diff of two contexts."""
   s_json = json.dumps(snapshot_context, indent=2).splitlines()
   l_json = json.dumps(live_context, indent=2).splitlines()
   return "\n".join(difflib.unified_diff(s_json, l_json, lineterm=""))
-
-
-def render_side_by_side_context_diff(
-    snapshot_context: dict[str, Any], live_context: dict[str, Any]
-):
-  # Renders a side-by-side diff of two contexts using JSON.
-  s_json = json.dumps(snapshot_context, indent=2)
-  l_json = json.dumps(live_context, indent=2)
-
-  return dmc.Grid(
-      [
-          dmc.GridCol(
-              [
-                  dmc.Text("Snapshot", fw=600, size="sm", mb=4),
-                  dmc.Paper(
-                      html.Pre(
-                          s_json,
-                          style={
-                              "whiteSpace": "pre-wrap",
-                              "fontSize": "12px",
-                              "margin": 0,
-                          },
-                      ),
-                      withBorder=True,
-                      p="md",
-                      bg="gray.0",
-                  ),
-              ],
-              span=6,
-          ),
-          dmc.GridCol(
-              [
-                  dmc.Text("Live", fw=600, size="sm", mb=4),
-                  dmc.Paper(
-                      html.Pre(
-                          l_json,
-                          style={
-                              "whiteSpace": "pre-wrap",
-                              "fontSize": "12px",
-                              "margin": 0,
-                          },
-                      ),
-                      withBorder=True,
-                      p="md",
-                      bg="gray.0",
-                  ),
-              ],
-              span=6,
-          ),
-      ],
-      gutter="md",
-  )
 
 
 def render_trial_card(
@@ -340,7 +263,6 @@ def render_trial_card(
       RunStatus.CANCELLED,
   )
 
-  # Always show Trace link if terminal
   if is_terminal:
     actions.append(
         dmc.Anchor(
@@ -353,7 +275,8 @@ def render_trial_card(
         )
     )
 
-  # Optional Details link (hide on Trial Detail page) if terminal
+  # Callers pass show_details_link=False on the Trial Detail page, where the
+  # link would point at the page you are already on.
   if show_details_link and is_terminal:
     actions.append(
         dmc.Anchor(
@@ -366,7 +289,6 @@ def render_trial_card(
         )
     )
 
-  # Optional Suite link
   if suite_link:
     actions.append(
         dmc.Anchor(
@@ -381,7 +303,6 @@ def render_trial_card(
 
   sections = []
 
-  # 1. Header: Test Case
   sections.append(
       dmc.Box(
           p="lg",
@@ -420,7 +341,6 @@ def render_trial_card(
       )
   )
 
-  # 2. Body: Actions + Output
   sections.append(
       dmc.Box(
           p="lg",
@@ -428,7 +348,6 @@ def render_trial_card(
           children=dmc.Stack(
               gap="md",
               children=[
-                  # Actions Header
                   dmc.Group(
                       gap="md",
                       children=[
@@ -456,7 +375,6 @@ def render_trial_card(
                           *actions,
                       ],
                   ),
-                  # Output box
                   dmc.Paper(
                       p="md",
                       radius="md",
@@ -478,7 +396,6 @@ def render_trial_card(
       )
   )
 
-  # 3. Optional Charts Section
   if chart_section:
     sections.append(
         dmc.Box(

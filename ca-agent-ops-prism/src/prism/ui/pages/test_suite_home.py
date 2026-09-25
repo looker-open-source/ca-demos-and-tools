@@ -23,7 +23,6 @@ from prism.ui.ids import TestSuiteHomeIds as Ids
 
 
 def layout():
-  """Renders the Test Suites dashboard layout."""
   return render_page(
       title="Test Suites",
       description=(
@@ -94,8 +93,6 @@ def layout():
                   ),
               ],
           ),
-          # Hidden div for redirect
-          html.Div(id="test-suites-redirect-div"),
       ],
   )
 

@@ -22,8 +22,336 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.pages.agent_ids import AgentIds
 
 
+def _edit_basic_info():
+  """Renders the agent name and system instruction inputs."""
+  return dmc.Stack(
+      gap="md",
+      children=[
+          dmc.TextInput(
+              label="Agent Name",
+              placeholder="e.g. Sales Assistant",
+              id=AgentIds.Detail.INPUT_EDIT_NAME,
+              required=True,
+              radius="md",
+          ),
+          dmc.Textarea(
+              label="System Instruction",
+              placeholder="Define how the agent should behave...",
+              id=AgentIds.Detail.TEXTAREA_EDIT_INSTRUCTION,
+              minRows=6,
+              radius="md",
+              autosize=True,
+              maxRows=12,
+          ),
+      ],
+  )
+
+
+def _edit_golden_queries():
+  """Renders the golden queries editor and its Fix with AI button."""
+  return dmc.Stack(
+      gap="sm",
+      children=[
+          dmc.Group(
+              justify="space-between",
+              children=[
+                  dmc.Group(
+                      children=[
+                          DashIconify(
+                              icon="material-symbols:lightbulb",
+                              width=24,
+                              color="yellow",
+                          ),
+                          dmc.Text(
+                              "Golden Queries",
+                              fw=600,
+                              size="lg",
+                          ),
+                          dmc.Badge(
+                              "Optional",
+                              color="gray",
+                              variant="light",
+                          ),
+                      ]
+                  ),
+                  dmc.Button(
+                      "Fix with AI",
+                      id=AgentIds.Detail.BTN_FIX_GOLDEN_QUERIES_AI,
+                      leftSection=DashIconify(
+                          icon="material-symbols:magic-button",
+                          width=16,
+                      ),
+                      variant="light",
+                      color="violet",
+                      size="xs",
+                  ),
+              ],
+          ),
+          dash.dcc.Loading(
+              children=[
+                  dmc.Textarea(
+                      label="Golden Queries (JSON)",
+                      description=(
+                          "List of golden queries to guide the agent."
+                          " Format: JSON list of objects."
+                      ),
+                      placeholder=(
+                          '[{"natural_language_questions": ["..."],'
+                          ' "looker_query": {...}}]'
+                      ),
+                      id=AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES,
+                      radius="md",
+                      minRows=5,
+                      autosize=True,
+                      maxRows=15,
+                  ),
+              ],
+          ),
+          dmc.Text(
+              id=AgentIds.Detail.ERROR_GOLDEN_QUERIES,
+              c="red",
+              size="xs",
+          ),
+      ],
+  )
+
+
+def _edit_bq_config():
+  """Renders the BigQuery datasource card."""
+  return html.Div(
+      id=AgentIds.Detail.CONTAINER_EDIT_BQ_CONFIG,
+      style={"display": "none"},
+      children=dmc.Paper(
+          withBorder=True,
+          p="lg",
+          radius="md",
+          bg="gray.0",
+          children=dmc.Stack(
+              children=[
+                  dmc.Group(
+                      children=[
+                          DashIconify(
+                              icon="bi:database",
+                              width=24,
+                              color="orange",
+                          ),
+                          dmc.Text(
+                              "BigQuery Config",
+                              fw=600,
+                              size="sm",
+                          ),
+                      ]
+                  ),
+                  dmc.Textarea(
+                      label="BigQuery Tables",
+                      description=(
+                          "Enter full paths (proj.ds.tab), one per line"
+                      ),
+                      placeholder=(
+                          "project.dataset.table_1\nproject.dataset.table_2"
+                      ),
+                      id=AgentIds.Detail.INPUT_EDIT_BQ_TABLES,
+                      radius="md",
+                      minRows=3,
+                      autosize=True,
+                  ),
+                  dmc.Group(
+                      id=AgentIds.Detail.INPUT_EDIT_BQ_TABLES_PREVIEW,
+                      gap="xs",
+                      mt="xs",
+                  ),
+                  dmc.Group(
+                      justify="flex-end",
+                      mt="md",
+                      children=[
+                          dmc.Button(
+                              "Test Tables",
+                              id=AgentIds.Detail.BTN_TEST_BQ,
+                              variant="subtle",
+                              size="sm",
+                              radius="md",
+                              leftSection=DashIconify(icon="bi:database-check"),
+                          ),
+                      ],
+                  ),
+                  dmc.Alert(
+                      id=AgentIds.Detail.ALERT_BQ_TEST,
+                      hide=True,
+                      radius="md",
+                  ),
+              ]
+          ),
+      ),
+  )
+
+
+def _edit_looker_credentials():
+  """Renders the Looker client id and secret inputs."""
+  return dmc.SimpleGrid(
+      cols={"base": 1, "md": 2},
+      spacing="lg",
+      children=[
+          dmc.TextInput(
+              label="Client ID",
+              placeholder="Enter ID",
+              id=AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_ID,
+              radius="md",
+          ),
+          dmc.PasswordInput(
+              label="Client Secret",
+              # Always opens blank; see open_edit_modal.
+              placeholder="Leave blank to keep the current secret",
+              id=AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_SECRET,
+              radius="md",
+          ),
+      ],
+  )
+
+
+def _edit_looker_config():
+  """Renders the Looker datasource card."""
+  return html.Div(
+      id=AgentIds.Detail.CONTAINER_EDIT_LOOKER_CONFIG,
+      style={"display": "none"},
+      children=dmc.Paper(
+          withBorder=True,
+          p="lg",
+          radius="md",
+          bg="gray.0",
+          children=dmc.Stack(
+              children=[
+                  dmc.Group(
+                      children=[
+                          DashIconify(
+                              icon="material-symbols:analytics",
+                              width=24,
+                              color="blue",
+                          ),
+                          dmc.Text(
+                              "Looker Configuration",
+                              fw=600,
+                              size="sm",
+                          ),
+                      ]
+                  ),
+                  dmc.TextInput(
+                      label="Looker URI",
+                      placeholder="https://your-looker.com",
+                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_URI,
+                      radius="md",
+                  ),
+                  dmc.Textarea(
+                      label="Looker Explores",
+                      description="e.g., model.exp, one per line",
+                      placeholder="model_1.explore_1\nmodel_2.explore_2",
+                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES,
+                      radius="md",
+                      minRows=3,
+                      autosize=True,
+                  ),
+                  dmc.Group(
+                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES_PREVIEW,
+                      gap="xs",
+                      mt="xs",
+                  ),
+                  _edit_looker_credentials(),
+                  dmc.Group(
+                      justify="flex-end",
+                      mt="md",
+                      children=[
+                          dmc.Button(
+                              "Test Connection",
+                              id=AgentIds.Detail.BTN_TEST_LOOKER,
+                              variant="subtle",
+                              size="sm",
+                              radius="md",
+                              leftSection=DashIconify(
+                                  icon="material-symbols:vpn-key"
+                              ),
+                          ),
+                      ],
+                  ),
+                  dmc.Alert(
+                      id=AgentIds.Detail.ALERT_LOOKER_TEST,
+                      hide=True,
+                      radius="md",
+                  ),
+                  # Inside the Looker card, because submit_edit only writes
+                  # golden queries on the LookerConfig branch. It sat above
+                  # the datasource section and showed for every agent, so a
+                  # BigQuery agent offered an editor whose contents were
+                  # parsed, validated, and then dropped on save.
+                  dmc.Divider(),
+                  _edit_golden_queries(),
+              ]
+          ),
+      ),
+  )
+
+
+def _edit_datasource_section():
+  """Renders the datasource heading and both provider cards."""
+  return dmc.Stack(
+      gap="sm",
+      children=[
+          dmc.Stack(
+              gap=0,
+              children=[
+                  dmc.Text(
+                      "Datasource Configuration",
+                      fw=600,
+                      size="lg",
+                  ),
+                  dmc.Text(
+                      "Configure your connection to BigQuery or Looker.",
+                      size="sm",
+                      c="dimmed",
+                  ),
+              ],
+          ),
+          _edit_bq_config(),
+          _edit_looker_config(),
+      ],
+  )
+
+
+def _edit_form():
+  """Renders the body of the edit modal."""
+  return dmc.Stack(
+      gap="lg",
+      children=[
+          dmc.Alert(
+              "Updating System Instructions or Datasource Configuration"
+              " here will also update the agent's published context in"
+              " Gemini Data Analytics. The agent name and Looker"
+              " credentials are updated locally within Prism.",
+              title="Synchronization Info",
+              icon=DashIconify(icon="material-symbols:info-outline"),
+              color="blue",
+              radius="md",
+              mb="lg",
+          ),
+          _edit_basic_info(),
+          dmc.Divider(),
+          _edit_datasource_section(),
+          dmc.Group(
+              justify="flex-end",
+              mt="md",
+              children=[
+                  dmc.Button(
+                      "Save Changes",
+                      id=AgentIds.Detail.BTN_EDIT_SUBMIT,
+                      leftSection=DashIconify(icon="material-symbols:save"),
+                      radius="md",
+                  ),
+              ],
+          ),
+      ],
+  )
+
+
 def _edit_modal():
-  """Returns the edit modal for agent details."""
+  """Renders the edit modal for agent details."""
   return dmc.Modal(
       title="Edit Agent Details",
       id=AgentIds.Detail.MODAL_EDIT,
@@ -40,308 +368,7 @@ def _edit_modal():
                       id=AgentIds.Detail.EDIT_LOADING_OVERLAY,
                       overlayProps={"blur": 2},
                   ),
-                  dmc.Stack(
-                      gap="lg",
-                      children=[
-                          dmc.Alert(
-                              "Updating System Instructions or Datasource"
-                              " Configuration here will also update the agent's"
-                              " published context in Gemini Data Analytics. The"
-                              " agent name and Looker credentials are updated"
-                              " locally within Prism.",
-                              title="Synchronization Info",
-                              icon=DashIconify(
-                                  icon="material-symbols:info-outline"
-                              ),
-                              color="blue",
-                              radius="md",
-                              mb="lg",
-                          ),
-                          # --- Top Section: Basic Info ---
-                          dmc.Stack(
-                              gap="md",
-                              children=[
-                                  dmc.TextInput(
-                                      label="Agent Name",
-                                      placeholder="e.g. Sales Assistant",
-                                      id=AgentIds.Detail.INPUT_EDIT_NAME,
-                                      required=True,
-                                      radius="md",
-                                  ),
-                                  dmc.Textarea(
-                                      label="System Instruction",
-                                      placeholder=(
-                                          "Define how the agent should"
-                                          " behave..."
-                                      ),
-                                      id=AgentIds.Detail.TEXTAREA_EDIT_INSTRUCTION,
-                                      minRows=6,
-                                      radius="md",
-                                      autosize=True,
-                                      maxRows=12,
-                                  ),
-                              ],
-                          ),
-                          dmc.Divider(),
-                          # --- Golden Queries ---
-                          dmc.Stack(
-                              gap="sm",
-                              children=[
-                                  dmc.Group(
-                                      justify="space-between",
-                                      children=[
-                                          dmc.Group(
-                                              children=[
-                                                  DashIconify(
-                                                      icon="material-symbols:lightbulb",
-                                                      width=24,
-                                                      color="yellow",
-                                                  ),
-                                                  dmc.Text(
-                                                      "Golden Queries",
-                                                      fw=600,
-                                                      size="lg",
-                                                  ),
-                                                  dmc.Badge(
-                                                      "Optional",
-                                                      color="gray",
-                                                      variant="light",
-                                                  ),
-                                              ]
-                                          ),
-                                          dmc.Button(
-                                              "Fix with AI",
-                                              id=AgentIds.Detail.BTN_FIX_GOLDEN_QUERIES_AI,
-                                              leftSection=DashIconify(
-                                                  icon="material-symbols:magic-button",
-                                                  width=16,
-                                              ),
-                                              variant="light",
-                                              color="violet",
-                                              size="xs",
-                                          ),
-                                      ],
-                                  ),
-                                  dash.dcc.Loading(
-                                      id="loading-golden-queries",
-                                      children=[
-                                          dmc.Textarea(
-                                              label="Golden Queries (JSON)",
-                                              description=(
-                                                  "List of golden queries to"
-                                                  " guide the agent. Format:"
-                                                  " JSON list of objects."
-                                              ),
-                                              placeholder=(
-                                                  '[{"natural_language_questions":'
-                                                  ' ["..."], "looker_query":'
-                                                  " {...}}]"
-                                              ),
-                                              id=AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES,
-                                              radius="md",
-                                              minRows=5,
-                                              autosize=True,
-                                              maxRows=15,
-                                          ),
-                                      ],
-                                  ),
-                                  dmc.Text(
-                                      id=AgentIds.Detail.ERROR_GOLDEN_QUERIES,
-                                      c="red",
-                                      size="xs",
-                                  ),
-                              ],
-                          ),
-                          dmc.Divider(),
-                          # --- Datasource Config ---
-                          dmc.Stack(
-                              gap="sm",
-                              children=[
-                                  dmc.Stack(
-                                      gap=0,
-                                      children=[
-                                          dmc.Text(
-                                              "Datasource Configuration",
-                                              fw=600,
-                                              size="lg",
-                                          ),
-                                          dmc.Text(
-                                              "Configure your connection to"
-                                              " BigQuery or Looker.",
-                                              size="sm",
-                                              c="dimmed",
-                                          ),
-                                      ],
-                                  ),
-                                  # BigQuery Config Card
-                                  html.Div(
-                                      id=AgentIds.Detail.CONTAINER_EDIT_BQ_CONFIG,
-                                      style={"display": "none"},
-                                      children=dmc.Paper(
-                                          withBorder=True,
-                                          p="lg",
-                                          radius="md",
-                                          bg="gray.0",
-                                          children=dmc.Stack(
-                                              children=[
-                                                  dmc.Group(
-                                                      children=[
-                                                          DashIconify(
-                                                              icon=(
-                                                                  "bi:database"
-                                                              ),
-                                                              width=24,
-                                                              color="orange",
-                                                          ),
-                                                          dmc.Text(
-                                                              "BigQuery Config",
-                                                              fw=600,
-                                                              size="sm",
-                                                          ),
-                                                      ]
-                                                  ),
-                                                  dmc.Textarea(
-                                                      label="BigQuery Tables",
-                                                      description=(
-                                                          "Enter full paths"
-                                                          " (proj.ds.tab), one"
-                                                          " per line"
-                                                      ),
-                                                      placeholder="project.dataset.table_1\nproject.dataset.table_2",
-                                                      id=AgentIds.Detail.INPUT_EDIT_BQ_TABLES,
-                                                      radius="md",
-                                                      minRows=3,
-                                                      autosize=True,
-                                                  ),
-                                                  dmc.Group(
-                                                      id=AgentIds.Detail.INPUT_EDIT_BQ_TABLES_PREVIEW,
-                                                      gap="xs",
-                                                      mt="xs",
-                                                  ),
-                                              ]
-                                          ),
-                                      ),
-                                  ),
-                                  # Looker Config Card
-                                  # We wrap this in a div to control
-                                  # visibility via callback
-                                  html.Div(
-                                      id=AgentIds.Detail.CONTAINER_EDIT_LOOKER_CONFIG,
-                                      style={"display": "none"},
-                                      children=dmc.Paper(
-                                          withBorder=True,
-                                          p="lg",
-                                          radius="md",
-                                          bg="gray.0",  # Light gray background
-                                          children=dmc.Stack(
-                                              children=[
-                                                  dmc.Group(
-                                                      children=[
-                                                          DashIconify(
-                                                              icon="material-symbols:analytics",
-                                                              width=24,
-                                                              color="blue",
-                                                          ),
-                                                          dmc.Text(
-                                                              "Looker"
-                                                              " Configuration",
-                                                              fw=600,
-                                                              size="sm",
-                                                          ),
-                                                      ]
-                                                  ),
-                                                  dmc.TextInput(
-                                                      label="Looker URI",
-                                                      placeholder="https://your-looker.com",
-                                                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_URI,
-                                                      radius="md",
-                                                  ),
-                                                  dmc.Textarea(
-                                                      label="Looker Explores",
-                                                      description=(
-                                                          "e.g., model.exp, one"
-                                                          " per line"
-                                                      ),
-                                                      placeholder="model_1.explore_1\nmodel_2.explore_2",
-                                                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES,
-                                                      radius="md",
-                                                      minRows=3,
-                                                      autosize=True,
-                                                  ),
-                                                  dmc.Group(
-                                                      id=AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES_PREVIEW,
-                                                      gap="xs",
-                                                      mt="xs",
-                                                  ),
-                                                  dmc.SimpleGrid(
-                                                      cols={"base": 1, "md": 2},
-                                                      spacing="lg",
-                                                      children=[
-                                                          dmc.TextInput(
-                                                              label="Client ID",
-                                                              placeholder=(
-                                                                  "Enter ID"
-                                                              ),
-                                                              id=AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_ID,
-                                                              radius="md",
-                                                          ),
-                                                          dmc.PasswordInput(
-                                                              label=(
-                                                                  "Client"
-                                                                  " Secret"
-                                                              ),
-                                                              placeholder=(
-                                                                  "Enter Secret"
-                                                              ),
-                                                              id=AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_SECRET,
-                                                              radius="md",
-                                                          ),
-                                                      ],
-                                                  ),
-                                                  dmc.Group(
-                                                      justify="flex-end",
-                                                      mt="md",
-                                                      children=[
-                                                          dmc.Button(
-                                                              "Test Connection",
-                                                              id=AgentIds.Detail.BTN_TEST_LOOKER,
-                                                              variant="subtle",
-                                                              size="sm",
-                                                              radius="md",
-                                                              leftSection=DashIconify(
-                                                                  icon="material-symbols:vpn-key"
-                                                              ),
-                                                          ),
-                                                      ],
-                                                  ),
-                                                  dmc.Alert(
-                                                      id=AgentIds.Detail.ALERT_LOOKER_TEST,
-                                                      hide=True,
-                                                      radius="md",
-                                                  ),
-                                              ]
-                                          ),
-                                      ),
-                                  ),
-                              ],
-                          ),
-                          # --- Footer Actions ---
-                          dmc.Group(
-                              justify="flex-end",
-                              mt="md",
-                              children=[
-                                  dmc.Button(
-                                      "Save Changes",
-                                      id=AgentIds.Detail.BTN_EDIT_SUBMIT,
-                                      leftSection=DashIconify(
-                                          icon="material-symbols:save"
-                                      ),
-                                      radius="md",
-                                  ),
-                              ],
-                          ),
-                      ],
-                  ),
+                  _edit_form(),
               ],
           )
       ],
@@ -349,7 +376,7 @@ def _edit_modal():
 
 
 def _duplicate_modal():
-  """Returns the duplication modal."""
+  """Renders the duplication modal."""
   return dmc.Modal(
       title="Duplicate Agent",
       id=AgentIds.Detail.MODAL_DUPLICATE,
@@ -405,7 +432,6 @@ def _duplicate_modal():
 
 
 def layout(agent_id: str | None = None):  # pylint: disable=unused-argument
-  """Returns the agent detail page layout."""
   return render_page(
       title="Agent Details",
       title_id=AgentIds.Detail.TITLE,
@@ -429,7 +455,7 @@ def layout(agent_id: str | None = None):  # pylint: disable=unused-argument
               children=[
                   dmc.LoadingOverlay(
                       visible=True,
-                      id="agent-detail-loading",
+                      id=AgentIds.Detail.LOADING,
                       zIndex=1000,
                       overlayProps={"blur": 2},
                   ),

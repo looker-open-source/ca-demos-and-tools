@@ -19,10 +19,12 @@ from typing import Any, Type, TypeVar
 
 from google import genai
 from google.genai import types
+from prism.server.clients import recording
 import pydantic
 
-# Default model configuration
-DEFAULT_MODEL = "gemini-2.5-pro"
+logger = logging.getLogger(__name__)
+
+DEFAULT_MODEL = "gemini-3.8-flash"
 
 ResponseSchema = TypeVar("ResponseSchema", bound=pydantic.BaseModel)
 
@@ -37,43 +39,59 @@ class GenAIClient:
     """Initializes the GenAIClient.
 
     Args:
-        project: GCP project ID.
-        location: Location for Vertex AI.
-        model: The name of the Gemini model to use. If not specified, uses the
-          default model.
+      project: GCP project ID.
+      location: Location for Vertex AI.
+      model: The name of the Gemini model to use. If not specified, uses the
+        default model.
     """
     try:
       self.project = project
       self.location = location
 
       if not model:
-        logging.info(
+        logger.info(
             "[GenAI] No model specified, using default model: %s",
             DEFAULT_MODEL,
         )
         model = DEFAULT_MODEL
       self.model = model
 
-      # Use the new Google Gen AI SDK
-      self.client = genai.Client(
-          vertexai=True, project=self.project, location=self.location
-      )
+      if recording.offline():
+        # Replaying cassettes. Constructing the SDK client would need
+        # credentials for a call that never leaves the process.
+        self.client = None
+      else:
+        self.client = genai.Client(
+            vertexai=True, project=self.project, location=self.location
+        )
 
     except Exception as e:  # pylint: disable=broad-except
-      logging.error("[GenAI] Failed to initialize Gen AI Client: %s", e)
+      logger.error("[GenAI] Failed to initialize Gen AI Client: %s", e)
       raise
 
+  def _cassette_identity(self) -> dict[str, Any]:
+    """Fields identifying this client in a cassette key."""
+    return {
+        "project": self.project,
+        "location": self.location,
+        "model": self.model,
+    }
+
+  @recording.cassette()
   def generate_text(
       self,
       prompt: str,
   ) -> str | None:
     """Generates text using the specified Gemini model.
 
+    Raises whatever the SDK raises. There is no error return.
+
     Args:
-        prompt: The text prompt to send to the model.
+      prompt: The text prompt to send to the model.
 
     Returns:
-        The generated text as a string, or None if failed.
+      The generated text as a string, or None if the model returned an
+      empty response.
     """
     try:
       response = self.client.models.generate_content(
@@ -84,15 +102,14 @@ class GenAIClient:
       if response and response.text:
         return response.text
 
-      logging.warning("Gen AI response was empty or malformed.")
+      logger.warning("Gen AI response was empty or malformed.")
       return None
 
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(
-          "[GenAI] Error during text generation: %s", e, exc_info=True
-      )
+      logger.error("[GenAI] Error during text generation: %s", e, exc_info=True)
       raise
 
+  @recording.cassette(recording.ResponseSchemaCodec())
   def generate_structured(
       self,
       prompt: str,
@@ -100,15 +117,17 @@ class GenAIClient:
   ) -> ResponseSchema | None:
     """Generates a structured response from the LLM with the given schema.
 
+    Raises whatever the SDK raises. There is no error return.
+
     Args:
-        prompt: The text prompt to send to the model.
-        response_schema: The Pydantic model class to use for validation.
+      prompt: The text prompt to send to the model.
+      response_schema: The Pydantic model class to use for validation.
 
     Returns:
-        An instance of the response_schema or None if generation failed.
+      An instance of the response_schema, or None if the model returned an
+      empty response.
     """
     try:
-      # Clean schema to be compatible with Gen AI (no 'const')
       schema_dict = response_schema.model_json_schema()
       cleaned_schema = self._clean_schema(schema_dict)
 
@@ -126,11 +145,11 @@ class GenAIClient:
       if response and response.text:
         return response_schema.model_validate_json(response.text)
 
-      logging.warning("Gen AI structured response was empty.")
+      logger.warning("Gen AI structured response was empty.")
       return None
 
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(
+      logger.error(
           "[GenAI] Error during structured generation: %s",
           e,
           exc_info=True,
@@ -141,29 +160,28 @@ class GenAIClient:
     """Recursively cleans schema to be compatible with Vertex AI.
 
     - Removes 'const' keys, replacing with 'enum'.
-    - Removes 'null' types from 'anyOf' (Vertex AI doesn't support NULL type).
-    - Hoists single-item 'anyOf' to the parent level.
+    - Removes 'null' types from 'oneOf' and 'anyOf' (Vertex AI doesn't
+      support NULL type).
+    - Hoists a single remaining item to the parent level.
+    - Rewrites a surviving 'oneOf' as 'anyOf', which Vertex AI prefers.
+    - Removes 'discriminator', which Vertex AI doesn't support.
 
     Args:
-        schema: The JSON schema dictionary to clean.
+      schema: The JSON schema dictionary to clean.
 
     Returns:
-        The cleaned JSON schema dictionary.
+      The cleaned JSON schema dictionary.
     """
     if not isinstance(schema, dict):
       return schema
 
-    # Create a copy to modify
     clean = schema.copy()
 
-    # Replace 'const' with 'enum'
     if "const" in clean:
       clean["enum"] = [clean.pop("const")]
 
-    # Handle 'oneOf' or 'anyOf'
     for key in ["oneOf", "anyOf"]:
       if key in clean and isinstance(clean[key], list):
-        # Filter out null types
         items = [
             item
             for item in clean[key]
@@ -173,21 +191,17 @@ class GenAIClient:
         if not items:
           clean.pop(key)
         elif len(items) == 1:
-          # Hoist the single item
           single_item = items[0]
           clean.pop(key)
           if isinstance(single_item, dict):
             clean.update(single_item)
         else:
-          # Keep items but ensure we use anyOf (Vertex AI preference)
           clean.pop(key)
           clean["anyOf"] = items
 
-    # Remove 'discriminator' (Vertex AI doesn't support it)
     if "discriminator" in clean:
       clean.pop("discriminator")
 
-    # Recurse
     for key, value in clean.items():
       if isinstance(value, dict):
         clean[key] = self._clean_schema(value)

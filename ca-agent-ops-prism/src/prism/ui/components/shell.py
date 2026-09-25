@@ -16,9 +16,10 @@
 
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+from prism.ui.ids import ShellIds
 
 
-def _header_link(label: str, href: str, link_id: str = None):
+def _header_link(label: str, href: str, link_id: str | None = None):
   """Renders a single navigation link for the header."""
   return dmc.Anchor(
       label,
@@ -44,7 +45,6 @@ def render_header():
               justify="space-between",
               h="100%",
               children=[
-                  # Left: Brand
                   dmc.Anchor(
                       href="/",
                       underline=False,
@@ -72,28 +72,29 @@ def render_header():
                           ),
                       ],
                   ),
-                  # Right: Navigation
                   dmc.Group(
                       gap="sm",
                       children=[
-                          _header_link("Overview", "/", link_id="nav-overview"),
                           _header_link(
-                              "Agents", "/agents", link_id="nav-agents"
+                              "Overview", "/", link_id=ShellIds.NAV_OVERVIEW
+                          ),
+                          _header_link(
+                              "Agents", "/agents", link_id=ShellIds.NAV_AGENTS
                           ),
                           _header_link(
                               "Test Suites",
                               "/test_suites",
-                              link_id="nav-test-suites",
+                              link_id=ShellIds.NAV_TEST_SUITES,
                           ),
                           _header_link(
                               "Evaluations",
                               "/evaluations",
-                              link_id="nav-evaluations",
+                              link_id=ShellIds.NAV_EVALUATIONS,
                           ),
                           _header_link(
                               "Compare",
                               "/compare",
-                              link_id="nav-comparison",
+                              link_id=ShellIds.NAV_COMPARISON,
                           ),
                       ],
                   ),

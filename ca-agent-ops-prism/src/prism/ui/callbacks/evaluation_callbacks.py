@@ -16,10 +16,8 @@
 
 import logging
 import time
-import traceback
 from typing import Any
 import urllib.parse
-
 import dash
 from dash import html
 from dash_iconify import DashIconify
@@ -29,7 +27,6 @@ from prism.client import get_client
 from prism.common.schemas import agent as agent_schemas
 from prism.common.schemas.execution import RunStatus
 from prism.common.schemas.execution import Trial
-from prism.ui import constants
 from prism.ui.components import assertion_components
 from prism.ui.components import cards
 from prism.ui.components import charts
@@ -38,18 +35,25 @@ from prism.ui.components import tables
 from prism.ui.components import test_case_components
 from prism.ui.components import timeline
 from prism.ui.constants import CP
+from prism.ui.constants import NOTIFICATION_CONTAINER
 from prism.ui.constants import REDIRECT_HANDLER
 from prism.ui.ids import EvaluationIds
 from prism.ui.models.ui_state import AssertionMetric
 from prism.ui.models.ui_state import AssertionSummary
 from prism.ui.models.ui_state import RunDetailPageState
-from prism.ui.utils import handle_errors
+from prism.ui.utils import format_duration
+from prism.ui.utils import format_timestamp
+from prism.ui.utils import format_ttfr
+from prism.ui.utils import id_from_pathname
+from prism.ui.utils import run_status_display
 from prism.ui.utils import typed_callback
 
 logger = logging.getLogger(__name__)
 
-
-# --- List Page ---
+# How many runs /evaluations shows. There is no pager, so past this the older
+# runs are only reachable through the filters. One row more than this is
+# fetched, which is how the page knows whether to say it is truncated.
+_RUN_LIST_LIMIT = 50
 
 
 @typed_callback(
@@ -64,13 +68,11 @@ def render_run_list(pathname: str, search: str):
   if pathname != "/evaluations":
     return dash.no_update
 
-  # Parse Filters from URL
   parsed_qs = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
   agent_id = parsed_qs.get("agent_id", [None])[0]
   suite_id = parsed_qs.get("suite_id", [None])[0]
   status = parsed_qs.get("status", [None])[0]
 
-  # Convert types
   agent_id = int(agent_id) if agent_id else None
   suite_id = int(suite_id) if suite_id else None
   status_enum = RunStatus(status) if status else None
@@ -82,21 +84,30 @@ def render_run_list(pathname: str, search: str):
       original_suite_id=suite_id,
       status=status_enum,
       include_archived=include_archived,
+      limit=_RUN_LIST_LIMIT + 1,
   )
-
-  # Fetch metadata for display
-  # (Denormalized in schema usually, but let's be sure)
-  # Actually RunSchema has agent_name and suite_name
 
   if not runs:
     return dmc.Text("No evaluations found.", c="dimmed", ta="center", py="xl")
 
-  return tables.render_run_table(
-      runs,
-      agent_names={},  # Handled by schema denormalization if available
-      suite_names={},
-      table_id=None,
-  )
+  truncated = len(runs) > _RUN_LIST_LIMIT
+  table = tables.render_run_table(runs[:_RUN_LIST_LIMIT], table_id=None)
+  if not truncated:
+    return table
+
+  # Say so. The list used to stop at 50 with nothing on the page admitting it,
+  # so the 51st run read as a run that did not exist.
+  return html.Div([
+      table,
+      dmc.Text(
+          f"Showing the {_RUN_LIST_LIMIT} most recent runs. Filter by agent,"
+          " test suite or status to reach older ones.",
+          c="dimmed",
+          size="sm",
+          ta="center",
+          py="md",
+      ),
+  ])
 
 
 @typed_callback(
@@ -122,7 +133,6 @@ def update_eval_url_from_filters(
       else {}
   )
 
-  # Update params
   if agent_id:
     params["agent_id"] = [agent_id]
   else:
@@ -207,16 +217,12 @@ def populate_eval_filter_options(pathname: str):
   agents = client.agents.list_agents()
   agent_data = [{"label": a.name, "value": str(a.id)} for a in agents]
 
-  # Get unique test suites based on original_suite_id from snapshots
   suites = client.runs.get_unique_suites_from_snapshots()
   suite_data = [
       {"label": s["name"], "value": str(s["original_suite_id"])} for s in suites
   ]
 
   return agent_data, suite_data
-
-
-# --- Comparison Modal ---
 
 
 @typed_callback(
@@ -246,16 +252,14 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
   ctx = dash.callback_context
   triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
 
-  # Check if closed
   if triggered_id == EvaluationIds.BTN_CANCEL_COMPARE:
     return False, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-  # Guard: Check for actual clicks if opening
-  # If triggered by components loading (dynamic), values might be None
+  # The open buttons are pattern-matched, so this also fires when the run list
+  # re-renders and the new buttons arrive with n_clicks unset. Only a trigger
+  # that carries a value is a real click.
   is_open_click = False
   for t in ctx.triggered:
-    # If the value is truthy (int > 0), it was a click
-    # If None, it might be just initial rendering
     if t["value"]:
       is_open_click = True
       break
@@ -269,21 +273,19 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
         dash.no_update,
     )
 
-  # Open
-  # Determine if specific run button clicked (index != "list")
+  # The button in a run's row carries that run's id as its index. The one in
+  # the page header uses "list" and preselects nothing.
   preselect_run_id = None
   t_id: Any = getattr(ctx, "triggered_id", None)
-  # Handle the case where triggered_id might be a dict (pattern-matching)
   if t_id and isinstance(t_id, dict):
     idx = str(t_id.get("index", ""))
     if idx != "list":
       preselect_run_id = idx
 
-  # Fetch Data
   client = get_client()
 
-  # If we have a preselect_run_id, we only want to show compatible runs
-  # (same test suite)
+  # Only runs of the same test suite can be compared, so the list is filtered
+  # to the preselected run's suite.
   filter_suite_id = None
   if preselect_run_id:
     current_run = client.runs.get_run(int(preselect_run_id))
@@ -295,9 +297,7 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
   for r in runs:
     agent_name = r.agent_name or "Unknown Agent"
     date_str = (
-        r.created_at.strftime("%Y-%m-%d %H:%M")
-        if r.created_at
-        else "Unknown Date"
+        format_timestamp(r.created_at) if r.created_at else "Unknown Date"
     )
     accuracy = r.accuracy
     acc_str = f"{accuracy*100:.1f}%" if accuracy is not None else "N/A"
@@ -305,11 +305,17 @@ def toggle_compare_modal(n_clicks_all, n_cancel):
     label = f"Run #{r.id} • {agent_name} • {date_str} • Acc: {acc_str}"
     data.append({"value": str(r.id), "label": label})
 
-  # Preselect
-  base_val = None  # Default empty
+  base_val = None
   chal_val = preselect_run_id if preselect_run_id else None
 
-  return True, data, data, base_val, chal_val
+  # The challengers are the runs of the base run's suite, and from the header
+  # button there is no base run yet, so there are none to offer. Listing every
+  # run instead let a cross-suite pair be picked before the base was set, and
+  # compare_runs rejects that pair with an alert. filter_challenger_runs fills
+  # this in as soon as a base is chosen.
+  challenger_data = data if preselect_run_id else []
+
+  return True, data, challenger_data, base_val, chal_val
 
 
 @typed_callback(
@@ -333,11 +339,6 @@ def navigate_to_comparison(n_clicks, base_id, chal_id):
   if not n_clicks or not base_id or not chal_id:
     return dash.no_update, dash.no_update
 
-  # Use query params
-  # params = {
-  #     EvaluationIds.COMPARE_BASE_SELECT: base_id,
-  #     EvaluationIds.COMPARE_CHALLENGE_SELECT: chal_id,
-  # }
   href = f"/compare?base_run_id={base_id}&challenger_run_id={chal_id}"
   return href, False
 
@@ -368,32 +369,40 @@ def swap_modal_runs(n_clicks: int, base_id: str | int, chal_id: str | int):
 
 
 @typed_callback(
-    output=dash.Output(
-        EvaluationIds.COMPARE_CHALLENGE_SELECT,
-        "data",
-        allow_duplicate=True,
-    ),
+    output=[
+        dash.Output(
+            EvaluationIds.COMPARE_CHALLENGE_SELECT,
+            "data",
+            allow_duplicate=True,
+        ),
+        dash.Output(
+            EvaluationIds.COMPARE_CHALLENGE_SELECT,
+            "value",
+            allow_duplicate=True,
+        ),
+    ],
     inputs=[dash.Input(EvaluationIds.COMPARE_BASE_SELECT, "value")],
+    state=[dash.State(EvaluationIds.COMPARE_CHALLENGE_SELECT, "value")],
     prevent_initial_call=True,
 )
-def filter_challenger_runs(base_run_id: str | None) -> list[dict[str, str]]:
-  """Filters challenger runs to match the test suite of the selected base run."""
+def filter_challenger_runs(
+    base_run_id: str | None, chal_run_id: str | None
+) -> tuple[Any, Any]:
+  """Filters the challengers to the test suite of the selected base run."""
   if not base_run_id:
-    return dash.no_update
+    return dash.no_update, dash.no_update
 
   client = get_client()
   base_run = client.runs.get_run(int(base_run_id))
   if not base_run:
-    return dash.no_update
+    return dash.no_update, dash.no_update
 
   runs = client.runs.list_runs(original_suite_id=base_run.original_suite_id)
   data = []
   for r in runs:
     agent_name = r.agent_name or "Unknown Agent"
     date_str = (
-        r.created_at.strftime("%Y-%m-%d %H:%M")
-        if r.created_at
-        else "Unknown Date"
+        format_timestamp(r.created_at) if r.created_at else "Unknown Date"
     )
     accuracy = r.accuracy
     acc_str = f"{accuracy*100:.1f}%" if accuracy is not None else "N/A"
@@ -401,7 +410,16 @@ def filter_challenger_runs(base_run_id: str | None) -> list[dict[str, str]]:
     label = f"Run #{r.id} • {agent_name} • {date_str} • Acc: {acc_str}"
     data.append({"value": str(r.id), "label": label})
 
-  return data
+  # The value goes with the data. This rewrote the options and left the
+  # challenger set to a run from the old suite: the field renders blank because
+  # the value is not in the data, the Compare button stays enabled, and
+  # navigate_to_comparison reads that value as State. Clicking it compared two
+  # runs of different suites, which reads like two identical runs rather than a
+  # mis-selection.
+  if chal_run_id and not any(o["value"] == str(chal_run_id) for o in data):
+    return data, None
+
+  return data, dash.no_update
 
 
 def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
@@ -409,7 +427,6 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
   # Map assertion type to [passed_count, total_count]
   counts: dict[str, list[int]] = {}
 
-  # Map to human readable names
   name_map = {
       "data-check-row": "Data Check Row",
       "data-check-row-count": "Data Check Row Count",
@@ -423,7 +440,6 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
   for t in trials:
     for ar in t.assertion_results:
       type_val = ar.assertion.type
-      # Use readable name if available, else fall back to title case replacement
       type_name = name_map.get(type_val, type_val.replace("-", " ").title())
 
       if type_name not in counts:
@@ -432,7 +448,6 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
       if ar.passed:
         counts[type_name][0] += 1
 
-  # Transform to chart data
   chart_data = []
   for type_name, vals in counts.items():
     pass_rate = (vals[0] / vals[1] * 100) if vals[1] > 0 else 0
@@ -443,7 +458,7 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
         "label": f"{type_name} ({vals[0]}/{vals[1]})",
     })
 
-  # Sort by pass rate ascending to show problem areas at top/bottom
+  # Worst pass rate first, so the problem types are at the top of the chart.
   chart_data.sort(key=lambda x: x["pass_rate"])
 
   if not chart_data:
@@ -475,9 +490,6 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
   )
 
 
-# --- Detail Page ---
-
-
 @typed_callback(
     output=dash.Output(EvaluationIds.RUN_DATA_STORE, CP.DATA),
     inputs=[
@@ -486,7 +498,6 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
         (EvaluationIds.RUN_UPDATE_SIGNAL, CP.DATA),
     ],
 )
-@handle_errors
 def fetch_run_detail_data(
     pathname: str, unused_n_intervals: int, unused_update_signal: Any
 ):
@@ -496,7 +507,7 @@ def fetch_run_detail_data(
     return dash.no_update
 
   try:
-    run_id = int(pathname.rstrip("/").split("/")[-1])
+    run_id = id_from_pathname(pathname)
   except ValueError:
     return dash.no_update
 
@@ -519,9 +530,11 @@ def fetch_run_detail_data(
         (EvaluationIds.RUN_TRIALS_CONTAINER, CP.CHILDREN),
         (EvaluationIds.RUN_STATUS_BADGE, CP.CHILDREN),
         (EvaluationIds.RUN_STATUS_BADGE, CP.COLOR),
+        (EvaluationIds.RUN_BIGQUERY_BADGE, CP.CHILDREN),
         (EvaluationIds.BTN_PAUSE_RUN, CP.STYLE),
         (EvaluationIds.BTN_RESUME_RUN, CP.STYLE),
         (EvaluationIds.BTN_CANCEL_RUN_EXEC, CP.STYLE),
+        (EvaluationIds.BTN_SYNC_BIGQUERY, CP.STYLE),
         (EvaluationIds.BTN_ARCHIVE, CP.STYLE),
         (EvaluationIds.BTN_RESTORE, CP.STYLE),
         (EvaluationIds.RUN_POLLING_INTERVAL, CP.DISABLED),
@@ -530,14 +543,13 @@ def fetch_run_detail_data(
     inputs=[dash.Input(EvaluationIds.RUN_DATA_STORE, CP.DATA)],
     state=[dash.State(EvaluationIds.RUN_CONTEXT_TRIGGER, CP.DATA)],
 )
-@handle_errors
 def render_run_detail_components(
     run_data: dict[str, Any], current_trigger_id: int | None
 ):
   """Renders the components for the Run Detail page."""
   logger.info("render_run_detail_components triggered")
   if not run_data:
-    return [dash.no_update] * 13
+    return [dash.no_update] * 15
 
   state = RunDetailPageState.model_validate(run_data)
 
@@ -545,26 +557,30 @@ def render_run_detail_components(
   trials = state.trials
   run_id = run.id
 
-  # Only trigger context update if run_id changed or not yet triggered
+  # The polling interval re-runs this every few seconds. Re-triggering the
+  # context fetch each time would repeat the slow GDA call for the same run.
   context_trigger = run_id if current_trigger_id != run_id else dash.no_update
 
-  # Calculate Stats
-  total_trials = len(trials)
-  completed_trials = 0
-  scored_trials = [t for t in trials if t.score is not None]
-  total_score = sum(t.score for t in scored_trials)
-  avg_accuracy = (
-      (total_score / len(scored_trials) * 100) if scored_trials else None
-  )
+  # Straight from Run.accuracy, not recomputed here. The rule is fiddly (a
+  # FAILED trial scores 0 instead of dropping out of the denominator; a
+  # COMPLETED one with no weighted assertions does drop out) and writing it
+  # twice is how this card came to disagree with the run list.
+  avg_accuracy = None if run.accuracy is None else run.accuracy * 100
 
   durations = []
   for t in trials:
-    durations.append(t.duration_ms or 0)
-    if t.status in (RunStatus.COMPLETED, RunStatus.FAILED):
-      completed_trials += 1
+    # Only trials that have run. Appending 0 for the pending ones and then
+    # dividing by the total made this the average over the whole run instead
+    # of over the finished part: 2 of 10 done at 20s each read 4.00s, and the
+    # card repolls every 3s, so it crept up all the way through the run.
+    if t.duration_ms:
+      durations.append(t.duration_ms)
 
-  # Badge/Buttons/Polling Logic
-  badge_color = "gray"
+  # The badge reads off the shared map, like every other status badge. It used
+  # to hold its own colours and render run.status.value, so the run the list
+  # called "In Progress" called itself "RUNNING" on its own page, and a paused
+  # run was orange here and yellow everywhere else.
+  badge_color, badge_label = run_status_display(run.status)
   show_pause = {"display": "none"}
   show_resume = {"display": "none"}
   show_cancel = {"display": "none"}
@@ -578,29 +594,19 @@ def render_run_detail_components(
       RunStatus.EXECUTING,
       RunStatus.EVALUATING,
   ):
-    badge_color = "blue"
     show_pause = {"display": "block"}
     show_cancel = {"display": "block"}
     polling_disabled = False
   elif run.status == RunStatus.PAUSED:
-    badge_color = "orange"
     show_resume = {"display": "block"}
     show_cancel = {"display": "block"}
     polling_disabled = False
-  elif run.status == RunStatus.COMPLETED:
-    badge_color = "green"
-  elif run.status == RunStatus.FAILED:
-    badge_color = "red"
-  elif run.status == RunStatus.CANCELLED:
-    badge_color = "gray"
 
-  # Archive/Restore visibility
-  if getattr(run, "is_archived", False):
+  if run.is_archived:
     show_restore = {"display": "block"}
   else:
     show_archive = {"display": "block"}
 
-  # Breadcrumbs
   breadcrumbs = dmc.Breadcrumbs(
       separator="/",
       mb="lg",
@@ -610,8 +616,7 @@ def render_run_detail_components(
       ],
   )
 
-  # Stats Cards
-  avg_duration = (sum(durations) / total_trials) if total_trials > 0 else 0.0
+  avg_duration = (sum(durations) / len(durations)) if durations else 0.0
   stats = [
       cards.render_stat_card(
           "Agent",
@@ -645,7 +650,6 @@ def render_run_detail_components(
       ),
   ]
 
-  # Trials Table
   trials_update = dmc.Stack(
       gap="md",
       children=[
@@ -665,12 +669,10 @@ def render_run_detail_components(
 
   assertion_update = render_assertion_performance(trials)
 
-  # Agent Context Card
   context_card = run_components.render_run_context(
       run.agent_context_snapshot, loading=False
   )
 
-  # Tool Timing Chart
   timing_chart = charts.render_tool_timing_chart(
       run.tool_timings or {}, title="Aggregate Tool Timing"
   )
@@ -690,16 +692,154 @@ def render_run_detail_components(
       ],
   )
 
+  # Only ask BigQuery about a run that could be in it. Export is triggered when
+  # a run reaches COMPLETED (see worker.py), and this page polls every three
+  # seconds for as long as the run has not reached it (see polling_disabled
+  # above). Checking on each of those ticks bills a query job to be told "no",
+  # which is the only answer possible until the run finishes. The local flags
+  # below are free and just as accurate.
+  client = get_client()
+  bq_status = client.runs.get_bigquery_export_status(
+      run_id, check_exported=run.status == RunStatus.COMPLETED
+  )
+  if not bq_status.get("enabled"):
+    bq_badge = dmc.Tooltip(
+        label="BigQuery export disabled (set BIGQUERY_EXPORT_ENABLED=true)",
+        children=dmc.Badge(
+            "BQ: Disabled",
+            color="gray",
+            variant="outline",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(
+                icon="material-symbols:cloud-off", width=14
+            ),
+        ),
+    )
+  # Read before the failed flag. "We could not find out" is not "the export
+  # failed": a database blip while reading the recorded error used to come back
+  # as a failure and paint a healthy export red, with a Sync button offering to
+  # redo work that was already done.
+  elif bq_status.get("status") == "unknown":
+    bq_badge = dmc.Tooltip(
+        label=(
+            "Could not read the BigQuery export status for this run. Nothing"
+            " here says the export failed. Reload to ask again."
+        ),
+        children=dmc.Badge(
+            "BQ: Unknown",
+            color="gray",
+            variant="outline",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(
+                icon="material-symbols:help-outline", width=14
+            ),
+        ),
+    )
+  # The failed flag is read before the exported one. An export writes four
+  # tables and a partial failure still lands the runs row, so both flags are
+  # set and the green badge used to win. The rejected rows are the thing worth
+  # showing.
+  elif bq_status.get("failed"):
+    bq_badge = dmc.Tooltip(
+        label=(
+            f"Export failed: {bq_status.get('error') or 'Unknown error'}. "
+            "Click 'Sync to BigQuery' to retry."
+        ),
+        children=dmc.Badge(
+            "BQ: Failed",
+            color="red",
+            variant="light",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(
+                icon="material-symbols:cloud-alert", width=14
+            ),
+        ),
+    )
+  elif bq_status.get("exported"):
+    bq_badge = dmc.Tooltip(
+        # No project or dataset in any of these four labels. prism has no
+        # authentication, so the destination was readable by anyone who could
+        # reach the port. The exporter logs it on success.
+        label="Exported to BigQuery",
+        children=dmc.Badge(
+            "BQ: Synced",
+            color="green",
+            variant="light",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(
+                icon="material-symbols:cloud-done", width=14
+            ),
+        ),
+    )
+  elif bq_status.get("syncing"):
+    bq_badge = dmc.Tooltip(
+        label="Syncing to BigQuery...",
+        children=dmc.Badge(
+            "BQ: Syncing",
+            color="blue",
+            variant="outline",
+            size="md",
+            radius="md",
+            leftSection=dmc.Loader(size=12, color="blue"),
+        ),
+    )
+  elif run.status == RunStatus.COMPLETED:
+    # Finished, not in BigQuery, and no thread working on it. This used to share
+    # the "Syncing" branch above, which put a permanent spinner on a run nothing
+    # was syncing: polling is off once a run completes, so the badge could never
+    # correct itself. The Sync button next to it is the actual remedy.
+    bq_badge = dmc.Tooltip(
+        label=(
+            "Not exported to BigQuery. Click 'Sync to BigQuery' to export it."
+        ),
+        children=dmc.Badge(
+            "BQ: Not Synced",
+            color="gray",
+            variant="light",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(
+                icon="material-symbols:cloud-off", width=14
+            ),
+        ),
+    )
+  else:
+    bq_badge = dmc.Tooltip(
+        label="BigQuery export will trigger upon run completion",
+        children=dmc.Badge(
+            "BQ: Pending",
+            color="gray",
+            variant="outline",
+            size="md",
+            radius="md",
+            leftSection=DashIconify(icon="material-symbols:schedule", width=14),
+        ),
+    )
+
+  show_sync_bq = {"display": "none"}
+  if (
+      bq_status.get("enabled")
+      and (not bq_status.get("exported") or bq_status.get("failed"))
+      and run.status == RunStatus.COMPLETED
+  ):
+    show_sync_bq = {"display": "block"}
+
   return (
       breadcrumbs,
       stats,
       [charts_grid],
       trials_update,
-      run.status.value,
+      badge_label,
       badge_color,
+      bq_badge,
       show_pause,
       show_resume,
       show_cancel,
+      show_sync_bq,
       show_archive,
       show_restore,
       polling_disabled,
@@ -709,9 +849,57 @@ def render_run_detail_components(
 
 @typed_callback(
     output=[
+        (EvaluationIds.RUN_UPDATE_SIGNAL, CP.DATA),
+        (NOTIFICATION_CONTAINER, "sendNotifications"),
+    ],
+    inputs=[
+        (EvaluationIds.BTN_SYNC_BIGQUERY, CP.N_CLICKS),
+    ],
+    state=[dash.State(EvaluationIds.RUN_DATA_STORE, CP.DATA)],
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def handle_sync_bigquery_click(n_clicks: int, run_data: dict[str, Any]):
+  """Triggers BigQuery export manually from the UI."""
+  if not n_clicks or not run_data:
+    return dash.no_update, dash.no_update
+
+  state = RunDetailPageState.model_validate(run_data)
+  run_id = state.run.id
+  client = get_client()
+  try:
+    client.runs.sync_run_to_bigquery(run_id, force=True)
+    # NotificationContainer dispatches on "action". An entry without one
+    # matches nothing and is dropped, so both of these toasts were silent.
+    notification = {
+        "action": "show",
+        "title": "BigQuery Sync Started",
+        "message": (
+            f"Export for Run #{run_id} has been dispatched in the background."
+        ),
+        "color": "blue",
+    }
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logger.exception("Failed manual BigQuery sync: %s", e)
+    notification = {
+        "action": "show",
+        "title": "BigQuery Sync Failed",
+        # Not the exception text. See the note in render_trial_detail.
+        "message": (
+            f"Could not export Run #{run_id}. The details are in the server"
+            " log."
+        ),
+        "color": "red",
+    }
+
+  return {"timestamp": time.time(), "action": "sync_bq"}, [notification]
+
+
+@typed_callback(
+    output=[
         (REDIRECT_HANDLER, CP.HREF),
         (EvaluationIds.RUN_UPDATE_SIGNAL, CP.DATA),
-        ("notification-container", "sendNotifications"),
+        (NOTIFICATION_CONTAINER, "sendNotifications"),
     ],
     inputs=[
         (EvaluationIds.BTN_ARCHIVE, CP.N_CLICKS),
@@ -727,7 +915,7 @@ def toggle_run_archive(archive_clicks, restore_clicks, pathname):
     return dash.no_update, dash.no_update, dash.no_update
 
   try:
-    run_id = int(pathname.rstrip("/").split("/")[-1])
+    run_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update, dash.no_update, dash.no_update
 
@@ -742,25 +930,55 @@ def toggle_run_archive(archive_clicks, restore_clicks, pathname):
       client.runs.unarchive_run(run_id)
       msg = "Evaluation run restored successfully."
 
+    # NotificationContainer wants a list of actions. A bare dict is silently
+    # ignored, which hid the success toast and the error one below.
+    #
+    # No href either. ``redirect-handler`` is refresh=True, so returning
+    # ``pathname`` reloaded the page we are already on and threw the
+    # notification away before it could be read. The update signal below
+    # re-renders in place instead.
     return (
-        pathname,
+        dash.no_update,
         {"ts": time.time()},
-        {
+        [{
+            "action": "show",
             "title": "Success",
             "message": msg,
             "color": "green",
-        },
+        }],
+    )
+  except ValueError as e:
+    # RunRepository refuses a run that has not stopped, because an archived run
+    # drops out of every worker query and the run was abandoned mid-flight. Its
+    # ValueErrors are fixed text written for the reader ("Run 7 is pending.
+    # Cancel it first, then archive it."), with no query or bound parameters in
+    # them. Folded into the generic message below, the one refusal the user can
+    # act on read as a crash, and the Cancel button that clears it is sitting
+    # right next to Archive.
+    return (
+        dash.no_update,
+        dash.no_update,
+        [{
+            "action": "show",
+            "title": "Cannot Archive Run",
+            "message": str(e),
+            "color": "red",
+        }],
     )
   except Exception as e:  # pylint: disable=broad-exception-caught
     logger.error("Failed to toggle evaluation archive: %s", e)
     return (
         dash.no_update,
         dash.no_update,
-        {
+        [{
+            "action": "show",
             "title": "Error",
-            "message": f"Failed to update evaluation run: {str(e)}",
+            # Not the exception text. See the note in render_trial_detail.
+            "message": (
+                "Could not archive this run. The details are in the server log."
+            ),
             "color": "red",
-        },
+        }],
     )
 
 
@@ -802,6 +1020,7 @@ def fetch_run_context(run_id: int):
         (EvaluationIds.RUN_CONTEXT_DIFF_MODAL, "opened"),
         (EvaluationIds.RUN_CONTEXT_DIFF_TITLE, CP.CHILDREN),
         (EvaluationIds.RUN_CONTEXT_DIFF_STORE, CP.DATA),
+        (EvaluationIds.BTN_DOWNLOAD_DIFF, CP.DISABLED),
     ],
     inputs=[dash.Input(EvaluationIds.RUN_CONTEXT_DIFF_BTN, CP.N_CLICKS)],
     state=[dash.State(EvaluationIds.RUN_CONTEXT_DIFF_STORE, CP.DATA)],
@@ -809,24 +1028,22 @@ def fetch_run_context(run_id: int):
     allow_duplicate=True,
 )
 def toggle_config_diff_modal(n_clicks: int, diff_data: dict[str, Any]):
-  """Opens the config diff modal and triggers fetch if live config is missing."""
+  """Opens the config diff modal, fetching the live config if it is missing."""
   if not n_clicks or not diff_data:
-    return dash.no_update, False, dash.no_update, dash.no_update
+    return dash.no_update, False, dash.no_update, dash.no_update, dash.no_update
 
-  # 1. If live config is already fetched, just render it
   if diff_data.get("live"):
-    diff_table, change_count = run_components.render_modern_context_diff(
+    diff_table, has_changes = run_components.render_modern_context_diff(
         diff_data.get("snapshot", {}), diff_data.get("live", {})
     )
-    # Re-render title with badge
     title_children = [
         dmc.Text("Context Diff (Snapshot vs Live)", fw=700, size="lg"),
-        _render_change_badge(change_count),
+        _render_change_badge(has_changes),
     ]
-    return diff_table, True, title_children, dash.no_update
+    return diff_table, True, title_children, dash.no_update, False
 
-  # 2. Otherwise: Show skeleton and trigger fetch by updating store
-  # Trigger fetch by updating store state
+  # Show a skeleton and set is_fetching, which is what
+  # fetch_live_config_for_diff keys off.
   new_state = diff_data.copy()
   new_state["is_fetching"] = True
 
@@ -845,7 +1062,9 @@ def toggle_config_diff_modal(n_clicks: int, diff_data: dict[str, Any]):
       dmc.Skeleton(height=20, width=120, radius="sm"),
   ]
 
-  return skeleton, True, title_loading, new_state
+  # Nothing to download while the fetch is in flight, and the button keeps
+  # whatever state the last open left it in otherwise.
+  return skeleton, True, title_loading, new_state, True
 
 
 @typed_callback(
@@ -853,6 +1072,7 @@ def toggle_config_diff_modal(n_clicks: int, diff_data: dict[str, Any]):
         (EvaluationIds.RUN_CONTEXT_DIFF_CONTENT, CP.CHILDREN),
         (EvaluationIds.RUN_CONTEXT_DIFF_TITLE, CP.CHILDREN),
         (EvaluationIds.RUN_CONTEXT_DIFF_STORE, CP.DATA),
+        (EvaluationIds.BTN_DOWNLOAD_DIFF, CP.DISABLED),
     ],
     inputs=[dash.Input(EvaluationIds.RUN_CONTEXT_DIFF_STORE, CP.DATA)],
     prevent_initial_call=True,
@@ -861,43 +1081,60 @@ def toggle_config_diff_modal(n_clicks: int, diff_data: dict[str, Any]):
 def fetch_live_config_for_diff(diff_data: dict[str, Any]):
   """Fetches live agent configuration when is_fetching is True."""
   if not diff_data or not diff_data.get("is_fetching"):
-    return dash.no_update, dash.no_update, dash.no_update
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
   agent_id = diff_data.get("agent_id")
   logger.info("fetch_live_config_for_diff started for agent %s", agent_id)
   if not agent_id:
-    return dash.no_update, dash.no_update, dash.no_update
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
   client = get_client()
   live_context = None
   try:
-    # This is the slow GDA API call
+    # The slow one. Everything else on this page is a local read.
     live_context = client.agents.get_published_context(agent_id)
   except Exception as e:  # pylint: disable=broad-exception-caught
-    logging.error("Failed to fetch live context for agent %s: %s", agent_id, e)
+    logger.error("Failed to fetch live context for agent %s: %s", agent_id, e)
 
   snapshot_data = diff_data.get("snapshot", {})
-  # Fallback to snapshot if live fetch fails
-  live_data = live_context if live_context else snapshot_data
-
-  diff_table, change_count = run_components.render_modern_context_diff(
-      snapshot_data, live_data
-  )
-
   new_state = diff_data.copy()
-  new_state["live"] = live_data
   new_state["is_fetching"] = False
 
-  # Re-render title with badge
+  # get_published_context returns None for an agent that is gone, so both ways
+  # of coming back empty land here. Falling back to the snapshot would diff it
+  # against itself and badge the result "No changes detected", which tells the
+  # user the published context is unchanged on the strength of a call that
+  # never returned it. Leave live unset so the next click retries.
+  if not live_context:
+    error_title = [
+        dmc.Text("Context Diff (Snapshot vs Live)", fw=700, size="lg"),
+    ]
+    # The download is a diff of the two contexts, and there is only one of
+    # them here. It used to stay enabled beside the alert and answer a click
+    # with no_update: no file, no toast, no log line.
+    return (
+        dmc.Alert(
+            "Could not read the agent's published context. It may have been"
+            " deleted, or the Data Analytics API may be unavailable.",
+            title="Live context unavailable",
+            color="red",
+        ),
+        error_title,
+        new_state,
+        True,
+    )
+
+  diff_table, has_changes = run_components.render_modern_context_diff(
+      snapshot_data, live_context
+  )
+  new_state["live"] = live_context
+
   title_children = [
       dmc.Text("Context Diff (Snapshot vs Live)", fw=700, size="lg"),
-      _render_change_badge(change_count),
+      _render_change_badge(has_changes),
   ]
 
-  return diff_table, title_children, new_state
-
-
-# --- Trial Detail Page ---
+  return diff_table, title_children, new_state, False
 
 
 def _calculate_assertion_summary(
@@ -938,6 +1175,16 @@ def _calculate_assertion_summary(
   )
 
 
+def _trial_error(message: str) -> list[Any]:
+  """One trial-detail error return, in the order the outputs are declared.
+
+  The alert belongs in the detail container. Put it first and it lands in the
+  breadcrumb bar instead, and the container keeps the spinner the layout left
+  there, so the page reads as still loading while an error sits above it.
+  """
+  return [dash.no_update] * 4 + [dmc.Alert(message, color="red")]
+
+
 @typed_callback(
     [
         (EvaluationIds.TRIAL_BREADCRUMBS_CONTAINER, CP.CHILDREN),
@@ -956,22 +1203,19 @@ def _calculate_assertion_summary(
 def render_trial_detail(
     pathname: str,
     search: str,
-    update_signal: Any = None,
+    unused_update_signal: Any = None,
     sug_loading: bool = False,
 ):
   """Renders the Trial Detail page."""
-  # pylint: disable=unused-argument
   if not pathname or not pathname.startswith("/evaluations/trials/"):
     return [dash.no_update] * 5
 
   try:
-    # Handle possible trailing slashes robustly
-    path_parts = pathname.rstrip("/").split("/")
-    trial_id = int(path_parts[-1])
+    trial_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return [dash.no_update] * 5
 
-  logging.info(
+  logger.info(
       "Rendering trial detail pathname=%s loading=%s",
       pathname,
       sug_loading,
@@ -981,21 +1225,21 @@ def render_trial_detail(
   try:
     trial = client.runs.get_trial(trial_id)
   except Exception as e:  # pylint: disable=broad-exception-caught
-    logging.error("Failed to load trial %s: %s", trial_id, e)
-    return [dmc.Alert(f"Error loading trial: {str(e)}", color="red")] + [
-        dash.no_update
-    ] * 4
+    logger.error("Failed to load trial %s: %s", trial_id, e)
+    # Not the exception text. A SQLAlchemy error carries the statement and
+    # its bound parameters, and this renders into the page.
+    return _trial_error(
+        "Could not load this trial. The details are in the server log."
+    )
 
   if not trial:
-    return [dmc.Alert("Trial not found", color="red")] + [dash.no_update] * 4
+    return _trial_error("Trial not found")
 
-  # Fetch parent run to get original_suite_id
   run = client.runs.get_run(trial.run_id)
   run_link = "#"
   if run and run.original_suite_id:
     run_link = f"/test_suites/view/{run.original_suite_id}"
 
-  # Unified Breadcrumbs: Evaluations / Run #<run_id> / Trial #<trial_id>
   breadcrumbs = dmc.Breadcrumbs(
       separator="/",
       mb="lg",
@@ -1011,7 +1255,6 @@ def render_trial_detail(
       ],
   )
 
-  # Mapping for assertion cards
   assertion_details = []
   if trial.assertion_results:
     for ar in trial.assertion_results:
@@ -1019,36 +1262,33 @@ def render_trial_detail(
           "type": ar.assertion.type,
           "weight": ar.assertion.weight,
           "passed": ar.passed,
-          "score": getattr(ar, "score", None),
+          "score": ar.score,
           "reasoning": ar.reasoning,
           "error_message": ar.error_message,
       }
-      # Extract specific parameters from the flattened schema
+      # The assertion schema is flat, so whatever is left after the common
+      # fields are dropped is that type's own parameters.
       assertion_data = ar.assertion.model_dump()
       for k, v in assertion_data.items():
         if k not in ["type", "weight", "id", "reasoning"]:
           details[k] = v
       assertion_details.append(details)
 
-  # Check Filter
   parsed_qs = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
   filter_cat = parsed_qs.get("assertion_category", ["all"])[0] or "all"
   filter_stat = parsed_qs.get("assertion_status", ["all"])[0] or "all"
   filter_type = parsed_qs.get("assertion_type", ["all"])[0] or "all"
 
-  # Latency & TTFR
   duration_ms = trial.duration_ms or 0
   ttfr_ms = trial.ttfr_ms or 0
 
-  # If ttfr_ms is missing but we have trace results, we might want a fallback
-  # but the client should have already handled this.
-  # However, render_trial_detail recalculates timeline_obj which is fine.
+  # trial.ttfr_ms is a property over trace_results and is None when no event
+  # carries a timestamp. The 0 above is what the timeline then shows.
   trace_results = trial.trace_results or []
   timeline_obj = client.runs.parse_timeline(
       trace_results, ttfr_ms=ttfr_ms, total_duration_ms=duration_ms
   )
 
-  # --- Stats Cards ---
   failed_at_text = None
   if trial.status == RunStatus.FAILED:
     failed_at_text = dmc.Text(
@@ -1056,13 +1296,10 @@ def render_trial_detail(
         c="red",
         size="xs",
     )
-  status_color = "gray"
-  if trial.status == RunStatus.COMPLETED:
-    status_color = "green"
-  elif trial.status == RunStatus.FAILED:
-    status_color = "red"
-  elif trial.status in [RunStatus.EXECUTING, RunStatus.EVALUATING]:
-    status_color = "blue"
+  # PENDING, RUNNING, CANCELLED and PAUSED used to fall through to grey with
+  # the raw enum name beside it, so a running trial got the icon that means
+  # nothing is happening. See the note on the map in utils.
+  status_color, status_label = run_status_display(trial.status)
 
   if trial.status == RunStatus.FAILED:
     error_card = cards.render_error_card(
@@ -1074,6 +1311,7 @@ def render_trial_detail(
     error_card = None
 
   stats_cards = dmc.Group(
+      id=EvaluationIds.TRIAL_DETAIL_STATS,
       grow=True,
       children=[
           dmc.Paper(
@@ -1095,7 +1333,7 @@ def render_trial_detail(
                           fw=700,
                       ),
                   ]),
-                  dmc.Text(trial.status.value, fw=700, size="lg", mt="sm"),
+                  dmc.Text(status_label, fw=700, size="lg", mt="sm"),
                   failed_at_text,
               ],
           ),
@@ -1118,7 +1356,12 @@ def render_trial_detail(
                           fw=700,
                       ),
                   ]),
-                  dmc.Text(f"{duration_ms} ms", fw=700, size="lg", mt="sm"),
+                  dmc.Text(
+                      format_duration(trial.duration_ms),
+                      fw=700,
+                      size="lg",
+                      mt="sm",
+                  ),
               ],
           ),
           dmc.Paper(
@@ -1140,7 +1383,12 @@ def render_trial_detail(
                           fw=700,
                       ),
                   ]),
-                  dmc.Text(f"{ttfr_ms} ms", fw=700, size="lg", mt="sm"),
+                  dmc.Text(
+                      format_ttfr(trial.ttfr_ms),
+                      fw=700,
+                      size="lg",
+                      mt="sm",
+                  ),
               ],
           ),
           dmc.Paper(
@@ -1176,15 +1424,6 @@ def render_trial_detail(
       mb="xl",
   )
 
-  # --- Assertion Cards ---
-  # Get all possible types for the filter
-  unique_types = sorted(list({item["type"] for item in assertion_details}))
-  type_options = [{"label": "All Types", "value": "all"}]
-  for ut in unique_types:
-    style = test_case_components.get_assertion_style(ut)
-    type_options.append({"label": style["label"], "value": ut})
-
-  # --- Assertions Section ---
   if trial.status == RunStatus.FAILED:
     render_assertions = dmc.Alert(
         "Assertions were not evaluated because the trial failed.",
@@ -1208,11 +1447,10 @@ def render_trial_detail(
         mb="md",
     )
   else:
-    # Get all possible types for the filter
     unique_types = sorted(list({item["type"] for item in assertion_details}))
     type_options = [{"label": "All Types", "value": "all"}]
     for ut in unique_types:
-      style = test_case_components.get_assertion_style(ut)
+      style = assertion_components.get_assertion_style(ut)
       type_options.append({"label": style["label"], "value": ut})
 
     assertion_cards = []
@@ -1324,7 +1562,6 @@ def render_trial_detail(
         mb="md",
     )
 
-  # --- Suggestions Section ---
   accordion_style = {}
   if trial.status == RunStatus.FAILED:
     accordion_style = {"display": "none"}
@@ -1335,13 +1572,35 @@ def render_trial_detail(
       for i, sa in enumerate(trial.suggested_asserts):
         try:
           item = sa.model_dump()
+          sug_id = item.get("id")
+          if sug_id is None:
+            # The card writes this into its buttons' index, and
+            # curate_trial_suggestion hands that index to curate_suggestion as
+            # a row id. The suite page draws the same card with a list
+            # position, so falling back to one here meant accepting the third
+            # suggestion curated whichever row holds id 2.
+            logger.error(
+                "Suggestion %d of %d has no id and cannot be curated",
+                i,
+                len(trial.suggested_asserts),
+            )
+            continue
           card = assertion_components.render_suggested_assertion_card(
-              item, item.get("id") or i, ids_class=EvaluationIds
+              item, sug_id, ids_class=EvaluationIds
           )
           suggestion_cards.append(card)
         except Exception as e:  # pylint: disable=broad-exception-caught
-          logging.error("Failed to render suggestion card %d: %s", i, e)
-          logging.error(traceback.format_exc())
+          # Position and exception class only. The value being rendered is a
+          # suggested assertion's model_dump, whose params hold text the model
+          # lifted out of the agent's answer over the customer's data, and a
+          # pydantic ValidationError formats input_value={...} into its
+          # message. This log goes wherever the server's stdout goes.
+          logger.error(
+              "Failed to render suggestion card %d of %d: %s",
+              i,
+              len(trial.suggested_asserts),
+              type(e).__name__,
+          )
 
     if sug_loading:
       suggestions_content_div = (
@@ -1429,7 +1688,6 @@ def render_trial_detail(
       ],
   )
 
-  # Layout
   header_actions = [
       dmc.Anchor(
           dmc.Button(
@@ -1443,26 +1701,26 @@ def render_trial_detail(
       ),
   ]
 
+  # run is None when the parent was deleted out from under the trial, which is
+  # the same case the run_link fallback above covers.
   description = [
       "Execution results for agent ",
       html.Span(
-          run.agent_name or "Unknown Agent",
+          (run.agent_name if run else None) or "Unknown Agent",
           style={"fontWeight": 600},
           className="text-dark",
       ),
       " on test suite ",
       html.Span(
-          run.suite_name or "Unknown Suite",
+          (run.suite_name if run else None) or "Unknown Suite",
           style={"fontWeight": 600},
           className="text-dark",
       ),
   ]
 
-  # Tool Timing Profiling
   profiling_chart = charts.render_trial_profiling(
       trial.tool_timings or {}, title="Tool Timing Profiling"
   )
-  # Assertion Metrics Visualizations
   assertion_summary = None
   if trial.status != RunStatus.FAILED:
     assertion_summary = assertion_components.render_assertion_summary(
@@ -1475,11 +1733,9 @@ def render_trial_detail(
       description,
       header_actions,
       dmc.Stack([
-          # Summary Stats
           stats_cards,
-          # Error Card (Visible only if FAILED)
+          # None unless the trial failed, which Dash renders as nothing.
           error_card,
-          # Trial Results Card
           run_components.render_trial_card(
               trial,
               show_details_link=False,
@@ -1488,21 +1744,16 @@ def render_trial_detail(
                   timeline_obj.model_dump(), minimal=True
               ),
           ),
-          # Separate Profiling Card (below Output/Charts)
           profiling_chart,
-          # Two-column layout: Assertions+Suggestions (Left) vs Timeline (Right)
           dmc.Grid(
               gutter="md",
               mt="md",
               children=[
-                  # Left Column: Assertions & Suggestions
                   dmc.GridCol(
                       span=12,
                       children=dmc.Stack([
-                          # Assertions Section
                           dmc.Box([
                               assertions_header,
-                              # Assertion Metrics Visualizations
                               assertion_summary,
                               dmc.Space(h="lg"),
                               render_assertions,
@@ -1511,7 +1762,6 @@ def render_trial_detail(
                   ),
               ],
           ),
-          # --- Suggestions Section (Consolidated) ---
           suggestions_accordion,
       ]),
   ]
@@ -1539,7 +1789,8 @@ def sync_assertion_filter_to_url(cat_val, type_val, stat_val, current_search):
   new_type = type_val or "all"
   new_stat = stat_val or "all"
 
-  # Avoid redundant updates causing loops
+  # Writing the same search back re-triggers the filter inputs, which write it
+  # again.
   if (
       params.get("assertion_category") == [new_cat]
       and params.get("assertion_type") == [new_type]
@@ -1557,7 +1808,7 @@ def sync_assertion_filter_to_url(cat_val, type_val, stat_val, current_search):
     [
         dash.Output(EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL, CP.DATA),
         dash.Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     inputs=[
@@ -1572,22 +1823,22 @@ def sync_assertion_filter_to_url(cat_val, type_val, stat_val, current_search):
     ],
     prevent_initial_call=True,
 )
-@handle_errors
-def curate_trial_suggestion(accept_clicks, reject_clicks):
+def curate_trial_suggestion(unused_accept_clicks, unused_reject_clicks):
   """Handles accepting or rejecting a suggested assertion."""
-  # pylint: disable=unused-argument
   ctx = dash.callback_context
   if not ctx.triggered:
     return dash.no_update, dash.no_update
 
-  # Guard: Ensure it was an actual click (n_clicks > 0), not just registration
+  # The buttons are pattern-matched, so this also fires when the suggestion
+  # list re-renders and the new buttons arrive with n_clicks unset. Only a
+  # trigger that carries a value is a real click.
   trigger_val = ctx.triggered[0].get("value")
   if not trigger_val:
     return dash.no_update, dash.no_update
 
   trigger = typed_callback.triggered_id()
   if not trigger or not isinstance(trigger, dict):
-    logging.warning("Invalid trigger for curate_trial_suggestion: %s", trigger)
+    logger.warning("Invalid trigger for curate_trial_suggestion: %s", trigger)
     return dash.no_update, dash.no_update
 
   sug_id = trigger.get("index")
@@ -1623,9 +1874,7 @@ def curate_trial_suggestion(accept_clicks, reject_clicks):
 )
 def reset_trial_suggestions_state(pathname):
   """Resets the loading state when navigating to a new trial."""
-  logging.warning(
-      "!!! CALLBACK: reset_trial_suggestions_state pathname=%s", pathname
-  )
+  del pathname  # Any navigation clears the state.
   return False
 
 
@@ -1635,7 +1884,8 @@ dash.clientside_callback(
         if (n_clicks && n_clicks.some(c => c > 0)) {
             return [n_clicks.map(() => true), true];
         }
-        return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+        const no_update = window.dash_clientside.no_update;
+        return [no_update, no_update];
     }
     """,
     [
@@ -1673,6 +1923,11 @@ dash.clientside_callback(
             "disabled",
             allow_duplicate=True,
         ),
+        dash.Output(
+            EvaluationIds.TRIAL_SUG_POLLING_INTERVAL,
+            "n_intervals",
+            allow_duplicate=True,
+        ),
     ],
     inputs=[
         dash.Input(
@@ -1685,7 +1940,6 @@ dash.clientside_callback(
     ],
     prevent_initial_call=True,
 )
-@handle_errors
 def trigger_suggestion_generation(
     n_clicks_list: list[int | None], pathname: str
 ):
@@ -1699,17 +1953,17 @@ def trigger_suggestion_generation(
     return dash.no_update
 
   try:
-    trial_id = int(pathname.split("/")[-1])
+    trial_id = id_from_pathname(pathname)
   except ValueError:
     return dash.no_update
 
-  logging.info("Starting suggestion regeneration for trial %s", trial_id)
+  logger.info("Starting suggestion regeneration for trial %s", trial_id)
   app = flask.current_app._get_current_object()  # pylint: disable=protected-access,no-member
   client = get_client()
   client.runs.regenerate_suggestions_async(trial_id, app)
-  logging.info("Triggered suggestion regeneration for trial %s", trial_id)
+  logger.info("Triggered suggestion regeneration for trial %s", trial_id)
 
-  return time.time(), [True] * len(n_clicks_list), True, False
+  return time.time(), [True] * len(n_clicks_list), True, False, 0
 
 
 @typed_callback(
@@ -1742,7 +1996,6 @@ def trigger_suggestion_generation(
     ],
     prevent_initial_call=True,
 )
-@handle_errors
 def poll_suggestion_results(
     n_intervals, pathname, btn_ids: list[dict[str, Any]]
 ):
@@ -1755,7 +2008,7 @@ def poll_suggestion_results(
     return dash.no_update
 
   try:
-    trial_id = int(pathname.split("/")[-1])
+    trial_id = id_from_pathname(pathname)
   except ValueError:
     return dash.no_update
 
@@ -1763,20 +2016,21 @@ def poll_suggestion_results(
   try:
     trial = client.runs.get_trial(trial_id)
   except Exception as e:  # pylint: disable=broad-exception-caught
-    logging.error("Polling failed for trial %s: %s", trial_id, e)
-    # Stop polling on error to avoid infinite loop of crashes
-    return typed_callback.no_update, [False] * len(btn_ids), False, True
+    logger.error("Polling failed for trial %s: %s", trial_id, e)
+    # Stop polling on error to avoid infinite loop of crashes. The signal
+    # still goes out. It is the only Input render_trial_detail has here, and
+    # the loading store it reads alongside is State, so leaving the signal
+    # alone cleared the flag without re-rendering and the skeleton stayed on
+    # screen with the interval now disabled.
+    return time.time(), [False] * len(btn_ids), False, True
 
   sug_count = (
       len(trial.suggested_asserts) if trial and trial.suggested_asserts else 0
   )
-  logging.info(
-      "Polling suggestions for trial %s: count=%s", trial_id, sug_count
-  )
+  logger.info("Polling suggestions for trial %s: count=%s", trial_id, sug_count)
 
-  # If suggestions arrived, stop polling and refresh
   if trial and trial.suggested_asserts:
-    logging.info(
+    logger.info(
         "Suggestions arrived for trial %s, stopping polling with signal",
         trial_id,
     )
@@ -1784,8 +2038,10 @@ def poll_suggestion_results(
 
   # Stop polling after ~60 seconds (20 intervals * 3s)
   if n_intervals >= 20:
-    logging.info("Suggestions polling timed out for trial %s", trial_id)
-    return typed_callback.no_update, [False] * len(btn_ids), False, True
+    logger.info("Suggestions polling timed out for trial %s", trial_id)
+    # Signalled, like the error branch above, so the panel re-renders and
+    # falls through to render_empty_suggestions.
+    return time.time(), [False] * len(btn_ids), False, True
 
   return (
       typed_callback.no_update,
@@ -1795,41 +2051,16 @@ def poll_suggestion_results(
   )
 
 
-# --- Test Suite View Run Modal ---
-
-
-@typed_callback(
-    [
-        (EvaluationIds.MODAL_RUN_EVAL, "opened"),
-        (EvaluationIds.AGENT_SELECT, "data"),
-    ],
-    inputs=[
-        (EvaluationIds.BTN_OPEN_RUN_MODAL, "n_clicks"),
-        (EvaluationIds.BTN_CANCEL_RUN, "n_clicks"),
-    ],
-    prevent_initial_call=True,
-)
-def toggle_run_eval_modal(open_clicks, cancel_clicks):
-  """Toggles the Run Evaluation modal and populates Agent Select."""
-  del open_clicks, cancel_clicks
-  trigger = typed_callback.triggered_id()
-
-  if trigger == EvaluationIds.BTN_OPEN_RUN_MODAL:
-    client = get_client()
-    agents = client.agents.list_agents()
-    options = [
-        {"label": a.name or f"Agent {a.id}", "value": str(a.id)} for a in agents
-    ]
-    return True, options
-
-  return False, dash.no_update
+# The Test Suite View run modal is opened and filled by test_suite_callbacks,
+# which is where the page that renders it lives. This file owns the Start Run
+# button.
 
 
 @typed_callback(
     [
         dash.Output(REDIRECT_HANDLER, CP.HREF, allow_duplicate=True),
         dash.Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     inputs=[(EvaluationIds.BTN_START_RUN, "n_clicks")],
@@ -1841,6 +2072,13 @@ def toggle_run_eval_modal(open_clicks, cancel_clicks):
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
+    # Starting a run spawns trials that call a paid API. Without this the
+    # button stays live for the whole round trip and a second click starts a
+    # second run.
+    running=[
+        (dash.Output(EvaluationIds.BTN_START_RUN, CP.DISABLED), True, False),
+        (dash.Output(EvaluationIds.BTN_START_RUN, CP.LOADING), True, False),
+    ],
 )
 def start_run_eval(
     n_clicks, agent_id, generate_suggestions, concurrency, pathname
@@ -1849,19 +2087,19 @@ def start_run_eval(
   if not n_clicks or not agent_id:
     return dash.no_update
 
-  # Extract Test Suite ID from URL
   if not pathname or "/test_suites/view/" not in pathname:
     return dash.no_update
 
   try:
-    suite_id = int(pathname.split("/")[-1])
+    suite_id = id_from_pathname(pathname)
   except ValueError:
     return dash.no_update
 
   client = get_client()
   agent = client.agents.get_agent(int(agent_id))
 
-  # Prevent if missing Looker credentials
+  # The button is disabled without credentials, but the modal can be open
+  # from before they were cleared.
   if (
       agent
       and agent.config
@@ -1883,25 +2121,33 @@ def start_run_eval(
           "icon": DashIconify(icon="material-symbols:error-outline"),
       }]
 
-  # Captures real app for thread
-  app = flask.current_app._get_current_object()  # pylint: disable=protected-access,no-member
-
-  run = client.runs.create_run(
-      agent_id=int(agent_id),
-      test_suite_id=suite_id,
-      generate_suggestions=generate_suggestions,
-      concurrency=concurrency,
-  )
+  try:
+    run = client.runs.create_run(
+        agent_id=int(agent_id),
+        test_suite_id=suite_id,
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
+    )
+  except ValueError as e:
+    # str(e) is our own ValueError, raised by ExecutionService before it
+    # touches the database ("... has no active questions"), so it carries no
+    # query text or bound parameters. Unwrapped it reached handle_errors, which
+    # shows the same "Something went wrong" toast as a crash, and the one
+    # refusal the user can act on read as a bug.
+    return dash.no_update, [{
+        "action": "show",
+        "title": "Cannot Start Evaluation",
+        "message": str(e),
+        "color": "red",
+        "icon": DashIconify(icon="material-symbols:error-outline"),
+    }]
   run_id = run.id
 
-  # Start Background Thread
-  client.runs.execute_run_async(run_id, app)
+  # Queues the run. The worker process picks up PENDING runs; nothing starts
+  # here.
+  client.runs.execute_run_async(run_id)
 
-  # Redirect
   return f"/evaluations/runs/{run_id}", dash.no_update
-
-
-# --- Global New Evaluation (from List Page) ---
 
 
 @typed_callback(
@@ -1940,7 +2186,7 @@ def toggle_new_eval_modal(open_clicks, cancel_clicks):
     output=[
         dash.Output(REDIRECT_HANDLER, "href", allow_duplicate=True),
         dash.Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     inputs=[dash.Input(EvaluationIds.BTN_START_NEW_EVAL, "n_clicks")],
@@ -1952,6 +2198,19 @@ def toggle_new_eval_modal(open_clicks, cancel_clicks):
     ],
     prevent_initial_call=True,
     allow_duplicate=True,
+    # See start_run_eval: the button has to go dead while the run is created.
+    running=[
+        (
+            dash.Output(EvaluationIds.BTN_START_NEW_EVAL, CP.DISABLED),
+            True,
+            False,
+        ),
+        (
+            dash.Output(EvaluationIds.BTN_START_NEW_EVAL, CP.LOADING),
+            True,
+            False,
+        ),
+    ],
 )
 def start_new_eval(
     n_clicks, agent_id, suite_id, generate_suggestions, concurrency
@@ -1963,7 +2222,8 @@ def start_new_eval(
   client = get_client()
   agent = client.agents.get_agent(int(agent_id))
 
-  # Prevent if missing Looker credentials
+  # The button is disabled without credentials, but the modal can be open
+  # from before they were cleared.
   if (
       agent
       and agent.config
@@ -1985,119 +2245,30 @@ def start_new_eval(
           "icon": DashIconify(icon="material-symbols:error-outline"),
       }]
 
-  # Captures real app for thread
-  app = flask.current_app._get_current_object()  # pylint: disable=protected-access,no-member
-
-  run = client.runs.create_run(
-      agent_id=int(agent_id),
-      test_suite_id=int(suite_id),
-      generate_suggestions=generate_suggestions,
-      concurrency=concurrency,
-  )
+  try:
+    run = client.runs.create_run(
+        agent_id=int(agent_id),
+        test_suite_id=int(suite_id),
+        generate_suggestions=generate_suggestions,
+        concurrency=concurrency,
+    )
+  except ValueError as e:
+    # See start_run_eval: the refusal text is the actionable part, and
+    # handle_errors would replace it with the generic toast.
+    return dash.no_update, [{
+        "action": "show",
+        "title": "Cannot Start Evaluation",
+        "message": str(e),
+        "color": "red",
+        "icon": DashIconify(icon="material-symbols:error-outline"),
+    }]
   run_id = run.id
 
-  # Start Background Thread via Client
-  client.runs.execute_run_async(run_id, app)
+  # Queues the run. The worker process picks up PENDING runs; nothing starts
+  # here.
+  client.runs.execute_run_async(run_id)
 
-  # Redirect
   return f"/evaluations/runs/{run_id}", dash.no_update
-
-
-@typed_callback(
-    [
-        (EvaluationIds.TRIAL_SUG_EDIT_VALUE, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_YAML, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_GUIDE_CONTAINER, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_GUIDE_TITLE, CP.CHILDREN),
-        (EvaluationIds.TRIAL_SUG_EDIT_GUIDE_DESC, CP.CHILDREN),
-        (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_VALUE, CP.VALUE),
-        (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_YAML, CP.VALUE),
-        (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_VALUE, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_YAML, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_EXAMPLE_CONTAINER, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_EDIT_CHART_TYPE, CP.STYLE),
-        (EvaluationIds.TRIAL_SUG_VAL_MSG, CP.STYLE),
-    ],
-    inputs=[(EvaluationIds.TRIAL_SUG_EDIT_TYPE, CP.VALUE)],
-    prevent_initial_call=True,
-    allow_duplicate=True,
-)
-def update_trial_suggestion_edit_ui(assert_type: str | None):
-  """Updates visibility and description for Trial Suggestion Edit Modal."""
-  visible_style = {
-      "display": "block",
-      "backgroundColor": "#eff6ff",
-      "borderColor": "#dbeafe",
-  }
-  hidden_style = {
-      "display": "none",
-      "backgroundColor": "#eff6ff",
-      "borderColor": "#dbeafe",
-  }
-
-  guide = next(
-      (g for g in constants.ASSERTS_GUIDE if g["name"] == assert_type), None
-  )
-  desc = guide["description"] if guide else ""
-  title = guide["label"] if guide else ""
-  example = guide["example"] if guide else ""
-
-  style_to_use = visible_style if guide else hidden_style
-  is_yaml = assert_type in [
-      "custom",
-      "json_valid",
-      "looker-query-match",
-      "data-check-row",
-  ]
-  container_style = {"display": "block"} if example else {"display": "none"}
-
-  if not guide:
-    return (
-        {"display": "block"},
-        {"display": "none"},
-        hidden_style,
-        "",
-        "",
-        "",
-        "",
-        {"display": "none"},
-        {"display": "none"},
-        {"display": "none"},
-        {"display": "none"},
-        {"display": "none"},
-    )
-
-  if is_yaml:
-    return (
-        {"display": "none"},
-        {"display": "block"},
-        style_to_use,
-        title,
-        desc,
-        "",
-        example,
-        {"display": "none"},
-        {"display": "block"},
-        container_style,
-        {"display": "none"},
-        {"display": "none"},
-    )
-
-  is_chart = assert_type == "chart-check-type"
-  return (
-      {"display": "none" if is_chart else "block"},
-      {"display": "none"},
-      style_to_use,
-      title,
-      desc,
-      example if not is_chart else "",
-      "",
-      {"display": "block" if not is_chart else "none"},
-      {"display": "none"},
-      container_style if not is_chart else {"display": "none"},
-      {"display": "block" if is_chart else "none"},
-      {"display": "none"},
-  )
 
 
 @typed_callback(
@@ -2110,15 +2281,18 @@ def update_trial_suggestion_edit_ui(assert_type: str | None):
     state=[("url", CP.PATHNAME)],
     prevent_initial_call=True,
 )
-@handle_errors
-def handle_run_controls(pause_clicks, resume_clicks, cancel_clicks, pathname):
+def handle_run_controls(
+    unused_pause_clicks,
+    unused_resume_clicks,
+    unused_cancel_clicks,
+    pathname,
+):
   """Handles Pause/Resume/Cancel button clicks."""
-  # pylint: disable=unused-argument
   if not pathname or not pathname.startswith("/evaluations/runs/"):
     return dash.no_update
 
   try:
-    run_id = int(pathname.rstrip("/").split("/")[-1])
+    run_id = id_from_pathname(pathname)
   except ValueError:
     return dash.no_update
 
@@ -2161,9 +2335,9 @@ def download_diff_context(
   return dash.dcc.send_string(diff_text, filename=filename)
 
 
-def _render_change_badge(change_count: int) -> dmc.Badge:
+def _render_change_badge(has_changes: bool) -> dmc.Badge:
   """Renders a badge indicating if changes were detected."""
-  if change_count > 0:
+  if has_changes:
     return dmc.Badge(
         "Changes detected",
         id=EvaluationIds.RUN_CONTEXT_DIFF_BADGE,

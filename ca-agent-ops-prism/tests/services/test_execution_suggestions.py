@@ -1,8 +1,24 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import unittest.mock
 from google.cloud import geminidataanalytics
-from prism.common.schemas.agent import AgentConfig, BigQueryConfig
-from prism.server.clients.gemini_data_analytics_client import AskQuestionResponse, GeminiDataAnalyticsClient
-from prism.server.models.run import RunStatus
+from prism.common.schemas.agent import AgentConfig
+from prism.common.schemas.agent import BigQueryConfig
+from prism.common.schemas.execution import RunStatus
+from prism.server.clients.gemini_data_analytics_client import AskQuestionResponse
+from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
@@ -12,7 +28,6 @@ from sqlalchemy.orm import Session
 
 
 def test_execute_trial_skips_suggestions_when_false(db_session: Session):
-  """Tests that suggestions are NOT generated when generate_suggestions is False."""
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -29,7 +44,6 @@ def test_execute_trial_skips_suggestions_when_false(db_session: Session):
   response_mock.error_message = None
   mock_client.ask_question.return_value = response_mock
 
-  # Mock suggestion service
   mock_suggestion_service = unittest.mock.MagicMock()
 
   service = ExecutionService(
@@ -49,19 +63,19 @@ def test_execute_trial_skips_suggestions_when_false(db_session: Session):
   suite = suite_repo.create(name="Suite")
   example_repo.create(suite.id, "Q1")
 
-  # Create run with generate_suggestions=False (default)
   run = service.create_run(agent.id, suite.id, generate_suggestions=False)
   trial = run.trials[0]
 
-  # Execute
   service.execute_trial(trial.id)
 
-  # Verify suggestion service NOT called
+  # COMPLETED first. _execute_trial swallows everything into an except that
+  # writes FAILED, so without this a trial that blew up before the suggestion
+  # block satisfies the assertion below and the flag could be ignored outright.
+  assert trial.status == RunStatus.COMPLETED
   mock_suggestion_service.suggest_assertions_from_trace.assert_not_called()
 
 
 def test_execute_trial_generates_suggestions_when_true(db_session: Session):
-  """Tests that suggestions ARE generated when generate_suggestions is True."""
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -81,7 +95,6 @@ def test_execute_trial_generates_suggestions_when_true(db_session: Session):
   response_mock.error_message = None
   mock_client.ask_question.return_value = response_mock
 
-  # Mock suggestion service
   mock_suggestion_service = unittest.mock.MagicMock()
   mock_suggestion_service.suggest_assertions_from_trace.return_value = []
 
@@ -102,12 +115,9 @@ def test_execute_trial_generates_suggestions_when_true(db_session: Session):
   suite = suite_repo.create(name="Suite")
   example_repo.create(suite.id, "Q1")
 
-  # Create run with generate_suggestions=True
   run = service.create_run(agent.id, suite.id, generate_suggestions=True)
   trial = run.trials[0]
 
-  # Execute
   service.execute_trial(trial.id)
 
-  # Verify suggestion service WAS called
   mock_suggestion_service.suggest_assertions_from_trace.assert_called_once()

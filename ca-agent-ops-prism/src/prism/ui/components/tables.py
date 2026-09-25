@@ -14,7 +14,6 @@
 
 """Reusable table components."""
 
-import datetime
 from typing import Any
 
 from dash import html
@@ -25,6 +24,7 @@ from prism.common.schemas.execution import RunStatsSchema
 from prism.common.schemas.execution import RunStatus
 from prism.common.schemas.execution import Trial
 from prism.common.schemas.suite import SuiteWithStats
+from prism.ui import utils
 from prism.ui.components import badges
 from prism.ui.components import links
 
@@ -47,88 +47,43 @@ def render_run_table(
     agent_names: dict[int, str] | None = None,
     suite_names: dict[int, str] | None = None,
     table_id: str | None = None,
-) -> html.Div:
+) -> dmc.Paper:
   """Renders a stylistic table of evaluation runs.
 
   Args:
-      runs: List of runs to display.
-      agent_names: Map of agent_id to agent_name.
-      suite_names: Map of suite_id to suite_name.
-      table_id: Optional ID for the container.
+    runs: List of runs to display.
+    agent_names: Map of agent_id to agent_name.
+    suite_names: Map of suite_id to suite_name.
+    table_id: Optional ID for the container.
 
   Returns:
-      A html.Div component containing the table.
+    A dmc.Paper component wrapping the table.
   """
   agent_names = agent_names or {}
   suite_names = suite_names or {}
 
   rows = []
   for run in runs:
-    # 1. Status Logic
-    status_config = {
-        RunStatus.COMPLETED: {
-            "color": "green",
-            "label": "Completed",
-            "dot_class": "",
-        },
-        RunStatus.FAILED: {"color": "red", "label": "Failed", "dot_class": ""},
-        RunStatus.RUNNING: {
-            "color": "blue",
-            "label": "In Progress",
-            "dot_class": (
-                ""
-            ),  # Pulse animation removed as it requires Tailwind or custom CSS
-        },
-        RunStatus.PENDING: {
-            "color": "gray",
-            "label": "Pending",
-            "dot_class": "",
-        },
-        RunStatus.CANCELLED: {
-            "color": "gray",
-            "label": "Cancelled",
-            "dot_class": "",
-        },
-    }
-    config = status_config.get(
-        run.status,
-        {"color": "gray", "label": run.status.value, "dot_class": ""},
+    status_color, status_label = utils.run_status_display(run.status)
+
+    # When the run picked up a worker, not when it was queued. The two differ
+    # by however long the queue was, and it was the queued time on screen.
+    # "2 hr ago" is no use for lining a run up against a deploy either, so this
+    # is the timestamp.
+    started_str = (
+        utils.format_timestamp(run.started_at) if run.started_at else "--"
     )
-    status_color = config["color"]
-    status_label = config["label"]
-
-    # 2. Duration & Started
-    duration_str = "--"
-    started_str = "--"
-
-    # Time ago helper
-    def time_ago(dt: datetime.datetime) -> str:
-      now = datetime.datetime.now(dt.tzinfo)
-      diff = now - dt
-      seconds = diff.total_seconds()
-      if seconds < 60:
-        return "Just now"
-      elif seconds < 3600:
-        return f"{int(seconds // 60)} mins ago"
-      elif seconds < 86400:
-        return f"{int(seconds // 3600)} hr ago"
-      elif seconds < 172800:
-        return "Yesterday"
-      else:
-        return dt.strftime("%Y-%m-%d")
-
-    if run.created_at:
-      started_str = time_ago(run.created_at)
 
     if run.duration_ms:
-      total_seconds = run.duration_ms // 1000
-      minutes = total_seconds // 60
-      seconds = total_seconds % 60
-      duration_str = f"{minutes}m {seconds}s"
+      duration_str = utils.format_duration(run.duration_ms)
     elif run.status == RunStatus.RUNNING:
       duration_str = "Running..."
+    else:
+      # duration_ms stays None until completed_at is set, so a paused run and a
+      # run nothing has picked up yet have no duration to show. The status is
+      # the only thing left to say about them.
+      duration_str = status_label
 
-    # 3. Score
     score_content = dmc.Text("N/A", size="sm", c="dimmed")
     if run.status == RunStatus.COMPLETED and run.accuracy is not None:
       score_pct = run.accuracy * 100
@@ -157,10 +112,8 @@ def render_run_table(
           "Calculating...", size="sm", c="dimmed", style={"fontStyle": "italic"}
       )
 
-    # 4. Action Button
     action_label = "View Report"
 
-    # Agent & Suite Name
     agent_name = (
         getattr(run, "agent_name", None)
         or agent_names.get(run.agent_id)
@@ -196,12 +149,7 @@ def render_run_table(
             ),
             # Test Suite
             html.Td(
-                links.render_test_suite_link(
-                    getattr(
-                        run, "original_suite_id", run.test_suite_snapshot_id
-                    ),
-                    suite_name,
-                ),
+                links.render_test_suite_link(run.original_suite_id, suite_name),
                 style={"padding": "16px 24px"},
             ),
             # Status
@@ -240,19 +188,12 @@ def render_run_table(
     )
     rows.append(row)
 
-  # Header Component
-  # Removed title/view_all_href logic as it is externalized
-
-  # Check if runs empty
   children = []
   if not runs:
-    # Empty State
     children.append(
         dmc.Text("No runs found.", c="dimmed", size="sm", ta="center", py="xl")
     )
   else:
-    # Table Content
-
     table_head = html.Thead(
         html.Tr(
             [
@@ -382,52 +323,22 @@ def render_run_table(
 
 def render_trial_table(
     trials: list[Trial],
-) -> html.Div:
+) -> dmc.Paper:
   """Renders a table of trials."""
   rows = []
 
   for trial in trials:
-    # 1. Status Logic
-    status_config = {
-        RunStatus.COMPLETED: {
-            "color": "green",
-            "label": "Completed",
-        },
-        RunStatus.FAILED: {"color": "red", "label": "Failed"},
-        RunStatus.RUNNING: {
-            "color": "blue",
-            "label": "In Progress",
-        },
-        RunStatus.PENDING: {
-            "color": "gray",
-            "label": "Pending",
-        },
-    }
-    config = status_config.get(
-        trial.status, {"color": "gray", "label": trial.status.value}
-    )
-    status_color = config["color"]
-    status_label = config["label"]
+    status_color, status_label = utils.run_status_display(trial.status)
 
-    # 2. Duration
-    duration_str = "-"
-    if trial.duration_ms is not None:
-      duration_str = f"{trial.duration_ms:,}ms"
+    duration_str = utils.format_duration(trial.duration_ms)
+    ttfr_str = utils.format_ttfr(trial.ttfr_ms)
 
-    # 3. TTFR
-    ttfr_str = "-"
-    if trial.ttfr_ms is not None:
-      ttfr_str = f"{trial.ttfr_ms:,}ms"
-
-    # 4. Accuracy
     accuracy_str = "N/A"
     if trial.score is not None:
       accuracy_str = f"{trial.score * 100:.1f}%"
 
-    # 5. Test Case
     test_case_text = trial.question or "Unknown"
 
-    # 6. Action
     is_terminal = trial.status in (
         RunStatus.COMPLETED,
         RunStatus.FAILED,
@@ -603,21 +514,14 @@ def render_trial_table(
 
 def render_test_suite_table(
     suites: list[SuiteWithStats],
-) -> html.Div:
+) -> dmc.Paper:
   """Renders a stylistic table of test suites."""
 
   rows = []
   for s in suites:
-    # Coverage Logic
-    if s.assertion_coverage == 1.0:
-      coverage_label = "Full Coverage"
-      coverage_color = "green"
-    elif s.assertion_coverage > 0:
-      coverage_label = "Partial Coverage"
-      coverage_color = "yellow"
-    else:
-      coverage_label = "No Coverage"
-      coverage_color = "gray"
+    coverage_color, coverage_label = utils.coverage_display(
+        s.question_count, s.assertion_coverage
+    )
 
     row = html.Tr(
         children=[
@@ -796,24 +700,19 @@ def render_agent_table(
     agents: list[Any],
     latest_runs: dict[int, RunStatsSchema],
     run_history: dict[int, list[RunHistoryPoint]],
-) -> html.Div:
+) -> dmc.Paper:
   """Renders a table of agents with stats and history."""
   rows = []
   for agent in agents:
-    # 1. Source Logic
-    # 1. Source Logic
     is_looker = False
     source_label = "BQ"
 
-    # Try to get config from Pydantic Schema or ORM
     config = getattr(agent, "config", None)
     datasource = None
 
     if config and hasattr(config, "datasource"):
-      # Pydantic Schema approach (AgentConfig object)
       datasource = config.datasource
     elif hasattr(agent, "datasource_config"):
-      # ORM/Legacy approach
       datasource = agent.datasource_config
 
     if datasource:
@@ -827,31 +726,32 @@ def render_agent_table(
       if "instance_uri" in ds_dict or "looker_instance_uri" in ds_dict:
         is_looker = True
         source_label = "LOOKER"
-      else:
-        source_label = "BQ"
 
     source_color = "indigo" if is_looker else "blue"
 
-    # 2. Latest Run Stats
-    # run_data is RunStatsSchema (if present)
     stats_schema = latest_runs.get(agent.id)
     latest_run = stats_schema.run if stats_schema else None
     accuracy = stats_schema.accuracy if stats_schema else None
 
     if latest_run:
-      date_str = latest_run.created_at.strftime("%b %d, %I:%M %p")
-      acc_str = f"{accuracy*100:.1f}%" if accuracy is not None else "0.0%"
+      # It used to render the UTC clock as if it were local, and it left
+      # the year off.
+      date_str = utils.format_timestamp(latest_run.created_at)
+      # An accuracy of None is a run that has scored nothing yet, not a run
+      # that scored zero. The latest run is the newest one whatever its status,
+      # so starting an evaluation used to put 0.0% next to today's date, as if
+      # the agent had just failed everything.
+      acc_str = f"{accuracy*100:.1f}%" if accuracy is not None else "--"
     else:
       date_str = "No evaluations yet"
       acc_str = "-"
 
-    # 3. History Sparkline
-    # history is list[RunHistoryPoint]
     history_points = run_history.get(agent.id, [])
-    # Extract accuracy values
+    # A run with no accuracy has nothing to plot. Drawn as 0.0 it read as a
+    # run that had failed everything, and one queued run at the end of the
+    # window was enough to turn the whole trend red.
     spark_data = [
-        (h.accuracy * 100) if h.accuracy is not None else 0.0
-        for h in history_points
+        h.accuracy * 100 for h in history_points if h.accuracy is not None
     ]
 
     if not spark_data:

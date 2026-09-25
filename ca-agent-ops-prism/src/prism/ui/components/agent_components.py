@@ -26,7 +26,6 @@ def render_agent_card(agent: Agent | None):
 
   config = {}
   if agent.config and agent.config.datasource:
-    # Handle both Pydantic models and dictionaries
     if hasattr(agent.config.datasource, "model_dump"):
       config = agent.config.datasource.model_dump()
     else:
@@ -37,7 +36,6 @@ def render_agent_card(agent: Agent | None):
 
   details = []
 
-  # Common Details
   if agent.config:
     if agent.config.project_id:
       details.append({"label": "Project ID", "value": agent.config.project_id})
@@ -55,7 +53,6 @@ def render_agent_card(agent: Agent | None):
     if explores:
       details.append({"label": "Explores", "value": ", ".join(explores)})
   else:
-    # BQ
     tables = config.get("tables", [])
     if tables:
       details.append({"label": "Tables", "value": ", ".join(tables)})
@@ -88,6 +85,66 @@ def render_agent_card(agent: Agent | None):
       icon_color="var(--mantine-color-blue-6)",
       children=dmc.Stack(gap="xs", children=items),
       action=dmc.Badge(
-          ds_type, variant="light", color="purple" if is_looker else "blue"
+          ds_type, variant="light", color="violet" if is_looker else "blue"
       ),
+  )
+
+
+# Colour per check status, and whether it counts as a pass. Not found and
+# permission denied are both failures, but they are different failures: one is
+# fixed in the form, the other by granting the service account access.
+_BQ_CHECK_STATUS = {
+    "ok": ("green", True),
+    "invalid": ("red", False),
+    "not_found": ("red", False),
+    "denied": ("orange", False),
+    "error": ("red", False),
+}
+
+
+def render_bq_check_results(results: list[dict[str, str]]):
+  """Renders the result of checking BQ tables, for the test alert.
+
+  Args:
+    results: What ``check_bigquery_tables`` returned, one entry per table.
+
+  Returns:
+    A (children, color) pair for the alert.
+  """
+  if not results:
+    return "No tables to check.", "orange"
+
+  lines = []
+  failed = 0
+  for result in results:
+    color, passed = _BQ_CHECK_STATUS.get(result["status"], ("red", False))
+    if not passed:
+      failed += 1
+    lines.append(
+        dmc.Group(
+            gap="xs",
+            align="flex-start",
+            children=[
+                dmc.Badge(
+                    result["table"],
+                    color=color,
+                    variant="light",
+                    size="sm",
+                    tt="none",
+                ),
+                dmc.Text(result["message"], size="sm"),
+            ],
+        )
+    )
+
+  if failed:
+    summary = f"{failed} of {len(results)} tables could not be read."
+  else:
+    summary = f"All {len(results)} tables are readable."
+
+  return (
+      dmc.Stack(
+          gap="xs", children=[dmc.Text(summary, fw=600, size="sm")] + lines
+      ),
+      "red" if failed else "green",
   )

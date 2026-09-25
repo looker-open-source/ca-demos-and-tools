@@ -14,19 +14,26 @@
 
 """Service for transforming raw agent traces into a structured timeline."""
 
-import copy
 import datetime
 import json
 import logging
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from prism.common.schemas.timeline import Timeline
 from prism.common.schemas.timeline import TimelineEvent
 from prism.common.schemas.timeline import TimelineGroup
 
+logger = logging.getLogger(__name__)
+
+
+def _camel_case(field: str) -> str:
+  """The JSON spelling of a proto field name."""
+  head, *rest = field.split("_")
+  return head + "".join(word.title() for word in rest)
+
 
 class TimelineService:
-  """Service for transforming raw agent traces into a structured timeline."""
+  """Turns trace events into timed events, grouped by agent phase."""
 
   PHASE_CONFIG = {
       "SCHEMA": {
@@ -39,6 +46,7 @@ class TimelineService:
           "reasoning_titles": [
               "Data Query",
               "Generated SQL",
+              "Generated Looker Query",
               "BigQuery Execution",
           ],
           "action_titles": ["Query Result"],
@@ -52,55 +60,72 @@ class TimelineService:
           "action_label": "Chart Generation",
       },
       "ANALYSIS": {
-          "reasoning_titles": ["Analysis Request"],
-          "action_titles": ["Data Analysis"],
+          "reasoning_titles": [
+              "Analysis Request",
+              "Analysis Plan",
+              "Analysis Instruction",
+          ],
+          "action_titles": [
+              "Data Analysis",
+              "Analysis Code",
+              "Analysis Output",
+              "Analysis Error",
+              "Analysis Chart",
+              "Analysis Result",
+              "Analysis Data",
+              "Analysis Reference Data",
+          ],
           "reasoning_label": "Agent Reasoning - Data Analysis",
           "action_label": "Data Analysis",
       },
-      "ADVANCED": {
-          "reasoning_titles": [
-              "Key Driver Analysis",
-              "Outlier Detection",
-              "Period Comparison",
-          ],
-          "action_titles": ["Advanced Insight"],
-          "reasoning_label": "Agent Reasoning - Advanced Insight",
-          "action_label": "Advanced Insight",
-      },
   }
 
-  def _parse_event(
-      self, event: Dict[str, Any], hide_query_schema: bool = False
-  ) -> Tuple[str, str, str, str]:
-    """Parses a raw trace event and returns its icon, title, content, and content_type."""
+  # One AnalysisEvent carries one of these, so the first present is the event.
+  # Ordered the way an analysis runs: plan it, write the code, run it, report.
+  # Everything but the code used to render as a dump of the whole message under
+  # one title, so ten rows reading "Data Analysis" hid what each of them was.
+  ANALYSIS_EVENT_FIELDS = (
+      ("planner_reasoning", "bi:lightbulb", "Analysis Plan", "text"),
+      ("coder_instruction", "bi:pencil-square", "Analysis Instruction", "text"),
+      ("code", "bi:code-square", "Analysis Code", "python"),
+      ("execution_output", "bi:terminal", "Analysis Output", "text"),
+      ("execution_error", "bi:exclamation-triangle", "Analysis Error", "text"),
+      (
+          "result_vega_chart_json",
+          "bi:bar-chart-line-fill",
+          "Analysis Chart",
+          "vegalite",
+      ),
+      (
+          "result_natural_language",
+          "bi:chat-left-text",
+          "Analysis Result",
+          "text",
+      ),
+      ("result_csv_data", "bi:table", "Analysis Data", "text"),
+      (
+          "result_reference_data",
+          "bi:link-45deg",
+          "Analysis Reference Data",
+          "json",
+      ),
+      ("error", "bi:exclamation-triangle", "Analysis Error", "text"),
+  )
+
+  def _parse_event(self, event: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Parses a trace event into its icon, title, content and content type."""
     # Support both snake_case (Python) and camelCase (JSON/Proto)
     message = event.get("system_message") or event.get("systemMessage") or {}
 
     if not message:
-      # Fallback checks for other potential keys
-      message = (
-          event.get("server_message")
-          or event.get("serverMessage")
-          or event.get("system_message", {})
-      )
+      message = event.get("server_message") or event.get("serverMessage") or {}
 
     # TextMessage (THOUGHT, FINAL_RESPONSE, etc.)
     if "text" in message:
       text_content = message["text"]
       text_type = text_content.get("text_type") or text_content.get("textType")
 
-      # Safely get all parts joined by newlines
       parts = text_content.get("parts", [""])
-
-      if text_type in ("FOLLOWUP_QUESTIONS", 4):
-        # Format follow-up questions as a bulleted list
-        content = "\n".join(f"* {str(p)}" for p in parts) if parts else ""
-        return (
-            "bi:patch-question",
-            "Suggested Follow-up Questions",
-            content,
-            "text",
-        )
 
       content = "\n\n".join(str(p) for p in parts) if parts else ""
 
@@ -111,12 +136,13 @@ class TimelineService:
       elif text_type in ("PROGRESS", 3):
         return "bi:info-circle", "Agent Progress", content, "text"
       else:
-        return (
-            "bi:question-circle",
-            f"Unknown Text Type ({text_type})",
-            content,
-            "text",
-        )
+        # Everything the published enum does not name. That covers the zero
+        # value, which the wire format drops so an unset type arrives as no
+        # type at all, and it covers the types the service sends that the
+        # installed client library is too old to name. A BigQuery run ends on
+        # one of those today, and a row reading "Unknown Text Type (4)" put the
+        # last word of every run on a defect the agent did not have.
+        return "bi:chat-left", "Agent Message", content, "text"
 
     # SchemaMessage (query or result)
     if "schema" in message:
@@ -136,28 +162,12 @@ class TimelineService:
             "json",
         )
 
-    # DataMessage (query, generated_sql, result, big_query_job)
+    # DataMessage (query, generated_sql, generated_looker_query, result,
+    # big_query_job)
     if "data" in message:
       data_content = message["data"]
       if "query" in data_content:
         query_content = data_content["query"]
-        if hide_query_schema:
-          # Deep copy to avoid mutating the original event if it's reused
-          try:
-            # query_content is likely a dict, but let's be safe
-            if isinstance(query_content, dict):
-              query_content = copy.deepcopy(query_content)
-              if "datasources" in query_content and isinstance(
-                  query_content["datasources"], list
-              ):
-                for ds in query_content["datasources"]:
-                  if isinstance(ds, dict) and "schema" in ds:
-                    ds["schema"] = "...hidden..."
-          except Exception:  # pylint: disable=broad-exception-caught
-            # If anything fails during hiding, just proceed with original
-            # content
-            pass
-
         return (
             "bi:database-add",
             "Data Query",
@@ -176,6 +186,20 @@ class TimelineService:
             "sql",
         )
 
+      looker_query = data_content.get(
+          "generated_looker_query"
+      ) or data_content.get("generatedLookerQuery")
+      if looker_query:
+        # What a Looker agent sends where a BigQuery agent sends SQL. Nothing
+        # read it, so every Looker run had one event reading "Unknown Event"
+        # with the whole message dumped underneath.
+        return (
+            "bi:funnel",
+            "Generated Looker Query",
+            json.dumps(looker_query, indent=2),
+            "json",
+        )
+
       bq_job = data_content.get("big_query_job") or data_content.get(
           "bigQueryJob"
       )
@@ -187,7 +211,6 @@ class TimelineService:
             "json",
         )
       if "result" in data_content:
-        # Safely access the 'data' key within the result
         result_data = data_content["result"].get(
             "data", "No data returned in result."
         )
@@ -233,56 +256,27 @@ class TimelineService:
           "progress_event"
       ) or analysis_content.get("progressEvent")
 
-      if progress_event and "code" in progress_event:
-        return (
-            "bi:bar-chart-line",
-            "Data Analysis",
-            progress_event["code"],
-            "python",
-        )
-      else:
-        return (
-            "bi:bar-chart-line",
-            "Data Analysis",
-            json.dumps(analysis_content, indent=2),
-            "json",
-        )
+      if isinstance(progress_event, dict):
+        for field, icon, title, content_type in self.ANALYSIS_EVENT_FIELDS:
+          value = progress_event.get(field) or progress_event.get(
+              _camel_case(field)
+          )
+          if not value:
+            continue
+          if content_type in ("json", "vegalite") and not isinstance(
+              value, str
+          ):
+            value = json.dumps(value, indent=2)
+          return icon, title, str(value), content_type
 
-    # Advanced Insights
-    if "key_driver_analysis" in message or "keyDriverAnalysis" in message:
-      content = message.get("key_driver_analysis") or message.get(
-          "keyDriverAnalysis"
-      )
       return (
-          "bi:diagram-3",
-          "Key Driver Analysis",
-          json.dumps(content, indent=2),
+          "bi:bar-chart-line",
+          "Data Analysis",
+          json.dumps(analysis_content, indent=2),
           "json",
       )
 
-    if "outlier_detection" in message or "outlierDetection" in message:
-      content = message.get("outlier_detection") or message.get(
-          "outlierDetection"
-      )
-      return (
-          "bi:exclamation-diamond",
-          "Outlier Detection",
-          json.dumps(content, indent=2),
-          "json",
-      )
-
-    if "period_comparison" in message or "periodComparison" in message:
-      content = message.get("period_comparison") or message.get(
-          "periodComparison"
-      )
-      return (
-          "bi:calendar-range",
-          "Period Comparison",
-          json.dumps(content, indent=2),
-          "json",
-      )
-
-    # Example Queries
+    # ExampleQueries
     if "example_queries" in message or "exampleQueries" in message:
       content = message.get("example_queries") or message.get("exampleQueries")
       return (
@@ -301,30 +295,27 @@ class TimelineService:
           "json",
       )
 
-    # AdvancedInsightMessage
-    if "advanced_insight" in message or "advancedInsight" in message:
-      content = message.get("advanced_insight") or message.get(
-          "advancedInsight"
-      )
-      return (
-          "bi:journal-text",
-          "Advanced Insight",
-          json.dumps(content, indent=2),
-          "json",
-      )
-
     # ErrorMessage
     if "error" in message:
+      error_content = message["error"]
+      text = (
+          error_content.get("text") if isinstance(error_content, dict) else None
+      )
+      if text:
+        # The message is the whole of a public ErrorMessage. Dumping the
+        # wrapper put the text on one line with its newlines escaped, which is
+        # the one event nobody can afford to have to squint at.
+        return "bi:exclamation-triangle", "Error", text, "text"
       return (
           "bi:exclamation-triangle",
           "Error",
-          json.dumps(message["error"], indent=2),
+          json.dumps(error_content, indent=2),
           "json",
       )
 
-    logging.warning(
-        "Unknown event structure: %s (%s)", message.keys(), str(message)
-    )
+    # The keys, not the body. This runs in production, and the body carries
+    # the question and whatever rows came back with it.
+    logger.warning("Unknown event structure: %s", sorted(message.keys()))
     return (
         "bi:question-circle",
         "Unknown Event",
@@ -334,10 +325,9 @@ class TimelineService:
 
   def create_timeline_from_trace(
       self,
-      trace: List[Dict[str, Any]],
+      trace: list[dict[str, Any]],
       ttfr_ms: int,
       total_duration_ms: int,
-      hide_query_schema: bool = False,
       start_time_baseline: datetime.datetime | None = None,
   ) -> Timeline:
     """Parses a raw list of trace events and calculates durations."""
@@ -388,11 +378,8 @@ class TimelineService:
         duration_ms = int((current_time - prev_time).total_seconds() * 1000)
 
       cumulative_duration += duration_ms
-      icon, title, content, content_type = self._parse_event(
-          raw_data, hide_query_schema=hide_query_schema
-      )
+      icon, title, content, content_type = self._parse_event(raw_data)
 
-      # Check for group_id in system_message
       message = (
           raw_data.get("system_message") or raw_data.get("systemMessage") or {}
       )
@@ -413,15 +400,16 @@ class TimelineService:
       )
       prev_time = current_time
 
-    # Apply grouping heuristic for events without an explicit group_title
+    # Whatever is left has no group of its own, so it is grouped by what it
+    # sits next to. A thought looks forward, because it describes the work it
+    # is about to do and not the work that has just finished. Everything else
+    # joins the phase the last thought opened.
     current_phase = None
     for i, event in enumerate(timeline_events):
       if event.group_title:
-        # Respect group_id if already set
         continue
 
       if event.title == "Agent Thought":
-        # Look ahead for the next non-thought action to determine group
         for j in range(i + 1, len(timeline_events)):
           next_event = timeline_events[j]
           found_phase = False
@@ -450,9 +438,9 @@ class TimelineService:
           event.group_title = phase["reasoning_label"]
         elif event.title in phase["action_titles"]:
           event.group_title = phase["action_label"]
-          current_phase = None  # Reset after action result
+          # The action closes the phase, so the next thought opens a new one.
+          current_phase = None
         else:
-          # Check if it's a new phase starting without a thought
           for phase_key, p in self.PHASE_CONFIG.items():
             if event.title in p["reasoning_titles"]:
               event.group_title = p["reasoning_label"]
@@ -463,12 +451,11 @@ class TimelineService:
               current_phase = None
               break
           else:
-            # Not a known action, keep current group or reset?
-            # Assign to current reasoning group if we are in one
+            # Not a title in any phase, so leave the event in the reasoning
+            # group that is already open.
             event.group_title = phase["reasoning_label"]
 
       else:
-        # No active phase, check if this event starts one
         for phase_key, phase in self.PHASE_CONFIG.items():
           if event.title in phase["reasoning_titles"]:
             event.group_title = phase["reasoning_label"]
@@ -478,15 +465,14 @@ class TimelineService:
             event.group_title = phase["action_label"]
             break
 
-    # Ensure total_duration_ms is at least cumulative duration of last event.
-    # This renders the timeline correctly even if trial's duration_ms is 0.
+    # At least the last event's cumulative duration, so a trial whose stored
+    # duration_ms is 0 still has a scale to draw the bars against.
     last_cumulative = (
         timeline_events[-1].cumulative_duration_ms if timeline_events else 0
     )
     if total_duration_ms <= 0:
       total_duration_ms = last_cumulative
     elif total_duration_ms < last_cumulative:
-      # If reported latency is less than trace sum, clamp to trace sum.
       total_duration_ms = last_cumulative
 
     timeline = Timeline(
@@ -509,10 +495,9 @@ class TimelineService:
     current_events = []
     group_duration = 0
 
-    for i, event in enumerate(events):
+    for event in events:
       title = event.group_title or event.title
       if title != current_group_title:
-        # Finish current group
         timeline_groups.append(
             TimelineGroup(
                 title=current_group_title,
@@ -528,15 +513,17 @@ class TimelineService:
       current_events.append(event)
       group_duration += event.duration_ms
 
-    # Final group: add duration from last event to total_duration_ms
+    # The loop closes a group when the next one opens, so the last one is
+    # still open here.
     if current_events:
       last_event = current_events[-1]
       final_gap = total_duration_ms - last_event.cumulative_duration_ms
       if final_gap > 0:
         group_duration += final_gap
-      else:
-        # Give at least some padding if it's the very last thing
-        group_duration += 100
+      # A gap of zero used to have 100ms added to give the last bar something
+      # to draw. calculate_tool_timings sums these groups, so the padding was
+      # charged to whichever tool went last and the run detail page printed it
+      # as a real measurement.
 
       timeline_groups.append(
           TimelineGroup(
@@ -551,11 +538,15 @@ class TimelineService:
 
   def calculate_tool_timings(
       self,
-      trace: List[Dict[str, Any]],
+      trace: list[dict[str, Any]],
       ttfr_ms: int = 0,
       total_duration_ms: int = 0,
-  ) -> Dict[str, int]:
-    """Calculates tool timings from a raw trace."""
+  ) -> dict[str, int]:
+    """Sums the timeline group durations by title.
+
+    A title the agent visits more than once is one entry holding the total,
+    not one entry per visit.
+    """
     timeline = self.create_timeline_from_trace(
         trace, ttfr_ms, total_duration_ms
     )

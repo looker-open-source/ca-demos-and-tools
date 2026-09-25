@@ -24,5 +24,4 @@ class RunComparisonUIState(pydantic.BaseModel):
   base_run_id: int | None = None
   challenger_run_id: int | None = None
 
-  # Filters
-  filter_status: str | None = None  # None/All, REGRESSION, IMPROVED, ERROR
+  filter_status: str | None = None  # None/All, REGRESSION, IMPROVED, STABLE

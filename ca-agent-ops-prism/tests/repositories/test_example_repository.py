@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tests for ExampleRepository."""
 
 from prism.common.schemas import assertion as assertion_schemas
@@ -6,7 +20,6 @@ from prism.server.repositories.suite_repository import SuiteRepository
 
 
 def test_create_example_no_asserts(db_session):
-  """Tests creating a new example without assertions."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Test Suite")
 
@@ -20,7 +33,6 @@ def test_create_example_no_asserts(db_session):
 
 
 def test_add_assertion(db_session):
-  """Tests adding an assertion to an example."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Test Suite")
   repo = ExampleRepository(db_session)
@@ -28,9 +40,8 @@ def test_add_assertion(db_session):
 
   assert_schema = assertion_schemas.TextContainsSchema(value="4")
 
-  assertion = repo.add_assertion(example.id, assert_schema)
+  repo.add_assertion(example.id, assert_schema)
 
-  # Refresh example
   db_session.refresh(example)
   assert len(example.asserts) == 1
   assert (
@@ -40,17 +51,14 @@ def test_add_assertion(db_session):
 
 
 def test_update_assertion(db_session):
-  """Tests updating an assertion."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Test Suite")
   repo = ExampleRepository(db_session)
   example = repo.create(test_suite_id=suite.id, question="Q1")
 
-  # Add initial
   assert_schema = assertion_schemas.TextContainsSchema(value="4")
   assertion = repo.add_assertion(example.id, assert_schema)
 
-  # Update
   update_schema = assertion_schemas.TextContainsSchema(value="5")
   updated_example = repo.update_assertion(assertion.id, update_schema)
 
@@ -59,7 +67,6 @@ def test_update_assertion(db_session):
 
 
 def test_delete_assertion(db_session):
-  """Tests deleting an assertion."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Test Suite")
   repo = ExampleRepository(db_session)
@@ -75,7 +82,6 @@ def test_delete_assertion(db_session):
 
 
 def test_list_examples(db_session):
-  """Tests listing examples."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Suite")
 
@@ -88,7 +94,6 @@ def test_list_examples(db_session):
 
 
 def test_archive_example(db_session):
-  """Tests archiving an example."""
   suite_repo = SuiteRepository(db_session)
   suite = suite_repo.create(name="Suite")
   example_repo = ExampleRepository(db_session)

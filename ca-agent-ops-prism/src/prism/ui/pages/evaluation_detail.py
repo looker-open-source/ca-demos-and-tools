@@ -24,12 +24,26 @@ from prism.ui.components.run_modals import render_compare_run_modal
 from prism.ui.ids import EvaluationIds as Ids
 
 
-def layout(run_id: str = None):
-  """Renders the Evaluation Detail layout."""
+def layout(run_id: str = ""):
+  """Renders the Evaluation Detail layout.
+
+  Args:
+    run_id: The run to display. Empty string, not None: it is interpolated into
+      a pattern-matching component id, and Dash rejects None as a dict id value.
+  """
   return render_page(
-      title=f"Evaluation Run #{run_id}",
+      # Without a run there is no number, and "Evaluation Run #" reads as a
+      # rendering bug. Dash calls layout() with no argument when it builds the
+      # page registry, so the empty case is hit on every boot.
+      title=f"Evaluation Run #{run_id}" if run_id else "Evaluation Run",
       breadcrumbs_id=Ids.RUN_BREADCRUMBS_CONTAINER,
       status_id=Ids.RUN_STATUS_BADGE,
+      extra_badges=[
+          html.Div(
+              id=Ids.RUN_BIGQUERY_BADGE,
+              style={"display": "flex", "alignItems": "center"},
+          )
+      ],
       actions=[
           dmc.Group(
               gap="xs",
@@ -56,6 +70,17 @@ def layout(run_id: str = None):
                       variant="default",
                       radius="md",
                       leftSection=DashIconify(icon="bi:x-circle", width=20),
+                      style={"display": "none"},
+                  ),
+                  dmc.Button(
+                      "Sync to BigQuery",
+                      id=Ids.BTN_SYNC_BIGQUERY,
+                      variant="outline",
+                      color="blue",
+                      radius="md",
+                      leftSection=DashIconify(
+                          icon="material-symbols:cloud-upload", width=20
+                      ),
                       style={"display": "none"},
                   ),
                   dmc.Button(
@@ -109,18 +134,21 @@ def layout(run_id: str = None):
           dmc.Stack(
               gap="xl",
               children=[
-                  # Summary Stats
                   dmc.SimpleGrid(
                       cols={"base": 1, "sm": 2, "lg": 4},
                       id=Ids.RUN_DETAIL_STATS,
+                      # One per card render_run_detail_components fills this
+                      # with: Agent, Test Suite, Avg Accuracy, Avg Trial
+                      # Duration. Three left the row a column short on every
+                      # load, then it jumped to four.
                       children=[
-                          # Placeholders
+                          dmc.Skeleton(height=100),
                           dmc.Skeleton(height=100),
                           dmc.Skeleton(height=100),
                           dmc.Skeleton(height=100),
                       ],
                   ),
-                  # Dynamic Content (Charts and Table - Polling)
+                  # Dynamic content (charts and table), filled by polling.
                   html.Div(id=Ids.RUN_CHARTS_CONTAINER),
                   html.Div(id=Ids.RUN_TRIALS_CONTAINER),
                   render_compare_run_modal(),

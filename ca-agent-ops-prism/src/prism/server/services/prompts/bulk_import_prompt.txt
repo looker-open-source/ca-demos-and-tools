@@ -1,0 +1,27 @@
+You are an expert at structuring evaluation data. Your task is to take a raw list of questions and potentially some intent/criteria descriptions, and convert them into a structured format for bulk import into the Prism Evaluation Platform.
+
+**Input text:**
+---
+{{input_text}}
+---
+
+**Instructions:**
+1. Extract individual test cases from the input.
+2. For each test case, identify the core 'question'.
+3. Based on any provided descriptions or logical patterns, generate a list of 'assertions'.
+4. Each assertion must follow one of these types:
+   - "text-contains": { "value": "string to search in response" }
+   - "query-contains": { "value": "string or SQL fragment to search in generated query" }
+   - "chart-check-type": { "value": "expected vega mark type (e.g., 'bar', 'line', 'arc')" }
+   - "data-check-row-count": { "value": integer count }
+   - "duration-max-ms": { "value": float max milliseconds }
+   - "ai-judge": { "value": "natural language criteria for evaluation" }
+5. **STRICT CONSTRAINT:** Do NOT add any additional assertions or details that are not explicitly present or clearly implied in the user's input. Exclusively transform the provided information into the required structure.
+6. **IMPORTANT:** Do NOT include extraneous metadata fields like 'id', 'original_assertion_id', or 'reasoning'. Only include the 'type' and the corresponding schema fields (e.g., 'value'). Keep a 'weight' that the input already carries, and leave it out otherwise.
+7. Return a list of objects, each containing a 'question' string and an 'assertions' list.
+
+**Output Schema:**
+List of TestCaseInput objects.
+TestCaseInput:
+  question: string
+  assertions: list of AssertionRequest objects (each with 'type' and its associated fields)

@@ -32,6 +32,16 @@ class Run(Base, BaseMixin):
 
   __tablename__ = "runs"
 
+  # Every list query filters on the archive flag, most add the agent or the
+  # status, and they all order by created_at. None of those columns was
+  # indexed, so the evaluations page scanned the whole table.
+  __table_args__ = (
+      sqlalchemy.Index("ix_runs_agent_id", "agent_id"),
+      sqlalchemy.Index("ix_runs_status", "status"),
+      sqlalchemy.Index("ix_runs_created_at", "created_at"),
+      sqlalchemy.Index("ix_runs_is_archived", "is_archived"),
+  )
+
   id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
 
   # Configuration
@@ -66,33 +76,30 @@ class Run(Base, BaseMixin):
   concurrency: orm.Mapped[int] = orm.mapped_column(
       sqlalchemy.Integer, default=2, server_default="2", nullable=False
   )
-
-  # Aggregated Stats
-  @property
-  def total_examples(self) -> int:
-    """Returns total number of trials."""
-    return len(self.trials)
-
-  @property
-  def failed_examples(self) -> int:
-    """Returns number of failed trials."""
-    # Derived from status counts if they are trustworthy, or just keep
-    # iterating trials which is safer for sync.
-    return sum(1 for t in self.trials if t.status == RunStatus.FAILED)
+  error_message: orm.Mapped[str | None] = orm.mapped_column(
+      sqlalchemy.Text, nullable=True
+  )
+  # Why the last BigQuery export of this run failed, cleared by a clean one.
+  # On the row rather than in the exporter, which kept it in a process global:
+  # a restart mid-export lost the failure and the badge went green over a
+  # half-written warehouse, and two server processes disagreed about it.
+  bigquery_export_error: orm.Mapped[str | None] = orm.mapped_column(
+      sqlalchemy.Text, nullable=True
+  )
 
   @property
   def agent_name(self) -> str | None:
-    """Returns the agent name."""
+    """The agent's name, or None if the agent row is gone."""
     return self.agent.name if self.agent else None
 
   @property
   def suite_name(self) -> str | None:
-    """Returns the suite name."""
+    """The snapshotted suite's name, or None if the snapshot is gone."""
     return self.snapshot_suite.name if self.snapshot_suite else None
 
   @property
   def original_suite_id(self) -> int | None:
-    """Returns the original suite ID from the snapshot."""
+    """The live suite this run's snapshot came from, if it still exists."""
     return (
         self.snapshot_suite.original_suite_id if self.snapshot_suite else None
     )
@@ -100,19 +107,27 @@ class Run(Base, BaseMixin):
   @property
   def accuracy(self) -> float | None:
     """Returns average accuracy for completed/failed trials."""
-    # User requested: mean of trial accuracy for all trials with run_status
-    # COMPLETED or FAILED.
-    valid_trials = [
-        t
-        for t in self.trials
-        if t.status in (RunStatus.COMPLETED, RunStatus.FAILED)
-        and t.score is not None
-    ]
-    if not valid_trials:
+    # Mean over every trial that finished, whether it succeeded or errored.
+    #
+    # A FAILED trial never produces assertion results, so its ``score`` is None.
+    # Skipping those drops errored trials out of the denominator and reports a
+    # run where half the trials crashed as 100% accurate. An errored trial
+    # answered nothing, so it scores 0.
+    #
+    # A COMPLETED trial with a None score is different: its example has no
+    # weighted assertions, so there was nothing to be right or wrong about. It
+    # stays excluded.
+    scores = []
+    for trial in self.trials:
+      if trial.status == RunStatus.FAILED:
+        scores.append(0.0)
+      elif trial.status == RunStatus.COMPLETED and trial.score is not None:
+        scores.append(trial.score)
+
+    if not scores:
       return None
 
-    total_score = sum(t.score for t in valid_trials)
-    return total_score / len(valid_trials)
+    return sum(scores) / len(scores)
 
   @hybrid_property
   def duration_ms(self) -> int | None:
@@ -131,10 +146,6 @@ class Run(Base, BaseMixin):
         * 1000,
         sqlalchemy.Integer,
     )
-
-  error_message: orm.Mapped[str | None] = orm.mapped_column(
-      sqlalchemy.Text, nullable=True
-  )
 
   # Relationships
   snapshot_suite = orm.relationship("TestSuiteSnapshot")
@@ -186,6 +197,15 @@ class Trial(Base, BaseMixin):
   trial_pid: orm.Mapped[int | None] = orm.mapped_column(
       sqlalchemy.Integer, nullable=True
   )
+  # psutil's create_time() for the process in trial_pid, which is the other
+  # half of its identity. A container restart gives the worker a fresh PID
+  # namespace and its new children land on the PIDs the pre-restart trials
+  # recorded, so those trials read as alive, held their run's capacity for the
+  # full 30 minute timeout, and were then killed off a PID that by that point
+  # belonged to a healthy trial.
+  trial_pid_started_at: orm.Mapped[float | None] = orm.mapped_column(
+      sqlalchemy.Float, nullable=True
+  )
   retry_count: orm.Mapped[int] = orm.mapped_column(
       sqlalchemy.Integer, default=0, server_default="0", nullable=False
   )
@@ -206,21 +226,36 @@ class Trial(Base, BaseMixin):
   @hybrid_property
   def score(self) -> float | None:
     """Calculates accuracy based on assertion results."""
-    # Only consider assertions with weight > 0
+    # Weighted, not a plain mean over the weight > 0 rows. The UI only ever
+    # writes 0 or 1, so the two agree today, but the column is a float and
+    # anything that writes a real weight would have been silently ignored.
     scored_results = [
         r for r in self.assertion_results if r.assertion_snapshot.weight > 0
     ]
     if not scored_results:
       return None
-    return sum(r.score for r in scored_results) / len(scored_results)
+    total_weight = sum(r.assertion_snapshot.weight for r in scored_results)
+    return (
+        sum(r.score * r.assertion_snapshot.weight for r in scored_results)
+        / total_weight
+    )
 
   @score.expression
   def score(cls):  # pylint: disable=no-self-argument
     """SQL expression for score to allow querying."""
 
     return (
-        sqlalchemy.select(sqlalchemy.func.avg(AssertionResult.score))
+        sqlalchemy.select(
+            sqlalchemy.func.sum(
+                AssertionResult.score * AssertionSnapshot.weight
+            )
+            / sqlalchemy.func.sum(AssertionSnapshot.weight)
+        )
         .where(AssertionResult.trial_id == cls.id)
+        # select_from because the weight in the select list already puts
+        # AssertionSnapshot in the FROM. Without it the join has two candidate
+        # left sides and raises at compile time.
+        .select_from(AssertionResult)
         .join(
             AssertionSnapshot,
             AssertionResult.assertion_snapshot_id == AssertionSnapshot.id,
@@ -248,11 +283,12 @@ class Trial(Base, BaseMixin):
 
   @property
   def ttfr_ms(self) -> int | None:
-    """Returns the time to first response in milliseconds, derived from trace."""
+    """Returns the time to first response in ms, derived from the trace."""
     if not self.trace_results:
       return None
-    # Simple derivation: first event with system_message or data
-    # (In a real scenario, this would use TimelineService logic)
+    # Approximates first response with the first trace event that carries a
+    # timestamp. The real measurement is taken live in
+    # GeminiDataAnalyticsClient.ask_question and is not stored.
     for event in self.trace_results:
       if "timestamp" in event:
         try:
@@ -261,11 +297,10 @@ class Trial(Base, BaseMixin):
           )
           baseline = self.started_at or self.created_at
           if baseline:
-            # Shift baseline to TZ aware if needed
             if baseline.tzinfo is None:
               baseline = baseline.replace(tzinfo=datetime.timezone.utc)
             return int((ts - baseline).total_seconds() * 1000)
-        except (ValueError, KeyError):
+        except ValueError:
           continue
     return None
 
@@ -283,5 +318,4 @@ class Trial(Base, BaseMixin):
       order_by="SuggestedAssertion.id",
   )
 
-  # Relationships
   example_snapshot = orm.relationship("ExampleSnapshot")

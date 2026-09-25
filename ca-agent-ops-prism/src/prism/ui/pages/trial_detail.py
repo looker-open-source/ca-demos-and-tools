@@ -16,15 +16,12 @@
 
 import dash
 from dash import html
-from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.ui.components.assertion_components import render_assertion_form_content
 from prism.ui.components.page_layout import render_page
 from prism.ui.ids import EvaluationIds as Ids
 
 
 def layout(**_kwargs):
-  """Renders the Trial Detail layout."""
   return render_page(
       title="Trial Detail",
       title_id=Ids.TRIAL_TITLE,
@@ -37,60 +34,13 @@ def layout(**_kwargs):
               id=Ids.TRIAL_DETAIL_CONTAINER,
               children=[dmc.Center(children=[dmc.Loader(variant="dots")])],
           ),
-          # Suggestion Edit Modal
-          dmc.Modal(
-              id=Ids.TRIAL_SUG_EDIT_MODAL,
-              size="80%",
-              title="Edit Suggestion",
-              children=[
-                  render_assertion_form_content(
-                      ids_class=type(
-                          "TrialSuggestionEditIds",
-                          (),
-                          {
-                              "ASSERT_TYPE": Ids.TRIAL_SUG_EDIT_TYPE,
-                              "ASSERT_WEIGHT": Ids.TRIAL_SUG_EDIT_WEIGHT,
-                              "ASSERT_VALUE": Ids.TRIAL_SUG_EDIT_VALUE,
-                              "ASSERT_YAML": Ids.TRIAL_SUG_EDIT_YAML,
-                              "ASSERT_CHART_TYPE": (
-                                  Ids.TRIAL_SUG_EDIT_CHART_TYPE
-                              ),
-                              "ASSERT_GUIDE_CONTAINER": (
-                                  Ids.TRIAL_SUG_EDIT_GUIDE_CONTAINER
-                              ),
-                              "ASSERT_GUIDE_TITLE": (
-                                  Ids.TRIAL_SUG_EDIT_GUIDE_TITLE
-                              ),
-                              "ASSERT_GUIDE_DESC": (
-                                  Ids.TRIAL_SUG_EDIT_GUIDE_DESC
-                              ),
-                              "ASSERT_EXAMPLE_CONTAINER": (
-                                  Ids.TRIAL_SUG_EDIT_EXAMPLE_CONTAINER
-                              ),
-                              "ASSERT_EXAMPLE_VALUE": (
-                                  Ids.TRIAL_SUG_EDIT_EXAMPLE_VALUE
-                              ),
-                              "ASSERT_EXAMPLE_YAML": (
-                                  Ids.TRIAL_SUG_EDIT_EXAMPLE_YAML
-                              ),
-                              "VAL_MSG": Ids.TRIAL_SUG_VAL_MSG,
-                          },
-                      ),
-                      is_edit=True,
-                      is_suggestion=True,
-                  ),
-              ],
-          ),
-          # Context Store for Edit (Trial ID, Index)
-          dash.dcc.Store(id=Ids.TRIAL_SUG_EDIT_CONTEXT),
-          # Signal Store for Refresh
           dash.dcc.Store(id=Ids.TRIAL_SUG_UPDATE_SIGNAL, data=0),
-          # Loading Store for Skeletons
           dash.dcc.Store(id=Ids.TRIAL_SUG_LOADING_STORE, data=False),
-          # Polling for background tasks
+          # Enabled by the regenerate callback, which hands the work to a
+          # thread and has nothing to return until the thread is done.
           dash.dcc.Interval(
               id=Ids.TRIAL_SUG_POLLING_INTERVAL,
-              interval=3000,  # 3 seconds
+              interval=3000,
               disabled=True,
           ),
       ],

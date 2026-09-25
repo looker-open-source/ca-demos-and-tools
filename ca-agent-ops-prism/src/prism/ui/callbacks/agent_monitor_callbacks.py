@@ -16,6 +16,7 @@
 
 import json
 import logging
+import time
 import dash
 from dash import html
 from dash import Input
@@ -27,9 +28,13 @@ from prism.client import get_client
 from prism.common.schemas.agent import AgentBase
 from prism.ui.constants import CP
 from prism.ui.constants import GLOBAL_PROJECT_ID_STORE
+from prism.ui.constants import NOTIFICATION_CONTAINER
+from prism.ui.constants import REDIRECT_HANDLER
 from prism.ui.pages.agent_ids import agent_monitor_btn_add_id
 from prism.ui.pages.agent_ids import AgentIds
 from prism.ui.utils import typed_callback
+
+logger = logging.getLogger(__name__)
 
 
 @typed_callback(
@@ -62,9 +67,6 @@ def populate_project_id_monitor(
   return options[0]["value"]
 
 
-logger = logging.getLogger(__name__)
-
-
 def _render_table_skeleton():
   """Returns a skeleton placeholder for the table."""
   return dmc.Stack(
@@ -86,44 +88,48 @@ def start_discovery(n_clicks):
   """Starts discovery by showing skeletons and triggering the fetch."""
   if not n_clicks:
     return dash.no_update, dash.no_update
-  return _render_table_skeleton(), True
+  # A timestamp, not True. perform_discovery reads this store and nothing
+  # resets it, so the second click wrote True over True and the fetch never
+  # ran again. Changing the project and clicking Fetch left the skeleton up
+  # until a reload.
+  return _render_table_skeleton(), {"ts": time.time()}
 
 
 @typed_callback(
     [
         Output(AgentIds.Monitor.TABLE_ROOT, CP.CHILDREN, allow_duplicate=True),
-        Output("discovered-agents-store", "data"),
+        Output(AgentIds.Monitor.STORE_DISCOVERED, CP.DATA),
     ],
     [Input(AgentIds.Monitor.STORE_FETCH_TRIGGER, CP.DATA)],
     state=[
         State(AgentIds.Monitor.INPUT_PROJECT, CP.VALUE),
-        State(AgentIds.Monitor.INPUT_LOCATION, CP.VALUE),
     ],
     prevent_initial_call=True,
 )
 def perform_discovery(
     trigger,
     project_id,
-    location,
 ):
   """Fetches agents from GCP and renders a selection table."""
-  if not trigger or not project_id or not location:
+  if not trigger or not project_id:
     return dash.no_update, dash.no_update
 
-  # Format parent log just for info (client handles logic now)
-  parent = f"projects/{project_id}/locations/{location}"
-  logger.info("Fetching GCP agents for %s", parent)
+  logger.info("Fetching GCP agents for project %s", project_id)
 
   client = get_client().agents
 
   try:
-    discovered = client.discover_gcp_agents(
-        project_id=project_id, location=location
-    )
+    discovered = client.discover_gcp_agents(project_id=project_id)
   except Exception as e:
     logger.error("Failed to list GDA agents: %s", e)
     return (
-        dmc.Alert(f"Failed to fetch agents: {e}", color="red"),
+        # Not the exception text. See the note in fetch_remote_config, in
+        # agent_detail_callbacks.py.
+        dmc.Alert(
+            "Could not list the agents in this project. The details are in"
+            " the server log.",
+            color="red",
+        ),
         [],
     )
 
@@ -131,12 +137,14 @@ def perform_discovery(
 
   if not discovered:
     return (
-        dmc.Alert("No agents found in this project/location.", color="yellow"),
+        dmc.Alert("No agents found in this project.", color="yellow"),
         [],
     )
 
-  # Filter out already monitored agents
-  # We fetch local agents via client to filter
+  # Discovery lists everything the project has, including the agents already
+  # onboarded here, and offering those again would add a second row for one
+  # agent. They are matched on the resource triple, not the name, because a
+  # name is editable on this side and the remote one would then not match.
   monitored = client.list_agents()
   monitored_ids = {
       (a.config.project_id, a.config.location, a.config.agent_resource_id)
@@ -144,11 +152,8 @@ def perform_discovery(
       if a.config
   }
 
-  # Discovered agents are AgentBase objects (or compatible)
-  # convert discovered to list to filter
   new_agents = []
   for a in discovered:
-    # Ensure config exists and check duplication
     if not a.config:
       continue
     if (
@@ -161,39 +166,30 @@ def perform_discovery(
   if not new_agents:
     return (
         dmc.Alert(
-            "No new agents found. All agents in this location are already"
+            "No new agents found. All agents in this project are already"
             " monitored.",
             color="yellow",
         ),
         [],
     )
 
-  # Serialize to store
   store_data = [a.model_dump() for a in new_agents]
 
-  # Render Table
   rows = []
   for idx, a in enumerate(new_agents):
     instruction = a.config.system_instruction or "N/A"
 
-    # Determine Datasource Icon and Label using Pydantic model dump or object
     ds_icon = "bi:question-circle"
     ds_label = "Unknown"
 
-    # Check datasource safely
     if a.config.datasource:
-      ds_dump = (
-          a.config.datasource.model_dump()
-          if hasattr(a.config.datasource, "model_dump")
-          else a.config.datasource
-      )
-      if isinstance(ds_dump, dict):
-        if "tables" in ds_dump:
-          ds_icon = "bi:database"
-          ds_label = "BigQuery"
-        elif "instance_uri" in ds_dump:
-          ds_icon = "bi:bar-chart-line"
-          ds_label = "Looker"
+      ds_dump = a.config.datasource.model_dump()
+      if "tables" in ds_dump:
+        ds_icon = "bi:database"
+        ds_label = "BigQuery"
+      elif "instance_uri" in ds_dump:
+        ds_icon = "bi:bar-chart-line"
+        ds_label = "Looker"
 
     rows.append(
         html.Tr([
@@ -281,15 +277,18 @@ def perform_discovery(
 
 @typed_callback(
     [
-        Output("redirect-handler", CP.PATHNAME),
+        Output(REDIRECT_HANDLER, CP.PATHNAME),
         Output(
             {"type": "agent-monitor-btn-add", "index": dash.ALL}, CP.LOADING
+        ),
+        Output(
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     [Input({"type": "agent-monitor-btn-add", "index": dash.ALL}, CP.N_CLICKS)],
     allow_duplicate=True,
     state=[
-        State("discovered-agents-store", "data"),
+        State(AgentIds.Monitor.STORE_DISCOVERED, CP.DATA),
     ],
     prevent_initial_call=True,
 )
@@ -298,17 +297,18 @@ def monitor_selected_agent(
     discovered_data,
 ):
   """Handles selection of a GCP agent to monitor."""
+  idle = (dash.no_update, [False] * len(n_clicks_list), dash.no_update)
+
   if not any(n_clicks_list):
-    return dash.no_update, [False] * len(n_clicks_list)
+    return idle
 
   ctx = dash.callback_context
   if not ctx.triggered:
-    return dash.no_update, [False] * len(n_clicks_list)
+    return idle
 
-  # Extract triggered ID index
   triggered_prop = ctx.triggered[0]["prop_id"]
   if "agent-monitor-btn-add" not in triggered_prop:
-    return dash.no_update, [False] * len(n_clicks_list)
+    return idle
 
   try:
     triggered_id = json.loads(triggered_prop.split(".")[0])
@@ -316,15 +316,13 @@ def monitor_selected_agent(
     logger.info("Selected agent at index %d for monitoring", idx)
   except (ValueError, KeyError, json.JSONDecodeError) as e:
     logger.error("Failed to parse triggered ID: %s", e)
-    return dash.no_update, [False] * len(n_clicks_list)
+    return idle
 
   if not discovered_data or idx >= len(discovered_data):
-    return dash.no_update, [False] * len(n_clicks_list)
+    return idle
 
   selected_raw = discovered_data[idx]
-  # We need to reconstruct the schema to pass to client
-  # AgentsClient expects AgentConfig, but selected_raw is AgentBase dict
-  # We should extract name and config from it
+  # The store holds AgentBase dicts, so revalidate to read name and config.
 
   try:
     selected = AgentBase.model_validate(selected_raw)
@@ -339,24 +337,45 @@ def monitor_selected_agent(
         "Successfully monitored agent: %s (ID: %d)", selected.name, agent.id
     )
 
-    return f"/agents/view/{agent.id}", [False] * len(n_clicks_list)
+    return (
+        f"/agents/view/{agent.id}",
+        [False] * len(n_clicks_list),
+        dash.no_update,
+    )
   except Exception as e:  # pylint: disable=broad-exception-caught
     logger.exception("Failed to monitor agent: %s", e)
-    return dash.no_update, [False] * len(n_clicks_list)
+    # The row stays where it is and the redirect does not happen, so without
+    # this the button reads as dead.
+    return (
+        dash.no_update,
+        [False] * len(n_clicks_list),
+        [{
+            "action": "show",
+            "title": "Could Not Monitor Agent",
+            # Not the exception text. It is whatever the GDA client raised,
+            # which carries the resource name and the request it was building.
+            "message": (
+                "Could not add this agent. The details are in the server log."
+            ),
+            "color": "red",
+        }],
+    )
 
 
 dash.clientside_callback(
     """
     function(n_clicks_list) {
         const triggered = dash_clientside.callback_context.triggered;
-        if (!triggered || triggered.length === 0) return dash_clientside.no_update;
-        
+        if (!triggered || triggered.length === 0) {
+            return dash_clientside.no_update;
+        }
+
         const prop_id = triggered[0].prop_id;
         if (!prop_id.includes('n_clicks')) return dash_clientside.no_update;
-        
+
         const triggered_id = JSON.parse(prop_id.split('.')[0]);
         const triggered_idx = triggered_id.index;
-        
+
         return n_clicks_list.map((clicks, idx) => {
             return idx == triggered_idx && (clicks || 0) > 0;
         });

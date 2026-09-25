@@ -1,15 +1,27 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Tests for FastDepends Dependency Injection in Client."""
 
-from typing import Annotated
 import unittest
 from unittest import mock
 
 import fast_depends
-from fast_depends import Depends
-from fast_depends import inject
 from prism.client import agent_client
 from prism.client import dependencies
 from prism.client import prism_client
+from prism.client import suite_client
 from prism.client.run_client import RunsClient
 from prism.common.schemas import agent as agent_schemas
 from prism.server.services.agent_service import AgentService
@@ -19,18 +31,30 @@ import pydantic
 class TestClientDI(unittest.TestCase):
 
   def test_get_client_instantiation(self):
-    """Test that get_client returns a verified structure."""
+    """Each property hands back the sub-client it is named for.
+
+    The eight properties are copy-paste of one another, so a property handing
+    back its neighbor's facade is what goes wrong. trials is the exception: it
+    is the runs client under a second name, which call sites still use.
+    """
     client = prism_client.PrismClient()
-    self.assertIsNotNone(client.agents)
-    self.assertIsNotNone(client.suites)
-    self.assertIsNotNone(client.runs)
+
+    self.assertIsInstance(client.agents, agent_client.AgentsClient)
+    self.assertIsInstance(client.suites, suite_client.SuitesClient)
+    self.assertIsInstance(client.runs, RunsClient)
+    self.assertIs(client.trials, client.runs)
 
   def test_agent_client_list_agents_injection(self):
-    """Test that list_agents correctly consumes the mocked dependency."""
+    """list_agents reaches its service through the provider, not a kwarg.
 
-    # Mock the AgentService
+    Passing service= binds the parameter before FastDepends looks at it, so
+    that call goes on passing with @inject and the Depends default both
+    deleted. Overriding the provider is what exercises the resolution.
+    """
+
     mock_service = mock.Mock(spec=AgentService)
-    # Return valid Agent schemas to avoid Pydantic validation error during list mapping
+    # Real Agent schemas, or the list mapping raises a Pydantic validation
+    # error before the assertion is reached.
     mock_service.list_agents.return_value = [
         agent_schemas.Agent(
             id=1,
@@ -45,78 +69,62 @@ class TestClientDI(unittest.TestCase):
         )
     ]
 
-    # Create a client instance
     client = agent_client.AgentsClient()
 
-    # Call the method passing the mock service explicitly (Manual Injection)
-    # This verifies standard kwargs work
-    agents = client.list_agents(service=mock_service)
+    with fast_depends.dependency_provider.scope(
+        dependencies.get_agent_service, lambda: mock_service
+    ):
+      agents = client.list_agents()
+
     self.assertEqual(len(agents), 1)
     self.assertEqual(agents[0].name, "Test Agent")
-
-  def test_fast_depends_injection_wiring(self):
-    """Test that FastDepends actually wires up the default dependency if not provided."""
-
-    mock_service = mock.Mock(spec=AgentService)
-    mock_service.list_agents.return_value = []
-
-    # Patch the dependency provider function in the module where it is defined.
-    with mock.patch(
-        "prism.client.dependencies.get_agent_service", return_value=mock_service
-    ):
-      pass
-
-  @mock.patch("prism.client.dependencies.get_session")
-  def test_session_injection(self, mock_get_session):
-    """Test that the DB session is injected via FastDepends call chain."""
-
-    # Mock the session context manager behavior
-    mock_session_instance = mock.Mock()
-    # get_session is a generator
-    mock_get_session.return_value.__iter__.return_value = [
-        mock_session_instance
-    ]
-
-    # We create a client and call a method that needs a session (via service).
-    # ensure it doesn't crash.
-    client = agent_client.AgentsClient()
-
-    # Ideally call a method, but without mocking service creation, it tries to create real service.
-    # Real service creation uses mocked session.
-    # Real service methods might try to use DB.
-    # So we prefer not to call methods that hit DB unless we mock repositories too.
-    # But checking instantiation is enough to see if it grabs session.
-    pass
+    mock_service.list_agents.assert_called_once_with(include_archived=False)
 
   def test_pydantic_type_validation(self):
-    """Test that Pydantic validates arguments at runtime."""
-
     runs = RunsClient()
 
-    # Expect ValidationError (FastDepends wraps Pydantic validation error)
+    # Either error, because FastDepends wraps the pydantic one and which
+    # arrives depends on where the coercion of "abc" to an int is attempted.
     with self.assertRaises(
         (pydantic.ValidationError, fast_depends.exceptions.ValidationError)
     ):
-      # "abc" is not a valid int
       runs.create_run(agent_id="abc", test_suite_id=1)
 
-  def test_output_validation_failure(self):
-    """Test that the Client enforces output schema validation."""
-    # Mock service returning invalid data (missing config)
+  def test_a_row_with_no_created_at_is_rejected(self):
+    """A row the mapping cannot complete raises instead of coming back blank.
+
+    created_at is what is missing here, not config. config carries a
+    default_factory on AgentBase, so a row without one maps to an empty
+    AgentConfig and never raises. The test below says so.
+    """
     mock_service = mock.Mock(spec=AgentService)
-    # Return an object that lacks required fields for Agent schema
-    # Agent schema requires 'config', 'created_at', etc.
-    # We return a plain dict or object that is missing them.
-    # model_validate works on dicts or objects.
-    mock_service.list_agents.return_value = [
-        {"id": 1, "name": "Invalid Agent"}
-    ]  # Missing config, proper created_at, etc.
+    mock_service.list_agents.return_value = [{"id": 1, "name": "No Timestamp"}]
 
     client = agent_client.AgentsClient()
 
-    # We expect pydantic.ValidationError from inside _map_agent -> Agent.model_validate
-    with self.assertRaises(pydantic.ValidationError):
+    # Raised by Agent.model_validate inside _map_agent, not by the client.
+    with self.assertRaises(pydantic.ValidationError) as caught:
       client.list_agents(service=mock_service)
+
+    self.assertEqual(
+        {error["loc"] for error in caught.exception.errors()},
+        {("created_at",)},
+    )
+
+  def test_a_row_with_no_config_maps_to_an_empty_one(self):
+    """The mapping fills config in rather than refusing the row."""
+    mock_service = mock.Mock(spec=AgentService)
+    mock_service.list_agents.return_value = [
+        {"id": 1, "name": "No Config", "created_at": "2024-01-01T00:00:00"}
+    ]
+
+    client = agent_client.AgentsClient()
+
+    agents = client.list_agents(service=mock_service)
+
+    self.assertEqual(len(agents), 1)
+    self.assertIsNone(agents[0].config.project_id)
+    self.assertIsNone(agents[0].config.agent_resource_id)
 
 
 if __name__ == "__main__":

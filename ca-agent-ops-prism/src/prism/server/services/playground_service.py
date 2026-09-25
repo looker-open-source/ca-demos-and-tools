@@ -31,13 +31,13 @@ from sqlalchemy.orm import Session
 
 
 class PlaygroundService:
-  """Service for managing Playground execution and traces."""
+  """Runs a stored question through ExecutionService and saves the trace."""
 
   def __init__(self, session: Session):
     self._session = session
     self._playground_repo = playground_repository.PlaygroundRepository(session)
     self._agent_repo = agent_repository.AgentRepository(session)
-    # Dependencies for ExecutionService
+    # Passed to the snapshot and suggestion services in execute_and_save.
     self._suite_repo = suite_repository.SuiteRepository(session)
     self._example_repo = example_repository.ExampleRepository(session)
 
@@ -45,7 +45,7 @@ class PlaygroundService:
       self, agent_id: int, example_id: int
   ) -> playground.PlaygroundTrace:
     """Executes a question from an example and saves the trace."""
-    # 1. Fetch Agent and Example
+
     agent = self._agent_repo.get_by_id(agent_id)
     if not agent:
       raise ValueError(f"Agent {agent_id} not found")
@@ -54,50 +54,44 @@ class PlaygroundService:
     if not example:
       raise ValueError(f"Example {example_id} not found")
 
-    # 2. Prepare assertions and question
     question = example.question
-    # Convert DB models to schemas for ExecutionService
-
     assertions = [
         assertion_mappers.model_to_schema(a) for a in example.asserts or []
     ]
 
-    # 3. Initialize Client
-    client = gemini_data_analytics_client.GeminiDataAnalyticsClient(
+    # Closed on the way out. One gRPC channel and its thread pool per
+    # simulation, in a gunicorn worker that lives as long as the container, is
+    # what filled the container up before Cloud Run killed it.
+    with gemini_data_analytics_client.GeminiDataAnalyticsClient(
         project=f"projects/{agent.project_id}/locations/{agent.location}",
-    )
+    ) as client:
+      snap_service = snapshot_service.SnapshotService(
+          self._session, self._suite_repo, self._example_repo
+      )
+      gen_ai_client_inst = gen_ai_client.GenAIClient(
+          project=settings.gcp_genai_project,
+          location=settings.gcp_genai_location,
+      )
+      sug_service = suggestion_service.SuggestionService(
+          gen_ai_client_inst,
+          trial_repository.TrialRepository(self._session),
+          self._example_repo,
+      )
+      exec_service = execution_service.ExecutionService(
+          self._session,
+          snap_service,
+          client,
+          suggestion_service=sug_service,
+      )
 
-    # 4. Initialize Services
-    snap_service = snapshot_service.SnapshotService(
-        self._session, self._suite_repo, self._example_repo
-    )
-    gen_ai_client_inst = gen_ai_client.GenAIClient(
-        project=settings.gcp_genai_project,
-        location=settings.gcp_genai_location,
-    )
-    sug_service = suggestion_service.SuggestionService(
-        gen_ai_client_inst,
-        trial_repository.TrialRepository(self._session),
-        self._example_repo,
-    )
-    exec_service = execution_service.ExecutionService(
-        self._session,
-        snap_service,
-        client,
-        suggestion_service=sug_service,
-    )
+      result = exec_service.execute_ephemeral_test(
+          agent_id=agent_id, question=question, assertions=assertions
+      )
 
-    # 5. Execute ephemeral test
-    # Ephemeral test expects list[Assertion] (schemas)
-    result = exec_service.execute_ephemeral_test(
-        agent_id=agent_id, question=question, assertions=assertions
-    )
-
-    # 6. Create Trace Record
     trace = playground.PlaygroundTrace(
         agent_id=agent_id,
         question=question,
-        trace_results=result.trace,  # Store full trace JSON
+        trace_results=result.trace,
         score=result.score,
         passed=result.passed,
         duration_ms=result.duration_ms,
@@ -107,7 +101,3 @@ class PlaygroundService:
     )
 
     return self._playground_repo.save_trace(trace)
-
-  def get_trace(self, trace_id: int) -> playground.PlaygroundTrace | None:
-    """Gets a trace by ID."""
-    return self._playground_repo.get_trace(trace_id)

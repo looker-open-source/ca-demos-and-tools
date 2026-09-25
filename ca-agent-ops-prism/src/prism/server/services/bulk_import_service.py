@@ -16,17 +16,23 @@
 
 import logging
 import os
-from typing import TYPE_CHECKING
 
+from prism.common.schemas import assertion as assertion_schemas
 from prism.common.schemas import example as example_schemas
 from prism.server.clients import gen_ai_client
 import pydantic
 import yaml
 
-# Path to the prompt template
+logger = logging.getLogger(__name__)
+
 BULK_IMPORT_PROMPT_PATH = os.path.join(
     os.path.dirname(__file__), "prompts", "bulk_import_prompt.txt"
 )
+
+# What parse_yaml puts back when the key is absent.
+DEFAULT_ASSERTION_WEIGHT = assertion_schemas.AssertionSchema.model_fields[
+    "weight"
+].default
 
 
 class BulkImportService:
@@ -37,52 +43,57 @@ class BulkImportService:
     self._prompt_template = self._load_prompt_template()
 
   def _load_prompt_template(self) -> str:
-    """Loads the prompt template from the file system."""
-    try:
-      with open(BULK_IMPORT_PROMPT_PATH, "r") as f:
-        return f.read()
-    except FileNotFoundError:
-      logging.error(
-          "Bulk import prompt template not found at %s", BULK_IMPORT_PROMPT_PATH
-      )
-      return ""
+    """Loads the prompt template from the file system.
+
+    A missing template is a packaging fault, not a runtime condition. Swallowing
+    it would send the model an empty prompt and report whatever came back as a
+    result, so let it raise.
+    """
+    with open(BULK_IMPORT_PROMPT_PATH, "r") as f:
+      return f.read()
 
   def format_with_ai(self, input_text: str) -> str:
-    """Uses Gemini to format unstructured text into a structured YAML string."""
+    """Uses Gemini to format unstructured text into a structured YAML string.
+
+    Blank input gives "".
+
+    A failure raises, the way format_golden_queries does. Both paths used to
+    hand the input back instead: the callback wrote it into the textarea
+    unchanged and showed nothing, so a quota error and a model with nothing to
+    change looked the same and the AI Fix Failed toast was never reached.
+    """
     if not input_text.strip():
       return ""
 
     prompt = self._prompt_template.replace("{{input_text}}", input_text)
 
-    try:
-      # Pydantic schema for the list of test cases
-      class BulkImportResponse(pydantic.BaseModel):
-        test_cases: list[example_schemas.TestCaseInput]
+    class BulkImportResponse(pydantic.BaseModel):
+      test_cases: list[example_schemas.TestCaseInput]
 
-      response = self.gen_ai_client.generate_structured(
-          prompt, BulkImportResponse
-      )
+    response = self.gen_ai_client.generate_structured(
+        prompt, BulkImportResponse
+    )
 
-      if not response or not response.test_cases:
-        return input_text
+    if not response or not response.test_cases:
+      raise RuntimeError("The model returned no test cases.")
 
-      # Convert to YAML for the editor
-      data = []
-      for tc in response.test_cases:
-        tc_dict = tc.model_dump(mode="json")
-        assertions = tc_dict.get("assertions", [])
-        if not assertions:
-          tc_dict.pop("assertions", None)
-        else:
-          for assertion in assertions:
+    data = []
+    for tc in response.test_cases:
+      tc_dict = tc.model_dump(mode="json")
+      assertions = tc_dict.get("assertions", [])
+      if not assertions:
+        tc_dict.pop("assertions", None)
+      else:
+        for assertion in assertions:
+          # Only the default comes out. The pop was unconditional, so a
+          # weight the user had typed came back as 1.0 on re-parse and an
+          # assertion they had marked diagnostic started counting toward the
+          # score.
+          if assertion.get("weight") == DEFAULT_ASSERTION_WEIGHT:
             assertion.pop("weight", None)
-        data.append(tc_dict)
+      data.append(tc_dict)
 
-      return yaml.dump(data, sort_keys=False)
-
-    except Exception:  # pylint: disable=broad-except
-      logging.exception("Failed to format bulk import with AI")
-      return input_text
+    return yaml.dump(data, sort_keys=False)
 
   def parse_yaml(self, yaml_text: str) -> list[example_schemas.TestCaseInput]:
     """Parses and validates YAML text into a list of TestCaseInput."""
@@ -98,5 +109,5 @@ class BulkImportService:
           example_schemas.TestCaseInput.model_validate(item) for item in data
       ]
     except (yaml.YAMLError, pydantic.ValidationError, ValueError) as e:
-      logging.warning("Invalid bulk import YAML: %s", e)
+      logger.warning("Invalid bulk import YAML: %s", e)
       raise ValueError(f"Invalid format: {str(e)}") from e

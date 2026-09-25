@@ -41,23 +41,34 @@ def render_agent_link(agent_id: int | str, agent_name: str) -> dmc.Anchor:
   )
 
 
-def render_test_suite_link(suite_id: int | str, suite_name: str) -> dmc.Anchor:
-  """Renders a linked test suite name with a blue folder icon."""
+def render_test_suite_link(
+    suite_id: int | str | None, suite_name: str
+) -> dmc.Anchor | dmc.Group:
+  """Renders a linked test suite name with a blue folder icon.
+
+  A run keeps its snapshot after the suite it came from is deleted, and there
+  is then no id to link to. Render the name on its own in that case, instead of
+  a link to /test_suites/view/None.
+  """
+  label = dmc.Group(
+      [
+          dmc.ThemeIcon(
+              DashIconify(icon="material-symbols:folder-open", width=20),
+              variant="light",
+              color="blue",
+              size="md",
+              radius="md",
+          ),
+          dmc.Text(suite_name, size="sm", fw=500),
+      ],
+      gap="sm",
+  )
+
+  if suite_id is None:
+    return label
 
   return dmc.Anchor(
-      dmc.Group(
-          [
-              dmc.ThemeIcon(
-                  DashIconify(icon="material-symbols:folder-open", width=20),
-                  variant="light",
-                  color="blue",
-                  size="md",
-                  radius="md",
-              ),
-              dmc.Text(suite_name, size="sm", fw=500),
-          ],
-          gap="sm",
-      ),
+      label,
       href=f"/test_suites/view/{suite_id}",
       underline=False,
       c="dark",

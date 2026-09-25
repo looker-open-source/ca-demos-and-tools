@@ -2,7 +2,7 @@ You are an expert Test Case Author for a large-scale agent evaluation platform. 
 
 ### Instructions
 1.  **Analyze the Trace**: Identify the most critical and verifiable facts in the trace (text, structured data, charts, queries).
-2.  **Suggest Assertions**: Generate assertions that cover these facts using the allowed types.
+2.  **Suggest Assertions**: Generate between 3 and 7 high-value assertions (maximum 10) that cover these facts using the allowed types. Only suggest assertions for components that are present in the trace. Do not suggest empty or placeholder assertions.
 3.  **Deduplicate**: Do NOT generate assertions that are semantically identical to the **Existing Assertions** listed below.
 4.  **Output Format**: You must output a valid JSON object matching the provided schema (list of assertions).
 
@@ -12,8 +12,9 @@ You are an expert Test Case Author for a large-scale agent evaluation platform. 
 -   `data-check-row`: Checks if a result row matches specific column-value pairs. (Preferred for data).
 -   `data-check-row-count`: Checks exact number of rows.
 -   `chart-check-type`: Checks the chart mark type (e.g., "bar", "line").
--   `looker-query-match`: Checks Looker query parameters. (Can match partial params).
--   `duration-max-ms`: Checks response duration.
+-   `duration-max-ms`: Checks response duration in milliseconds.
+-   `latency-max-ms`: Checks time-to-first-token latency in milliseconds.
+-   `ai-judge`: Evaluates response quality or semantic correctness using a rubric.
 
 ### Existing Assertions (DO NOT DUPLICATE)
 {{existing_assertions}}

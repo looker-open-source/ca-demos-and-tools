@@ -29,6 +29,7 @@ import dash_mantine_components as dmc
 from prism.client import get_client
 from prism.common.schemas import agent as agent_schemas
 from prism.ui.components import eval_run_modal
+from prism.ui.components.agent_components import render_bq_check_results
 from prism.ui.components.cards import render_detail_card
 from prism.ui.components.dashboard_components import get_suite_color
 from prism.ui.components.dashboard_components import render_duration_chart
@@ -36,18 +37,41 @@ from prism.ui.components.dashboard_components import render_empty_evaluations_pl
 from prism.ui.components.dashboard_components import render_evaluation_chart
 from prism.ui.components.dashboard_components import render_recent_evals_table
 from prism.ui.constants import CP
+from prism.ui.constants import NOTIFICATION_CONTAINER
 from prism.ui.constants import REDIRECT_HANDLER
 from prism.ui.pages.agent_ids import AgentIds
+from prism.ui.utils import format_timestamp
+from prism.ui.utils import id_from_pathname
 from prism.ui.utils import is_valid_bq_table
 from prism.ui.utils import is_valid_looker_explore
 from prism.ui.utils import parse_textarea_list
 from prism.ui.utils import typed_callback
+import pydantic
+
+logger = logging.getLogger(__name__)
+
+
+def _golden_query_error(e: Exception) -> str:
+  """What a rejected golden query list is allowed to say in a toast.
+
+  str() on a pydantic error prints input_value=, which is the whole rejected
+  query: the Looker model, the explore, and the question somebody wrote
+  against the customer's data. The field paths say as much about what to fix
+  without putting the value back on the page.
+  """
+  if isinstance(e, pydantic.ValidationError):
+    fields = ", ".join(
+        ".".join(str(part) for part in error["loc"]) for error in e.errors()
+    )
+    if fields:
+      return f"Invalid Golden Query structure. Check these fields: {fields}"
+  return "Invalid Golden Query structure."
 
 
 @typed_callback(
     [
         Output(AgentIds.Detail.CONTENT, CP.CHILDREN),
-        Output("agent-detail-loading", "visible"),
+        Output(AgentIds.Detail.LOADING, CP.VISIBLE),
         Output(AgentIds.Detail.TITLE, CP.CHILDREN),
         Output(AgentIds.Detail.DESCRIPTION, CP.CHILDREN),
         Output(AgentIds.Detail.ACTIONS, CP.CHILDREN),
@@ -59,13 +83,13 @@ from prism.ui.utils import typed_callback
     ],
 )
 def update_agent_details(pathname: str, refresh_trigger: Any):
-  """Updates agent details (Local Data Only) & Triggers Remote Fetch."""
-  del refresh_trigger  # Used only as a trigger
+  """Renders the page from the stored agent and triggers the GCP fetch."""
+  del refresh_trigger  # Its value is unused. A write to it re-runs this.
   if not pathname or not pathname.startswith("/agents/view/"):
     return (dash.no_update,) * 5 + (dash.no_update,)
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return (dash.no_update,) * 5 + (dash.no_update,)
 
@@ -82,23 +106,15 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
         dash.no_update,
     )
 
-  # 1. Fetch Data
-  # Dashboard Stats
+  stats_failed = False
   try:
     stats = client.runs.get_agent_dashboard_stats(agent_id, days=30)
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to fetch dashboard stats: %s", e)
+    logger.error("Failed to fetch dashboard stats: %s", e)
     stats = {}
+    stats_failed = True
 
-  # GCP Details OMITTED in first pass (Loaded async)
-  # We only render the skeleton UI for these sections initially.
-
-  # 2. Render Components
-
-  # --- Unified Header Card ---
-  def _meta_item(label, value, icon=None, color="blue", mono=False):
-    del icon, color  # Icons and color badges removed per user request
-
+  def _meta_item(label, value, mono=False):
     return dmc.Stack(
         gap=4,
         children=[
@@ -108,7 +124,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
                 c="dimmed",
                 tt="uppercase",
                 fw=700,
-                lts=0.5,  # tracking-wider
+                lts=0.5,
             ),
             dmc.Group(
                 gap=6,
@@ -124,19 +140,19 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
         ],
     )
 
+  # Through the shared formatter, like the agents list table. This formatted
+  # the stored clock itself, so the same agent's Last Updated read one way here
+  # and another on the list, differing by the UTC offset.
   last_updated_str = (
-      agent.modified_at.strftime("%Y-%m-%d %H:%M")
-      if agent.modified_at
-      else "N/A"
+      format_timestamp(agent.modified_at) if agent.modified_at else "N/A"
   )
 
   unified_header_card = dmc.Paper(
       withBorder=True,
-      radius="md",  # rounded-xl
+      radius="md",
       p="lg",
       shadow="sm",
       children=[
-          # Metadata Grid
           dmc.SimpleGrid(
               cols={"base": 1, "md": 3},
               spacing="md",
@@ -164,7 +180,6 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ],
   )
 
-  # --- Header Actions ---
   header_actions = [
       dmc.Button(
           "Duplicate Agent",
@@ -192,7 +207,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           leftSection=DashIconify(icon="material-symbols:archive", width=20),
           color="gray",
           style={"display": "none"}
-          if getattr(agent, "is_archived", False)
+          if agent.is_archived
           else {"display": "block"},
       ),
       dmc.Button(
@@ -205,7 +220,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           ),
           color="green",
           style={"display": "block"}
-          if getattr(agent, "is_archived", False)
+          if agent.is_archived
           else {"display": "none"},
       ),
       dmc.Button(
@@ -228,8 +243,8 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ),
   ]
 
-  # --- Main Content Grid (Instruction + Datasource + Golden Queries) ---
-  # Prepare Datasource Card (Skeleton Initially)
+  # The GCP details are skeletons here. A later callback fetches them, so that
+  # a slow API call does not hold up the rest of the page.
   datasource_skeleton = render_detail_card(
       title="Datasource",
       description="Configuration for data retrieval",
@@ -286,7 +301,6 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ),
   )
 
-  # Vertical Stack Layout
   main_grid = dmc.Stack(
       gap="lg",
       children=[
@@ -296,7 +310,6 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ],
   )
 
-  # --- Credential Warning (if Looker and missing) ---
   credential_warning = None
   if agent.config and isinstance(
       agent.config.datasource, agent_schemas.LookerConfig
@@ -315,13 +328,23 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           mb="lg",
       )
 
-  # Decide what analytics/table to show
   recent_evals = stats.get("recent_evals", [])
-  if not recent_evals:
+  if stats_failed:
+    # A failed query is not a new agent, and the placeholder below says it is.
+    evaluation_section = [
+        dmc.Alert(
+            "Could not load the evaluation history for this agent. The cause"
+            " is in the server log.",
+            title="Evaluation History Unavailable",
+            color="red",
+            radius="md",
+            icon=DashIconify(icon="material-symbols:warning-rounded"),
+        )
+    ]
+  elif not recent_evals:
     evaluation_section = [render_empty_evaluations_placeholder()]
   else:
     evaluation_section = [
-        # Row 1: Analytics Charts
         dmc.SimpleGrid(
             cols={"base": 1, "lg": 2},
             spacing="lg",
@@ -341,14 +364,12 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
                 ),
             ],
         ),
-        # Row 2: Full-width Table
         html.Div(
             render_recent_evals_table(recent_evals, agent_id=agent_id),
             style={"width": "100%"},
         ),
     ]
 
-  # Assemble Layout
   content = dmc.Stack(
       gap="xl",
       children=[
@@ -366,7 +387,7 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       agent.name,
       description,
       header_actions,
-      {"agent_id": agent_id, "ts": time.time()},  # Trigger remote fetch
+      {"agent_id": agent_id, "ts": time.time()},
   )
 
 
@@ -384,7 +405,7 @@ def update_accuracy_chart(days_str: str, pathname: str):
     return dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update
 
@@ -394,14 +415,11 @@ def update_accuracy_chart(days_str: str, pathname: str):
   try:
     stats = client.runs.get_agent_dashboard_stats(agent_id, days=days)
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to fetch accuracy stats: %s", e)
+    logger.error("Failed to fetch accuracy stats: %s", e)
     return dmc.Text("Error loading data", c="red")
 
-  # We only need the chart part, but render_evaluation_chart returns the whole
-  # Paper.
-  # Or just return the AreaChart directly here.
-  # Let's look at dashboard_components.py again.
-  # Actually, it's easier to just return the AreaChart content.
+  # render_evaluation_chart returns the whole Paper, so build the AreaChart
+  # here instead.
   processed_data = []
   daily_accuracy = stats.get("daily_accuracy", [])
   if daily_accuracy:
@@ -459,7 +477,7 @@ def update_duration_chart(days_str: str, pathname: str):
     return dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update
 
@@ -469,7 +487,7 @@ def update_duration_chart(days_str: str, pathname: str):
   try:
     stats = client.runs.get_agent_dashboard_stats(agent_id, days=days)
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to fetch duration stats: %s", e)
+    logger.error("Failed to fetch duration stats: %s", e)
     return dmc.Text("Error loading data", c="red")
 
   daily_duration = stats.get("daily_duration", [])
@@ -544,13 +562,26 @@ def fetch_remote_config(trigger_data):
   try:
     gcp_agent = client.get_gcp_agent_details(agent_id)
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to fetch GCP details: %s", e)
+    logger.error("Failed to fetch GCP details: %s", e)
     return (
-        dmc.Alert(f"Failed to load remote config: {e}", color="red"),
+        # Not the exception text. It is whatever the GDA client raised, which
+        # carries the resource name and the request it was building, and this
+        # renders into the page.
+        dmc.Alert(
+            "Could not load the agent's configuration from GDA. The details"
+            " are in the server log.",
+            color="red",
+        ),
         dmc.Alert("Failed to load.", color="red"),
         dash.no_update,
         dash.no_update,
-        False,  # Re-enable edit button
+        # Edit stays disabled. The instruction reaches the form only through
+        # the Store above, which this branch leaves alone, so the textarea
+        # would open blank. submit_edit copies it onto the config it sends and
+        # update_agent pushes any instruction that is not None, so saving a
+        # rename once GDA came back replaced the published instruction with
+        # the empty string, and the user got a green success toast.
+        True,
         False,  # Re-enable duplicate button
         dash.no_update,
         dash.no_update,
@@ -562,24 +593,20 @@ def fetch_remote_config(trigger_data):
         "Error: Configuration unavailable.",
         dash.no_update,
         dash.no_update,
-        False,  # Re-enable edit button
+        True,  # Edit stays disabled. Same reason as the branch above.
         False,  # Re-enable duplicate button
         dash.no_update,
         dash.no_update,
     )
 
-  # 1. System Instruction
-  # 1. System Instruction
   instruction = gcp_agent.config.system_instruction or "No instruction."
 
-  # Markdown View (Default)
   markdown_view = html.Div(
       id=AgentIds.Detail.INSTRUCTION_MARKDOWN,
       style={"display": "block"},
       children=dcc.Markdown(instruction),
   )
 
-  # Raw View (Hidden)
   raw_view = html.Div(
       id=AgentIds.Detail.INSTRUCTION_RAW,
       style={"display": "none"},
@@ -595,7 +622,6 @@ def fetch_remote_config(trigger_data):
       children=html.Div([markdown_view, raw_view]),
   )
 
-  # 2. Datasource
   datasource = gcp_agent.config.datasource
   ds_type = None
   ds_children = []
@@ -610,7 +636,6 @@ def fetch_remote_config(trigger_data):
     instance_uri = datasource.instance_uri
     explores = datasource.explores or []
 
-    # Instance URI
     if instance_uri:
       instance_uri_ui = dmc.Code(
           instance_uri,
@@ -632,7 +657,6 @@ def fetch_remote_config(trigger_data):
         )
     )
 
-    # Explores
     explore_children = [dmc.Text("Looker Explores", size="xs", c="dimmed")]
     for explore in explores:
       explore_children.append(
@@ -650,7 +674,6 @@ def fetch_remote_config(trigger_data):
     ds_type = "BQ"
     tables = datasource.tables or []
 
-    # Tables
     table_children = [dmc.Text("Tables", size="xs", c="dimmed")]
     for table in tables:
       table_children.append(
@@ -664,7 +687,6 @@ def fetch_remote_config(trigger_data):
         dmc.Stack(gap=4, align="flex-start", children=table_children)
     )
 
-  # Badge Logic
   ds_colors = {"Looker": "blue", "BQ": "orange"}
   badge = dmc.Badge(
       ds_type,
@@ -672,16 +694,13 @@ def fetch_remote_config(trigger_data):
       variant="light",
   )
 
-  # Decide if we can enable Run Eval button
   can_run_eval = ds_type != "Looker" or (
       bool(gcp_agent.config.looker_client_id)
       and bool(gcp_agent.config.looker_client_secret)
   )
 
-  # 3. Golden Queries
   golden_queries_ui = []
   if gcp_agent.config.golden_queries:
-    # Convert to list of dicts for JSON display
     gqs = [gq.model_dump(mode="json") for gq in gcp_agent.config.golden_queries]
     json_str = json.dumps(gqs, indent=2)
 
@@ -706,7 +725,12 @@ def fetch_remote_config(trigger_data):
       instruction_ui,
       dmc.Stack(children=ds_children),
       badge,
-      gcp_agent.config.model_dump(),
+      # get_gcp_agent_details back-fills the stored secret so can_run_eval
+      # above can see whether credentials exist. That value must not carry on
+      # into the Store, which is serialized into the page. open_edit_modal is
+      # the only reader and it wants system_instruction, which is held on GCP
+      # and nowhere else.
+      gcp_agent.config.model_dump(exclude={"looker_client_secret"}),
       False,  # Re-enable edit button
       False,  # Re-enable duplicate button
       not can_run_eval,  # BTN_RUN_EVAL disabled if missing creds
@@ -737,18 +761,13 @@ dash.clientside_callback(
         Output(AgentIds.Detail.MODAL_EDIT, "opened"),
         Output(AgentIds.Detail.INPUT_EDIT_NAME, CP.VALUE),
         Output(AgentIds.Detail.TEXTAREA_EDIT_INSTRUCTION, CP.VALUE),
-        # Looker Visibility
         Output(AgentIds.Detail.CONTAINER_EDIT_LOOKER_CONFIG, "style"),
-        # Looker Values
         Output(AgentIds.Detail.INPUT_EDIT_LOOKER_URI, CP.VALUE),
         Output(AgentIds.Detail.INPUT_EDIT_LOOKER_EXPLORES, CP.VALUE),
         Output(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_ID, CP.VALUE),
         Output(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_SECRET, CP.VALUE),
-        # BQ Visibility
         Output(AgentIds.Detail.CONTAINER_EDIT_BQ_CONFIG, "style"),
-        # BQ Values
         Output(AgentIds.Detail.INPUT_EDIT_BQ_TABLES, CP.VALUE),
-        # Golden Queries
         Output(AgentIds.Detail.INPUT_EDIT_GOLDEN_QUERIES, CP.VALUE),
     ],
     [
@@ -772,77 +791,52 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
   looker_uri = ""
   looker_explores = []
   looker_client_id = ""
-  looker_client_secret = ""
   golden_queries_str = ""
 
   is_bq = False
   bq_tables = []
 
-  # Fetch Agent Name from DB (Reliable Source)
+  # Pull the name and datasource config from the DB, not the GCP copy.
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
     client = get_client().agents
     agent = client.get_agent(agent_id)
     if agent:
       current_name = agent.name
 
       if agent.config:
-        # Check DB credentials from config if Looker
-        if agent.config.datasource and isinstance(
-            agent.config.datasource, agent_schemas.LookerConfig
-        ):
-          is_looker = True
-          looker_uri = agent.config.datasource.instance_uri
-          looker_explores = agent.config.datasource.explores or []
-          looker_client_id = agent.config.looker_client_id or ""
-          looker_client_secret = agent.config.looker_client_secret or ""
-
-        # Check for BQ
-        if agent.config.datasource and isinstance(
-            agent.config.datasource, agent_schemas.BigQueryConfig
-        ):
-          is_bq = True
-          bq_tables = agent.config.datasource.tables or []
-
         # The Pydantic Agent schema used in the UI uses agent.config.datasource.
-        if agent.config.datasource and isinstance(
-            agent.config.datasource, agent_schemas.LookerConfig
-        ):
+        if isinstance(agent.config.datasource, agent_schemas.LookerConfig):
           is_looker = True
           looker_uri = agent.config.datasource.instance_uri
           looker_explores = agent.config.datasource.explores or []
           looker_client_id = agent.config.looker_client_id or ""
-          looker_client_secret = agent.config.looker_client_secret or ""
 
           if agent.config.golden_queries:
-            # model_dump to get dicts, then json dumps
             gqs = [
                 gq.model_dump(mode="json") for gq in agent.config.golden_queries
             ]
             golden_queries_str = json.dumps(gqs, indent=2)
 
-        # Check for BQ
-        if agent.config.datasource and isinstance(
-            agent.config.datasource, agent_schemas.BigQueryConfig
-        ):
+        if isinstance(agent.config.datasource, agent_schemas.BigQueryConfig):
           is_bq = True
           bq_tables = agent.config.datasource.tables or []
 
-        # Check if Looker type
-        if isinstance(agent.config.datasource, agent_schemas.LookerConfig):
-          is_looker = True
+  except Exception as e:  # pylint: disable=broad-except
+    # The modal still opens, on the GCP copy below plus blanks. submit_edit
+    # rejects the blank name, so a half-loaded form can't overwrite the real
+    # one.
+    logger.error("Failed to load agent for the edit modal: %s", e)
 
-  except Exception:  # pylint: disable=broad-except
-    pass
-
+  # The instruction, and only the instruction. It is not stored locally, so the
+  # GCP copy is the only source for it. The datasource is read above instead.
+  # This used to set is_looker off the GCP copy without clearing is_bq, so an
+  # agent the two disagreed about opened with both panels showing, the Looker
+  # fields blank because they are filled from the DB read. submit_edit picks
+  # the datasource type off the DB too, so whatever was typed into the extra
+  # panel was dropped on save.
   if gcp_config:
     instruction = gcp_config.get("system_instruction") or ""
-    # Check if Looker via GCP config
-    datasource = gcp_config.get("datasource")
-    if datasource:
-      # Check if type Looker
-      if "instance_uri" in datasource or "looker_instance_uri" in datasource:
-        is_looker = True
 
   looker_style = {"display": "none"}
   if is_looker:
@@ -860,7 +854,10 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
       looker_uri,
       "\n".join(looker_explores),
       looker_client_id,
-      looker_client_secret,
+      # Never send the stored secret back. PasswordInput only masks it on
+      # screen, so the plaintext would still sit in the callback response and
+      # the DOM. Blank means "keep the stored secret"; see submit_edit.
+      "",
       bq_style,
       "\n".join(bq_tables),
       golden_queries_str,
@@ -873,7 +870,7 @@ def open_edit_modal(n_clicks, gcp_config, pathname):
         Output(AgentIds.Detail.EDIT_LOADING_OVERLAY, "visible"),
         Output(REDIRECT_HANDLER, CP.HREF, allow_duplicate=True),
         Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
         Output(AgentIds.Detail.STORE_REFRESH_TRIGGER, CP.DATA),
     ],
@@ -918,10 +915,13 @@ def submit_edit(
   looker_explores = parse_textarea_list(looker_explores_raw)
   bq_tables = parse_textarea_list(bq_tables_raw)
 
-  # Validation
   invalid_fields = []
+  # open_edit_modal leaves this blank when it could not read the agent, and
+  # update_agent would then write the blank over the stored name.
+  if not (new_name or "").strip():
+    invalid_fields.append("Name is required")
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
     client_agents = get_client().agents
     agent = client_agents.get_agent(agent_id)
     if agent and agent.config:
@@ -943,7 +943,21 @@ def submit_edit(
         invalid_fields.append("Golden Queries must be valid JSON")
 
   except (ValueError, IndexError):
-    return False, False, dash.no_update, dash.no_update
+    # The URL carries no agent id, so there is nothing to save. Keep the modal
+    # open and say so; closing it looked like the edit had gone through.
+    return (
+        dash.no_update,
+        False,
+        dash.no_update,
+        [{
+            "action": "show",
+            "title": "Could not save",
+            "message": "This page is not a valid agent URL.",
+            "color": "red",
+            "autoClose": 5000,
+        }],
+        dash.no_update,
+    )
 
   if invalid_fields:
     return (
@@ -953,7 +967,7 @@ def submit_edit(
         [{
             "action": "show",
             "title": "Validation Error",
-            "message": f"Invalid format: {', '.join(invalid_fields)}",
+            "message": ", ".join(invalid_fields),
             "color": "red",
             "autoClose": 5000,
         }],
@@ -968,7 +982,6 @@ def submit_edit(
       new_config = agent.config.model_copy()
       new_config.system_instruction = new_instruction
 
-      # Update Datasource based on what was there
       if isinstance(agent.config.datasource, agent_schemas.BigQueryConfig):
         new_config.datasource = agent_schemas.BigQueryConfig(tables=bq_tables)
       elif isinstance(agent.config.datasource, agent_schemas.LookerConfig):
@@ -976,13 +989,14 @@ def submit_edit(
             instance_uri=looker_uri, explores=looker_explores
         )
         new_config.looker_client_id = looker_client_id
-        new_config.looker_client_secret = looker_client_secret
+        # None, not "": AgentRepository.update skips the secret when it's
+        # None, which keeps the stored one. "" would wipe it.
+        new_config.looker_client_secret = looker_client_secret or None
 
         if golden_queries_raw:
           try:
-            # We already validated JSON above
+            # json.loads already succeeded in the validation pass above.
             gqs_list = json.loads(golden_queries_raw)
-            # Pydantic will validate the structure
             new_config.golden_queries = [
                 agent_schemas.LookerGoldenQuery.model_validate(item)
                 for item in gqs_list
@@ -995,25 +1009,30 @@ def submit_edit(
                 [{
                     "action": "show",
                     "title": "Golden Query Error",
-                    "message": f"Invalid Golden Query structure: {str(e)}",
+                    "message": _golden_query_error(e),
                     "color": "red",
                 }],
                 dash.no_update,
             )
         else:
-          new_config.golden_queries = []  # Clear if empty
+          new_config.golden_queries = []
 
     else:
-      # Fallback (should not happen for valid agent)
-      # If fallback, we don't know the type, so we can't easily set datasource.
-      # But update_agent usually happens for existing agents.
+      # Reached only when the agent is missing or has no stored config. We
+      # don't know the datasource type, so leave it unset.
       new_config = agent_schemas.AgentConfig(
           system_instruction=new_instruction,
       )
 
-    # Validation for Looker
     if isinstance(new_config.datasource, agent_schemas.LookerConfig):
-      if not looker_client_id or not looker_client_secret:
+      # The field always opens blank, so blank only counts as missing when
+      # there is nothing stored to fall back on.
+      has_stored_secret = bool(
+          agent and agent.config and agent.config.looker_client_secret
+      )
+      if not looker_client_id or not (
+          looker_client_secret or has_stored_secret
+      ):
         return (
             True,
             False,
@@ -1047,7 +1066,7 @@ def submit_edit(
         time.time(),
     )
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to update agent: %s", e)
+    logger.error("Failed to update agent: %s", e)
     return (
         True,
         False,
@@ -1055,7 +1074,10 @@ def submit_edit(
         [{
             "action": "show",
             "title": "Update Error",
-            "message": f"Failed to update agent: {str(e)}",
+            # Not the exception text. See the note in fetch_remote_config.
+            "message": (
+                "Could not save the agent. The details are in the server log."
+            ),
             "color": "red",
         }],
         dash.no_update,
@@ -1163,7 +1185,7 @@ def open_eval_modal(n_clicks, n_clicks_list, pathname):
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
@@ -1172,16 +1194,10 @@ def open_eval_modal(n_clicks, n_clicks_list, pathname):
   if not agent:
     return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-  # Check credentials if Looker
-  # Note: Client schema does not expose secrets, so we cannot strictly verify
-  # presence of client_id/secret here. We rely on backend validation or
-  # trust the user has configured it.
-
+  # No validation alert here. handle_suite_selection re-checks the Looker
+  # credentials once a suite is picked and disables the start button.
   alert = None
-  # We cannot check for missing credentials on the client side
-  # securely/easily yet without exposing them in the schema.
 
-  # List all suites
   suites = client.suites.list_suites()
 
   options = [{"label": s.name, "value": str(s.id)} for s in suites]
@@ -1212,7 +1228,7 @@ def handle_suite_selection(suite_id, pathname):
 
   try:
     s_id = int(suite_id)
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update, True
 
@@ -1224,12 +1240,12 @@ def handle_suite_selection(suite_id, pathname):
         True,
     )
 
-  # Validate Agent Credentials again to decide if we can enable the button
+  # Credentials can be cleared between the page load and this callback, so the
+  # button state is decided on a fresh read.
   agent = client.agents.get_agent(agent_id)
   if not agent:
     return dash.no_update, True
 
-  # We enable the button if agent exists and has creds if Looker.
   can_start = True
   if agent.config and isinstance(
       agent.config.datasource, agent_schemas.LookerConfig
@@ -1247,7 +1263,7 @@ def handle_suite_selection(suite_id, pathname):
     [
         Output(REDIRECT_HANDLER, CP.HREF, allow_duplicate=True),
         Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     [Input(AgentIds.Detail.EvalModal.BTN_START, CP.N_CLICKS)],
@@ -1258,6 +1274,17 @@ def handle_suite_selection(suite_id, pathname):
         State(AgentIds.Detail.EvalModal.INPUT_CONCURRENCY, CP.VALUE),
     ],
     prevent_initial_call=True,
+    # Starting a run spawns trials that call a paid API. Without this the
+    # button stays live for the whole round trip and a second click starts a
+    # second run.
+    running=[
+        (
+            Output(AgentIds.Detail.EvalModal.BTN_START, CP.DISABLED),
+            True,
+            False,
+        ),
+        (Output(AgentIds.Detail.EvalModal.BTN_START, CP.LOADING), True, False),
+    ],
 )
 def start_evaluation(
     n_clicks, pathname, suite_id, generate_suggestions, concurrency
@@ -1267,15 +1294,30 @@ def start_evaluation(
     return dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
     s_id = int(suite_id)
   except (ValueError, IndexError):
     return dash.no_update
 
+  # Clearing the NumberInput sends "", not the default it was rendered with.
+  # That went all the way to the insert and failed there, so the user got the
+  # generic "could not start" toast for a field they could see was empty.
+  try:
+    max_concurrency = int(concurrency)
+  except (TypeError, ValueError):
+    return dash.no_update, [{
+        "action": "show",
+        "title": "Cannot Start Evaluation",
+        "message": "Max Concurrency must be a number between 1 and 100.",
+        "color": "red",
+        "icon": DashIconify(icon="material-symbols:error-outline"),
+    }]
+
   client = get_client()
   agent = client.agents.get_agent(agent_id)
 
-  # Final safety check for credentials
+  # The button is disabled without credentials, but the modal can be open
+  # from before they were cleared.
   if (
       agent
       and agent.config
@@ -1302,16 +1344,20 @@ def start_evaluation(
         agent_id=agent_id,
         test_suite_id=s_id,
         generate_suggestions=generate_suggestions,
-        concurrency=concurrency,
+        concurrency=max_concurrency,
     )
-    # Redirect to the new run page
     return f"/evaluations/runs/{run.id}", dash.no_update
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to create run: %s", e)
+    logger.exception("Failed to create run: %s", e)
     return dash.no_update, [{
         "action": "show",
         "title": "Failed to Start Evaluation",
-        "message": str(e),
+        # Not the exception text. See the note in fetch_remote_config. This
+        # one reaches the agent and datasource layer, so what it raises
+        # carries resource names and instance URIs.
+        "message": (
+            "Could not start the evaluation. The details are in the server log."
+        ),
         "color": "red",
     }]
 
@@ -1320,13 +1366,13 @@ def start_evaluation(
     Output(AgentIds.Detail.EvalModal.ROOT, "opened", allow_duplicate=True),
     [
         Input(AgentIds.Detail.EvalModal.BTN_CANCEL, CP.N_CLICKS),
-        Input(AgentIds.Detail.EvalModal.BTN_CANCEL + "-x", CP.N_CLICKS),
+        Input(AgentIds.Detail.EvalModal.BTN_CLOSE, CP.N_CLICKS),
     ],
     prevent_initial_call=True,
 )
-def close_eval_modal(cancel1, cancel2):
+def close_eval_modal(cancel_clicks, close_clicks):
   """Closes the evaluation modal."""
-  del cancel1, cancel2
+  del cancel_clicks, close_clicks
   return False
 
 
@@ -1346,13 +1392,16 @@ def open_duplicate_modal(n_clicks, pathname):
 
   current_name = ""
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
     client = get_client()
     agent = client.agents.get_agent(agent_id)
     if agent:
       current_name = agent.name
-  except Exception:  # pylint: disable=broad-except
-    pass
+  except Exception as e:  # pylint: disable=broad-except
+    # Losing the prefill is not worth blocking the duplicate, so the modal
+    # still opens with a generic name. It used to swallow the reason too,
+    # which left no trace of why the name went generic.
+    logger.error("Failed to read the agent name for the copy: %s", e)
 
   return True, f"Copy of {current_name}" if current_name else "Copy of Agent"
 
@@ -1362,6 +1411,9 @@ def open_duplicate_modal(n_clicks, pathname):
         Output(AgentIds.Detail.MODAL_DUPLICATE, "opened", allow_duplicate=True),
         Output(AgentIds.Detail.DUPLICATE_LOADING_OVERLAY, "visible"),
         Output(REDIRECT_HANDLER, CP.HREF, allow_duplicate=True),
+        Output(
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
+        ),
     ],
     [Input(AgentIds.Detail.BTN_DUPLICATE_SUBMIT, CP.N_CLICKS)],
     [
@@ -1373,20 +1425,36 @@ def open_duplicate_modal(n_clicks, pathname):
 def submit_duplicate(n_clicks, pathname, new_name):
   """Submits the duplication request."""
   if not n_clicks:
-    return dash.no_update, dash.no_update, dash.no_update
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
-    return False, False, dash.no_update
+    return False, False, dash.no_update, dash.no_update
 
   client = get_client()
   try:
     new_agent = client.agents.duplicate_agent(agent_id, new_name)
-    return False, False, f"/agents/view/{new_agent.id}"
+    return False, False, f"/agents/view/{new_agent.id}", dash.no_update
   except Exception as e:  # pylint: disable=broad-except
-    logging.error("Failed to duplicate agent: %s", e)
-    return True, False, dash.no_update
+    logger.error("Failed to duplicate agent: %s", e)
+    # The modal is left open on purpose, so the name the user typed survives.
+    # On its own that reads as a dead button, which is why the toast is here.
+    return (
+        True,
+        False,
+        dash.no_update,
+        [{
+            "action": "show",
+            "title": "Duplicate Failed",
+            # Not the exception text. See the note in fetch_remote_config.
+            "message": (
+                "Could not duplicate the agent. The details are in the server"
+                " log."
+            ),
+            "color": "red",
+        }],
+    )
 
 
 dash.clientside_callback(
@@ -1413,38 +1481,66 @@ dash.clientside_callback(
         Output(AgentIds.Detail.ALERT_LOOKER_TEST, CP.CHILDREN),
         Output(AgentIds.Detail.ALERT_LOOKER_TEST, CP.HIDE),
         Output(AgentIds.Detail.ALERT_LOOKER_TEST, "color"),
-        Output(AgentIds.Detail.BTN_TEST_LOOKER, "loading"),
     ],
     [Input(AgentIds.Detail.BTN_TEST_LOOKER, CP.N_CLICKS)],
     [
         State(AgentIds.Detail.INPUT_EDIT_LOOKER_URI, CP.VALUE),
         State(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_ID, CP.VALUE),
         State(AgentIds.Detail.INPUT_EDIT_LOOKER_CLIENT_SECRET, CP.VALUE),
+        State("url", CP.PATHNAME),
     ],
     prevent_initial_call=True,
+    # The spinner has to come from running=. Returning loading=False with the
+    # result cannot show one: the round trip is over by the time the value
+    # arrives, so the button sat inert for the whole call to Looker.
+    running=[
+        (Output(AgentIds.Detail.BTN_TEST_LOOKER, CP.LOADING), True, False)
+    ],
 )
-def test_looker_connectivity(n_clicks, uri, client_id, client_secret):
+def test_looker_connectivity(n_clicks, uri, client_id, client_secret, pathname):
   """Tests Looker connectivity."""
   if not n_clicks:
-    return dash.no_update, True, "blue", False
+    return dash.no_update, True, "blue"
 
-  if not all([uri, client_id, client_secret]):
+  # The secret is not checked here. open_edit_modal returns "" for it and
+  # never sends the stored one back, so requiring it refused every saved
+  # agent, which is what the button is for. Blank means keep the stored
+  # secret, and the service fills it from the agent row.
+  if not all([uri, client_id]):
     return (
         "Incomplete credentials. Please provide URI, Client ID, and Secret.",
         False,
         "orange",
-        False,
     )
+
+  try:
+    agent_id = id_from_pathname(pathname)
+  except (ValueError, IndexError):
+    agent_id = None
 
   client = get_client().agents
   try:
     result = client.test_looker_credentials(
-        instance_uri=uri, client_id=client_id, client_secret=client_secret
+        instance_uri=uri,
+        client_id=client_id,
+        client_secret=client_secret,
+        agent_id=agent_id,
     )
     color = "green" if result["success"] else "red"
-    return result.get("message", "Success!"), False, color, False
+    return result.get("message", "Success!"), False, color
   except Exception as e:  # pylint: disable=broad-except
-    return f"Test failed: {str(e)}", False, "red", False
+    logger.error("Looker connection test failed: %s", e)
+    # Not the exception text. See the note in fetch_remote_config. The
+    # message the service builds for a rejected login is returned above; this
+    # branch is whatever the SDK raised on the way there.
+    return (
+        (
+            "Could not reach the Looker instance. The details are in the server"
+            " log."
+        ),
+        False,
+        "red",
+    )
 
 
 @typed_callback(
@@ -1453,7 +1549,7 @@ def test_looker_connectivity(n_clicks, uri, client_id, client_secret):
             AgentIds.Detail.STORE_REFRESH_TRIGGER, CP.DATA, allow_duplicate=True
         ),
         Output(
-            "notification-container", "sendNotifications", allow_duplicate=True
+            NOTIFICATION_CONTAINER, "sendNotifications", allow_duplicate=True
         ),
     ],
     [
@@ -1476,7 +1572,7 @@ def toggle_agent_archive(
     return dash.no_update, dash.no_update
 
   try:
-    agent_id = int(pathname.split("/")[-1])
+    agent_id = id_from_pathname(pathname)
   except (ValueError, IndexError):
     return dash.no_update, dash.no_update
 
@@ -1489,18 +1585,25 @@ def toggle_agent_archive(
       client.unarchive_agent(agent_id)
       msg = "Agent restored successfully."
 
-    return {"ts": time.time()}, {
+    # NotificationContainer wants a list of actions. A bare dict is silently
+    # ignored, which hid this toast and the error one below.
+    return {"ts": time.time()}, [{
+        "action": "show",
         "title": "Success",
         "message": msg,
         "color": "green",
-    }
+    }]
   except Exception as e:  # pylint: disable=broad-exception-caught
-    logging.error("Failed to toggle agent archive: %s", e)
-    return dash.no_update, {
+    logger.error("Failed to toggle agent archive: %s", e)
+    return dash.no_update, [{
+        "action": "show",
         "title": "Error",
-        "message": f"Failed to update agent: {str(e)}",
+        # Not the exception text. See the note in fetch_remote_config.
+        "message": (
+            "Could not archive the agent. The details are in the server log."
+        ),
         "color": "red",
-    }
+    }]
 
 
 @typed_callback(
@@ -1530,12 +1633,16 @@ def fix_golden_queries_with_ai(n_clicks, current_value):
 
   try:
     client = get_client().agents
-    # format_golden_queries_with_ai is available in AgentsClient
+
     result = client.format_golden_queries_with_ai(current_value)
     return result, ""  # Clear error on success
   except Exception as e:  # pylint: disable=broad-exception-caught
-    logging.error("Failed to fix golden queries with AI: %s", e)
-    return dash.no_update, f"AI Fix failed: {str(e)}"
+    logger.error("Failed to fix golden queries with AI: %s", e)
+    # Not the exception text. See the note in fetch_remote_config.
+    return (
+        dash.no_update,
+        "AI fix failed. The details are in the server log.",
+    )
 
 
 @typed_callback(
@@ -1556,3 +1663,45 @@ def validate_golden_queries_edit(value: str | None):
     return f"Invalid JSON: {e}"
 
   return ""
+
+
+@typed_callback(
+    [
+        Output(AgentIds.Detail.ALERT_BQ_TEST, CP.CHILDREN),
+        Output(AgentIds.Detail.ALERT_BQ_TEST, CP.HIDE),
+        Output(AgentIds.Detail.ALERT_BQ_TEST, "color"),
+    ],
+    [Input(AgentIds.Detail.BTN_TEST_BQ, CP.N_CLICKS)],
+    [
+        State(AgentIds.Detail.INPUT_EDIT_BQ_TABLES, CP.VALUE),
+    ],
+    prevent_initial_call=True,
+    # See the note on test_looker_connectivity. One round trip per table, so
+    # this is the slower of the two.
+    running=[(Output(AgentIds.Detail.BTN_TEST_BQ, CP.LOADING), True, False)],
+)
+def test_bq_tables(n_clicks, tables_text):
+  """Checks the BQ tables against BigQuery from the edit modal."""
+  if not n_clicks:
+    return dash.no_update, True, "blue"
+
+  tables = parse_textarea_list(tables_text)
+  if not tables:
+    return "Enter at least one table to check.", False, "orange"
+
+  client = get_client().agents
+  try:
+    results = client.check_bigquery_tables(tables=tables)
+  except Exception as e:  # pylint: disable=broad-except
+    logger.error("BigQuery table check failed: %s", e)
+    # Not the exception text. See the note in fetch_remote_config. A per
+    # table error is reported by render_bq_check_results below; this branch
+    # is the call itself failing.
+    return (
+        "Could not check these tables. The details are in the server log.",
+        False,
+        "red",
+    )
+
+  children, color = render_bq_check_results(results)
+  return children, False, color

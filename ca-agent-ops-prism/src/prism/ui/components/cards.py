@@ -95,99 +95,73 @@ def render_detail_card(
   )
 
 
+def error_summary_line(message: str) -> str:
+  r"""The one line of a stored error message that may go on a page.
+
+  Everything after the first line used to be rendered in a Details block, and
+  that block is what a writer who forgets to sanitise leaks through. The first
+  line is what the services compose on purpose, and it ends with the reference
+  id that finds the rest in the server log.
+
+  The services store the newline escaped, so a multi-line error arrives as
+  one line with a literal \n in it.
+  """
+  return (message or "").replace("\\n", "\n").split("\n")[0].strip()
+
+
 def render_error_card(
     message: str, traceback_str: str | None = None, stage: str | None = None
 ) -> dmc.Card:
   """Renders a dedicated error card for failed trials.
 
+  The traceback is never rendered. prism has no authentication, so this page
+  is readable by anyone who can reach the port and it goes into the
+  screenshots attached to bugs, and a stored traceback carries the container's
+  filesystem layout and the installed library versions. The message the
+  services store now ends with a reference id that finds the traceback in the
+  server log.
+
   Args:
-    message: The error message to display.
-    traceback_str: Optional full stack trace.
+    message: The stored error message. Only its first line is rendered. See
+      error_summary_line.
+    traceback_str: Accepted and ignored. The call site still passes what is on
+      the trial row, and trials that failed before this changed still have a
+      trace stored there.
     stage: Optional failure stage (e.g., 'EXECUTING').
 
   Returns:
     A dmc.Card component.
   """
+  del traceback_str  # Not rendered. See above.
   title = f"Failed during {stage}" if stage else "Trial Execution Failed"
-
-  # Parse the message to handle escaped and real newlines
-  clean_message = message.replace("\\n", "\n")
-  parts = clean_message.split("\n")
-  summary = parts[0]
-  details = "\n".join(parts[1:]).strip() if len(parts) > 1 else None
 
   children = [
       dmc.Alert(
-          summary,
+          error_summary_line(message),
           title="Error Summary",
           color="red",
           variant="light",
           radius="md",
           icon=DashIconify(icon="bi:exclamation-triangle-fill"),
-          mb="md" if details or traceback_str else 0,
+          mb="md",
       )
   ]
 
-  if details:
-    children.append(
-        dmc.Stack(
-            gap=4,
-            children=[
-                dmc.Text("Details", fw=600, size="sm", c="red.9"),
-                dmc.Code(
-                    details,
-                    block=True,
-                    fz="xs",
-                    color="red.0",
-                    p="xs",
-                    style={
-                        "border": "1px solid var(--mantine-color-red-1)",
-                        "color": "var(--mantine-color-red-9)",
-                    },
-                ),
-            ],
-            mb="md" if traceback_str else 0,
-        )
-    )
-
-  if traceback_str:
-    children.append(
-        dmc.Accordion(
-            variant="separated",
-            radius="md",
-            children=[
-                dmc.AccordionItem(
-                    [
-                        dmc.AccordionControl(
-                            "View Full Stack Trace",
-                            icon=DashIconify(
-                                icon="bi:bug",
-                                color="var(--mantine-color-red-6)",
-                            ),
-                        ),
-                        dmc.AccordionPanel(
-                            dmc.ScrollArea(
-                                h=300,
-                                children=dmc.Code(
-                                    traceback_str,
-                                    block=True,
-                                    fz="xs",
-                                    color="gray.1",
-                                ),
-                            )
-                        ),
-                    ],
-                    value="traceback",
-                )
-            ],
-        )
-    )
+  children.append(
+      dmc.Text(
+          "The full details, including the traceback, are in the server log.",
+          size="xs",
+          c="dimmed",
+      )
+  )
 
   return render_detail_card(
       title=title.upper(),
       icon="bi:x-circle",
       children=dmc.Stack(children, gap=0),
-      className="error-card",
+      # The red border is the style below. There used to be a
+      # className="error-card" here as well, and no stylesheet in the app
+      # defines that class, so it styled nothing.
       style={"border": "1px solid var(--mantine-color-red-2)"},
   )
 

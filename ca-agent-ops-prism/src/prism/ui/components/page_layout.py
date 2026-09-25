@@ -30,24 +30,26 @@ def render_page_header(
     breadcrumbs_id: str | None = None,
     status: Any | None = None,
     status_id: str | None = None,
+    extra_badges: list[Any] | None = None,
 ) -> dmc.Group:
   """Renders a standardized page header.
 
   Args:
-      title: The page title (rendered as dmc.Title order=1).
-      description: Optional page description (rendered as dimmed text).
-      actions: Optional list of buttons or other components to render on the
-        right.
-      breadcrumbs: Optional breadcrumbs component to render above the title.
-      title_id: Optional ID for the title component.
-      description_id: Optional ID for the description component.
-      actions_id: Optional ID for the actions component.
-      breadcrumbs_id: Optional ID for the breadcrumbs container.
-      status: Optional status component (rendered next to title).
-      status_id: Optional ID for the status component.
+    title: The page title (rendered as dmc.Title order=1).
+    description: Optional page description (rendered as dimmed text).
+    actions: Optional list of buttons or other components to render on the
+      right.
+    breadcrumbs: Optional breadcrumbs component to render above the title.
+    title_id: Optional ID for the title component.
+    description_id: Optional ID for the description component.
+    actions_id: Optional ID for the actions component.
+    breadcrumbs_id: Optional ID for the breadcrumbs container.
+    status: Optional status component (rendered next to title).
+    status_id: Optional ID for the status component.
+    extra_badges: Optional additional badges to render next to status.
 
   Returns:
-      A dmc.Group containing the standardized header.
+    A dmc.Group containing the standardized header.
   """
   title_kwargs = {"order": 1}
   if title_id:
@@ -61,7 +63,7 @@ def render_page_header(
   if actions_id:
     actions_kwargs["id"] = actions_id
 
-  # Handle breadcrumbs robustness
+  # breadcrumbs may be a single component or a list.
   breadcrumb_items = []
   if breadcrumbs:
     breadcrumb_items = (
@@ -86,7 +88,6 @@ def render_page_header(
       mb="xl",
       children=[
           html.Div(
-              id="header-title-container",
               children=(
                   [html.Div(breadcrumb_items, **breadcrumb_container_kwargs)]
                   if breadcrumbs or breadcrumbs_id
@@ -108,6 +109,7 @@ def render_page_header(
                               if status or status_id
                               else []
                           ),
+                          *(extra_badges if extra_badges else []),
                       ],
                   )
               ]
@@ -139,6 +141,7 @@ def render_page(
     breadcrumbs_id: str | None = None,
     status: Any | None = None,
     status_id: str | None = None,
+    extra_badges: list[Any] | None = None,
     container_id: str | None = None,
     fluid: bool = False,
 ) -> dmc.Container:
@@ -156,6 +159,7 @@ def render_page(
     breadcrumbs_id: Optional ID for the breadcrumbs container.
     status: Optional status component.
     status_id: Optional ID for the status component.
+    extra_badges: Optional additional badges next to status.
     container_id: Optional ID for the container component.
     fluid: Whether the container should be fluid (full width).
 
@@ -180,6 +184,7 @@ def render_page(
               breadcrumbs_id=breadcrumbs_id,
               status=status,
               status_id=status_id,
+              extra_badges=extra_badges,
           ),
           *(children or []),
       ],

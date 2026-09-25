@@ -1,7 +1,22 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """End-to-end integration tests for Prism."""
 
 import json
 import os
+import time
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
@@ -14,20 +29,27 @@ from prism.common.schemas.assertion import DurationMaxMs
 from prism.common.schemas.assertion import LookerQueryMatch
 from prism.common.schemas.assertion import QueryContains
 from prism.common.schemas.assertion import TextContains
-from prism.server.clients.gemini_data_analytics_client import AskQuestionResponse
+from prism.common.schemas.trace import AskQuestionResponse
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 from prism.server.clients.gen_ai_client import GenAIClient
 from prism.server.models.run import RunStatus
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
+from prism.server.services import assert_engine
 from prism.server.services.execution_service import ExecutionService
 from prism.server.services.snapshot_service import SnapshotService
 from sqlalchemy.orm import Session
 
+# How long the assertion phase is made to take, and the bound the trial
+# duration has to stay under. The agent call is a mock that returns at once, so
+# the honest duration is a couple of milliseconds.
+_SLOW_JUDGE_SECONDS = 0.5
+_DURATION_BOUND_MS = _SLOW_JUDGE_SECONDS * 1000 / 2
+
 
 class MockProtoMessage:
-  """Helper to mock a proto-plus message wrapper."""
+  """Mocks a proto-plus message wrapper."""
 
   def __init__(self, data_dict):
     self._data_dict = data_dict
@@ -37,9 +59,9 @@ class MockProtoMessage:
       else:
         setattr(self, k, v)
 
-    # Mock _pb for ExecutionService
+    # ExecutionService reads ._pb, and the patched MessageToDict reads
+    # data_dict back off it.
     self._pb = MagicMock()
-    # expose data_dict for the patch
     self._pb.data_dict = data_dict
 
   def __contains__(self, key):
@@ -76,9 +98,17 @@ def load_mock_response(filename: str) -> list[dict]:
     return json.load(f)
 
 
+def _label(assertion) -> str:
+  """Names an assertion in a way a failure message can be read.
+
+  Weight is excluded because it is the same on all fourteen, and id because
+  the schema objects below have not been stored yet.
+  """
+  return assertion.model_dump_json(exclude={"id", "weight"})
+
+
 def test_successful_run_flow(db_session: Session):
-  """Tests a complete run flow with successful assertions."""
-  # 1. Setup Services and Repos
+  """Fourteen assertions, seven written to pass and seven to fail."""
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -96,7 +126,6 @@ def test_successful_run_flow(db_session: Session):
       gen_ai_client=mock_gen_ai_client,
   )
 
-  # 2. Setup Database Entities
   config = AgentConfig(
       project_id="p",
       location="l",
@@ -106,105 +135,92 @@ def test_successful_run_flow(db_session: Session):
   agent = agent_repo.create(name="E2E Agent", config=config)
   suite = suite_repo.create(name="Revenue Suite")
 
-  # Create Example with Assertions
-  # Use Pydantic models for assertions
+  # One of each assertion type, written to match success_response.json.
+  written_to_pass = [
+      TextContains(value="revenue"),
+      DurationMaxMs(value=5000),
+      QueryContains(value="SELECT *"),
+      ChartCheckType(value="bar"),
+      DataCheckRowCount(value=2),
+      DataCheckRow(columns={"col": "val"}),
+      LookerQueryMatch(params={"model": "the_model"}),
+  ]
+  # The same seven types against the same trace, written not to match.
+  written_to_fail = [
+      TextContains(value="this should fail"),
+      DurationMaxMs(value=1),
+      QueryContains(value="DELETE FROM"),
+      ChartCheckType(value="line"),
+      DataCheckRowCount(value=99),
+      DataCheckRow(columns={"col": "does_not_exist"}),
+      LookerQueryMatch(params={"model": "wrong_model"}),
+  ]
 
-  example_input = {
-      "question": "What is the revenue?",
-      "asserts": [
-          # Expected to PASS
-          TextContains(value="revenue"),
-          DurationMaxMs(value=5000),
-          QueryContains(value="SELECT *"),
-          ChartCheckType(value="bar"),
-          DataCheckRowCount(value=2),
-          DataCheckRow(columns={"col": "val"}),
-          LookerQueryMatch(params={"model": "the_model"}),
-          # Expected to FAIL
-          TextContains(value="this should fail"),
-          DurationMaxMs(value=1),
-          QueryContains(value="DELETE FROM"),
-          ChartCheckType(value="line"),
-          DataCheckRowCount(value=99),
-          DataCheckRow(columns={"col": "does_not_exist"}),
-          LookerQueryMatch(params={"model": "wrong_model"}),
-      ],
-  }
-  # We need to manually add assertions since ExampleRepository.create might take just a question
-  # But ExampleRepository.create signature is (suite_id, question, ...)
-  # Let's check ExampleRepository.update or just use create then update if needed
-  # Assuming create returns the example
-  example = example_repo.create(suite.id, example_input["question"])
-  # Now add assertions individually
-  for assertion in example_input["asserts"]:
-    example_repo.add_assertion(example.id, assertion)
+  # ExampleRepository.create takes no assertions, so they go on one at a time.
+  example = example_repo.create(suite.id, "What is the revenue?")
+  labels = {}
+  for assertion in written_to_pass + written_to_fail:
+    stored = example_repo.add_assertion(example.id, assertion)
+    labels[stored.id] = _label(assertion)
 
-  # 3. Prepare Mock Data
   trace_data = load_mock_response("success_response.json")
 
-  # Construct response object
-  # specific mocking to bypass json_format.MessageToDict
-  # We patch json_format.MessageToDict in the ExecutionService scope essentially by
-  # ensuring the objects in protobuf_response work with it, OR we patch the library.
-  # A robust integration test might prefer patching the library to avoid complex Proto mocking.
+  real_evaluate_all = assert_engine.evaluate_all
 
-  with patch("google.protobuf.json_format.MessageToDict") as mock_to_dict:
-    # Configure mock_to_dict to return the dict for our fake protos
-    # The side_effect returns the .data attribute of our MockProtoMessage
+  def slow_evaluate_all(**kwargs):
+    """The fourteen real assertions, with an AI judge's latency in front."""
+    time.sleep(_SLOW_JUDGE_SECONDS)
+    return real_evaluate_all(**kwargs)
+
+  with (
+      # Patched instead of building real protos. The fixtures are already
+      # dicts, so MockProtoMessage carries one through untouched.
+      patch("google.protobuf.json_format.MessageToDict") as mock_to_dict,
+      patch.object(
+          assert_engine, "evaluate_all", side_effect=slow_evaluate_all
+      ),
+  ):
     mock_to_dict.side_effect = (
         lambda pb, **kwargs: pb.data_dict if hasattr(pb, "data_dict") else pb
     )
 
-    response_messages = []
-    for item in trace_data:
-      msg = MockProtoMessage(item)
-      # Hack to attach valid data for our patched MessageToDict
-      msg._pb.data_dict = item
-      response_messages.append(msg)
-
     response_mock = MagicMock(spec=AskQuestionResponse)
-    response_messages = []
-    for item in trace_data:
-      msg = MockProtoMessage(item)
-      # Hack to attach valid data for our patched MessageToDict
-      msg._pb.data_dict = item
-      response_messages.append(msg)
-
-    response_mock.protobuf_response = response_messages
+    response_mock.protobuf_response = [
+        MockProtoMessage(item) for item in trace_data
+    ]
     response_mock.error_message = None
-    # response_mock.duration is expected to be a Duration-like object
-    # It needs a total_duration attribute (int ms)
+    # A Duration-like object, so it needs total_duration in milliseconds.
     response_mock.duration = MagicMock()
     response_mock.duration.total_duration = 100
 
     mock_client.ask_question.return_value = response_mock
 
-    # 4. Execute Run
     run = service.create_run(agent.id, suite.id)
     for trial in run.trials:
       service.execute_trial(trial.id)
 
-    # 5. Verify Results
     db_session.refresh(run)
     assert len(run.trials) == 1
     trial = run.trials[0]
 
     assert trial.status == RunStatus.COMPLETED
     assert trial.duration_ms is not None
-    assert trial.duration_ms >= 0
+    # completed_at is stamped when the agent answers, before the assertions
+    # run, so the slow judge above must leave no mark on the duration.
+    assert trial.duration_ms < _DURATION_BOUND_MS
 
-    # Check Assertions
-    # We expect 2 passed assertions
+    # Which seven passed, not how many. Counting alone passed while the
+    # matching and the non-matching assertion of a type swapped answers, which
+    # is the way an assertion type breaks.
+    outcomes = {
+        labels[result.assertion_snapshot.original_assertion_id]: result.passed
+        for result in trial.assertion_results
+    }
+
     assert len(trial.assertion_results) == 14
-    passed_count = sum(1 for res in trial.assertion_results if res.passed)
-    failed_count = sum(1 for res in trial.assertion_results if not res.passed)
-    # Debug print failed assertions
-    if passed_count != 7:
-      print("\n\n=== DEBUGGING FAILED ASSERTIONS ===")
-      for res in trial.assertion_results:
-        if not res["passed"]:
-          # Print assertion type and value for clarity
-          print(f"FAILED: {res['assertion']['type']} - {res['reason']}")
-      print("===================================\n")
-    assert passed_count == 7
-    assert failed_count == 7
+    assert {l for l, ok in outcomes.items() if ok} == {
+        _label(a) for a in written_to_pass
+    }
+    assert {l for l, ok in outcomes.items() if not ok} == {
+        _label(a) for a in written_to_fail
+    }

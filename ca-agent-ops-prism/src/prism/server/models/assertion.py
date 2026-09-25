@@ -24,7 +24,7 @@ from sqlalchemy import orm
 
 
 class BaseAssertion:
-  """Mixin for Assertion fields shared between Live, Snapshot and Suggested models."""
+  """Assertion fields shared by the Live, Snapshot and Suggested models."""
 
   id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
 
@@ -71,7 +71,9 @@ class AssertionSnapshot(Base, BaseMixin, BaseAssertion):
       "ExampleSnapshot", back_populates="asserts"
   )
   assertion_results = orm.relationship(
-      "AssertionResult", back_populates="assertion_snapshot"
+      "AssertionResult",
+      back_populates="assertion_snapshot",
+      cascade="all, delete-orphan",
   )
 
 

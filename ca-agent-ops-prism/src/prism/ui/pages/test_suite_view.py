@@ -19,6 +19,7 @@ from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.client import get_client
+from prism.ui import utils
 from prism.ui.components import test_case_components
 from prism.ui.components.badges import render_coverage_badge
 from prism.ui.components.page_layout import render_page
@@ -27,7 +28,10 @@ from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models import ui_state
 
 
-def _meta_item(label, value, icon=None, mono=False):
+def _meta_item(
+    label: str, value: str, icon: str | None = None, mono: bool = False
+) -> dmc.Stack:
+  """Renders one labelled field in the suite header's metadata row."""
   return dmc.Stack(
       gap=4,
       children=[
@@ -59,9 +63,12 @@ def _meta_item(label, value, icon=None, mono=False):
   )
 
 
-def layout(suite_id: str = None):
-  """Renders the View Test Suite layout (read-only)."""
-  if not suite_id:
+def layout(suite_id: str | None = None):
+  # Whatever the path holds arrives here as a string, so the id has to be
+  # checked and not only tested for presence. int() on a non-numeric one raised
+  # straight out of the router and answered 500. Dash reaches this with "none",
+  # the placeholder it registers as the path for a page with a path template.
+  if not suite_id or not str(suite_id).isdigit():
     return dmc.Text("Invalid Test Suite ID", c="red")
 
   suite_id_int = int(suite_id)
@@ -70,7 +77,6 @@ def layout(suite_id: str = None):
   suite = client.suites.get_suite(suite_id_int)
   test_cases_data = client.suites.list_examples(suite_id_int) or []
 
-  # Convert examples to List[TestCaseState] for rendering
   test_cases = []
   for tc in test_cases_data:
     test_cases.append(
@@ -89,27 +95,29 @@ def layout(suite_id: str = None):
         dmc.Alert("Test Suite not found", color="red"), size="xl", py="xl"
     )
 
-  # Calculate Assertion Coverage
   total_test_cases = len(test_cases)
-  test_cases_with_asserts = sum(1 for tc in test_cases if tc.asserts)
+  # Weighted assertions only, the same count SuiteService.assertion_coverage
+  # makes for the list page. A case carrying one diagnostic (weight 0)
+  # assertion scores nothing, and counting it here drew a green Full Coverage
+  # badge on the view page next to a red one on the list. They are dumped to
+  # dicts above and validated straight back into AssertItem, which declares no
+  # weight and allows extras, so it arrives as an attribute or not at all.
+  test_cases_with_asserts = sum(
+      1
+      for tc in test_cases
+      if any(getattr(a, "weight", 1) > 0 for a in tc.asserts)
+  )
 
-  if total_test_cases == 0:
-    coverage_status = "No Test Cases"
-    coverage_color = "gray"
-  elif test_cases_with_asserts == total_test_cases:
-    coverage_status = "Full Coverage"
-    coverage_color = "green"
-  elif test_cases_with_asserts > 0:
-    coverage_status = "Partial Coverage"
-    coverage_color = "yellow"
-  else:
-    coverage_status = "No Coverage"
-    coverage_color = "orange"
+  coverage_color, coverage_status = utils.coverage_display(
+      total_test_cases,
+      test_cases_with_asserts / total_test_cases if total_test_cases else 0.0,
+  )
 
-  last_updated_str = (
-      suite.modified_at.strftime("%Y-%m-%d %H:%M")
-      if suite.modified_at
-      else suite.created_at.strftime("%Y-%m-%d %H:%M")
+  # Through the helper. This wrote the same format string by hand and skipped
+  # the astimezone, so the suite was dated on an unlabelled clock the reader
+  # read as their own.
+  last_updated_str = utils.format_timestamp(
+      suite.modified_at or suite.created_at
   )
 
   unified_header_card = dmc.Paper(
@@ -145,7 +153,7 @@ def layout(suite_id: str = None):
                   ),
                   _meta_item(
                       "Created At",
-                      suite.created_at.strftime("%Y-%m-%d"),
+                      utils.format_timestamp(suite.created_at),
                       icon="bi:calendar-event",
                   ),
                   _meta_item(
@@ -221,11 +229,9 @@ def layout(suite_id: str = None):
       ),
       children=[
           unified_header_card,
-          # Main Content Grid
           dmc.Grid(
               gutter="xl",
               children=[
-                  # Full-width Test Cases Grid
                   dmc.GridCol(
                       span=12,
                       children=[
@@ -247,7 +253,10 @@ def layout(suite_id: str = None):
                                                   variant="light",
                                                   radius="md",
                                               ),
-                                              href=f"/test_suites/edit/{suite_id}?action=add",
+                                              href=(
+                                                  "/test_suites/edit/"
+                                                  f"{suite_id}?action=add"
+                                              ),
                                               underline=False,
                                           ),
                                           dmc.Anchor(
@@ -260,7 +269,10 @@ def layout(suite_id: str = None):
                                                   variant="default",
                                                   radius="md",
                                               ),
-                                              href=f"/test_suites/edit/{suite_id}",
+                                              href=(
+                                                  "/test_suites/edit/"
+                                                  f"{suite_id}"
+                                              ),
                                               underline=False,
                                           ),
                                       ],
@@ -277,23 +289,12 @@ def layout(suite_id: str = None):
                   ),
               ],
           ),
-          # Hidden stores & placeholders
           dash.dcc.Store(id=Ids.STORE_BUILDER, data=[]),
-          dash.dcc.Store(id=Ids.STORE_MODAL, data={}),
-          dmc.Select(id=Ids.AGENT_SELECT, style={"display": "none"}),
           html.Div(id=Ids.SAVE_NEW_BTN, style={"display": "none"}),
-          html.Div(id=Ids.SAVE_EDIT_BTN, style={"display": "none"}),
-          html.Div(id=Ids.CANCEL_NEW_BTN, style={"display": "none"}),
-          html.Div(id=Ids.CANCEL_EDIT_BTN, style={"display": "none"}),
-          html.Div(id=Ids.PLACEHOLDER_SAVE_BTN, style={"display": "none"}),
-          html.Div(id=Ids.MODAL_TEST_CASE),
-          html.Div(id=Ids.MODAL_BULK),
+          html.Div(id=Ids.MODAL_BULK_ADD),
           html.Div(id=Ids.MODAL_DELETE),
           dash.dcc.Store(id=Ids.STORE_SELECTED_INDEX, data=None),
-          html.Div(id=Ids.ADD_TEST_CASE_BTN, style={"display": "none"}),
-          # Edit Configuration Modal
           render_config_edit_modal(Ids.MODAL_CONFIG_SAVE_BTN),
-          # Run Evaluation Modal
           render_run_eval_modal(),
       ],
   )
@@ -339,7 +340,7 @@ def render_run_eval_modal():
                       label="Generate Suggested Assertions",
                       description=(
                           "Automatically suggest new assertions based on trace"
-                          " results (Uses LLM)."
+                          " results (uses Gemini)."
                       ),
                       checked=False,
                   ),

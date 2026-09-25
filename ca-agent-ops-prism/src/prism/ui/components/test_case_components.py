@@ -14,84 +14,17 @@
 
 """Presentational components for the Test Suites UI."""
 
-import json
 from typing import Any
-from dash import html
-from dash_ace import DashAceEditor
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.common.schemas import suite
+from prism.ui.components.assertion_components import get_assertion_style
 from prism.ui.ids import TestSuiteIds as Ids
 from prism.ui.models import ui_state
 
-
-def render_suite_card(
-    s: suite.Suite, test_case_count: int = 0, run_count: int = 0
-):
-  """Renders a single test suite card for the dashboard."""
-  card_content = dmc.Card(
-      p="lg",
-      radius="md",
-      withBorder=True,
-      style={
-          "&:hover": {
-              "boxShadow": "var(--mantine-shadow-md)",
-              "borderColor": "var(--mantine-color-blue-500)",
-          },
-          "cursor": "pointer",
-          "transition": "all 0.2s ease",
-      },
-      children=[
-          dmc.Group(
-              justify="space-between",
-              mb="xs",
-              children=[
-                  dmc.Text(s.name, fw=600, size="lg"),
-                  dmc.Badge(
-                      s.datasource_type or "No Source",
-                      variant="light",
-                      color="blue" if s.datasource_type == "BQ" else "indigo",
-                  ),
-              ],
-          ),
-          dmc.Text(
-              s.description or "No description provided.",
-              size="sm",
-              c="dimmed",
-              lineClamp=2,
-              mb="xl",
-              style={"height": "3.2em"},
-          ),
-          dmc.Divider(mb="md"),
-          dmc.Group(
-              gap="xl",
-              children=[
-                  dmc.Stack(
-                      gap=0,
-                      children=[
-                          dmc.Text(str(test_case_count), fw=700),
-                          dmc.Text("Test Cases", size="xs", c="dimmed"),
-                      ],
-                  ),
-                  dmc.Stack(
-                      gap=0,
-                      children=[
-                          dmc.Text(str(run_count), fw=700),
-                          dmc.Text("Runs", size="xs", c="dimmed"),
-                      ],
-                  ),
-              ],
-          ),
-      ],
-  )
-
-  return dmc.Anchor(
-      card_content,
-      href=f"/test_suites/view/{s.id}",
-      underline=False,
-      c="inherit",
-      style={"display": "block", "textDecoration": "none"},
-  )
+# get_assertion_style lived here too, as a copy that had drifted. It was
+# missing the desc key on twelve of its fourteen branches, so anything that
+# read a description off it got the generic one. The assertion_components copy
+# is the one with the descriptions and the one six other call sites use.
 
 
 def render_assertion_badges(asserts: list[Any]):
@@ -100,7 +33,6 @@ def render_assertion_badges(asserts: list[Any]):
   badges = []
 
   if num_asserts > 0:
-    # Group by type
     type_counts = {}
     for a in asserts:
       if isinstance(a, dict):
@@ -111,14 +43,9 @@ def render_assertion_badges(asserts: list[Any]):
 
     for a_type, count in sorted(type_counts.items()):
       style = get_assertion_style(a_type)
+      # The label is a phrase, not a noun, so it does not take a plural. The
+      # rule that used to run here turned two of them into "2 Text Containses".
       label = style["label"]
-      if count > 1:
-        if any(
-            label.endswith(suffix) for suffix in ["ch", "sh", "x", "s", "z"]
-        ):
-          label += "es"
-        else:
-          label += "s"
 
       badges.append(
           dmc.Group(
@@ -146,7 +73,6 @@ def render_assertion_badges(asserts: list[Any]):
           )
       )
   else:
-    # 0 Assertions Badge
     badges.append(
         dmc.Group(
             gap=6,
@@ -179,7 +105,14 @@ def render_assertion_badges(asserts: list[Any]):
 def render_test_case_card(
     test_case: ui_state.TestCaseState, index: int, read_only: bool = False
 ):
-  """Renders a single test case card in the builder."""
+  """Renders a single test case card in the builder.
+
+  There is no editable variant on screen. The card is rendered from two
+  places, both of them the suite view page, and that page is the only one
+  holding the list container the render callback writes into, so its
+  ``read_only = "/view/" in pathname`` is always True. The pencil and trash
+  this used to draw for the other case never reached a browser.
+  """
   asserts = test_case.asserts or []
   badges = render_assertion_badges(asserts)
 
@@ -188,7 +121,6 @@ def render_test_case_card(
       radius="md",
       withBorder=True,
       mb="md",
-      className="group",  # For hover effects if we add CSS
       style={
           "transition": "all 0.2s ease",
           "cursor": "pointer" if read_only else "default",
@@ -229,7 +161,6 @@ def render_test_case_card(
                           ),
                       ],
                   ),
-                  _render_test_case_actions(index, read_only),
               ],
           ),
           dmc.Group(
@@ -240,56 +171,21 @@ def render_test_case_card(
   )
 
 
-def _render_test_case_actions(index: int, read_only: bool):
-  """Renders edit/delete buttons if not read-only."""
-  if read_only:
-    return html.Div()
-
-  return dmc.Group(
-      gap="xs",
-      children=[
-          dmc.ActionIcon(
-              DashIconify(icon="bi:pencil", width=20),
-              id={
-                  "type": "edit-test-case-btn",
-                  "index": index,
-              },
-              variant="subtle",
-              color="gray",
-              className="opacity-0 group-hover:opacity-100 transition-opacity",
-          ),
-          dmc.ActionIcon(
-              DashIconify(icon="bi:trash", width=20),
-              id={
-                  "type": Ids.TC_REMOVE_TEST_CASE_BTN,
-                  "index": index,
-              },
-              variant="subtle",
-              color="gray",
-              className=(
-                  "opacity-0 group-hover:opacity-100 transition-opacity"
-                  " hover:text-red-500"
-              ),
-          ),
-      ],
-  )
-
-
 def render_test_case_nav_item(
     test_case: ui_state.TestCaseState, index: int, active: bool = False
 ):
   """Renders a navigation link/button for the test case playground."""
-  # Colors from mockup
+  # Inactive look, overridden below when this is the item being edited.
   bg_color = "transparent"
   border_color = "transparent"
-  icon_color = "#94a3b8"  # slate-400
+  icon_color = "#94a3b8"
   text_color = "dimmed"
   msg_icon = "material-symbols:chat-bubble-outline"
 
   if active:
-    bg_color = "#eff6ff"  # blue-50
-    border_color = "#bfdbfe"  # blue-200
-    icon_color = "#2563eb"  # blue-600
+    bg_color = "#eff6ff"
+    border_color = "#bfdbfe"
+    icon_color = "#2563eb"
     text_color = "dark"
     msg_icon = "material-symbols:chat-bubble"
 
@@ -332,14 +228,13 @@ def render_test_case_nav_item(
           withBorder=True,
           style={
               "backgroundColor": bg_color,
-              "borderColor": border_color if active else "transparent",
+              "borderColor": border_color,
               "transition": "all 0.2s ease",
           },
           className="group hover:bg-slate-50",
           children=dmc.Stack(
               gap="xs",
               children=[
-                  # Top Row: Icon + [EDITING] + ID
                   dmc.Group(
                       justify="space-between",
                       children=[
@@ -363,7 +258,6 @@ def render_test_case_nav_item(
                           ),
                       ],
                   ),
-                  # Bottom Row: Test Case Text
                   dmc.Text(
                       test_case.question or "(Empty Test Case)",
                       size="sm",
@@ -375,451 +269,4 @@ def render_test_case_nav_item(
               ],
           ),
       ),
-  )
-
-
-def render_test_case_modal(ids: Any):
-  """Renders the modal for adding/editing a test case."""
-  return dmc.Modal(
-      id=ids.MODAL_TEST_CASE,
-      title="Add/Edit Test Case",
-      size="lg",
-      children=[
-          dmc.Textarea(
-              id=ids.MODAL_TEST_CASE_TEXT,
-              label="Test Case Text",
-              placeholder="e.g. What is the total revenue for last month?",
-              required=True,
-              minRows=3,
-              mb="lg",
-          ),
-          dmc.Text("Assertions", fw=600, size="sm", mb="xs"),
-          html.Div(
-              id=ids.MODAL_ASSERT_LIST,
-              className="mb-lg p-sm border rounded",
-              style={"minHeight": "50px"},
-          ),
-          dmc.Paper(
-              p="sm",
-              withBorder=True,
-              radius="sm",
-              children=[
-                  dmc.Text("Add New Assertion", fw=600, size="xs", mb="xs"),
-                  dmc.Grid(
-                      children=[
-                          dmc.GridCol(
-                              span=4,
-                              children=[
-                                  dmc.Select(
-                                      id=ids.MODAL_ASSERT_TYPE,
-                                      data=[
-                                          {
-                                              "label": "Equals",
-                                              "value": "equals",
-                                          },
-                                          {
-                                              "label": "Contains",
-                                              "value": "contains",
-                                          },
-                                          {
-                                              "label": "SQL Valid",
-                                              "value": "sql_valid",
-                                          },
-                                          {
-                                              "label": "Custom",
-                                              "value": "custom",
-                                          },
-                                      ],
-                                      placeholder="Type",
-                                  )
-                              ],
-                          ),
-                          dmc.GridCol(
-                              span=6,
-                              children=[
-                                  dmc.TextInput(
-                                      id=ids.MODAL_ASSERT_VALUE,
-                                      placeholder="Value (or YAML)",
-                                  ),
-                                  html.Div(
-                                      id=ids.MODAL_ACE_CONTAINER,
-                                      style={"display": "none"},
-                                      children=[
-                                          DashAceEditor(
-                                              id=ids.MODAL_ASSERT_YAML,
-                                              mode="yaml",
-                                              theme="github",
-                                              width="100%",
-                                              height="150px",
-                                          )
-                                      ],
-                                  ),
-                              ],
-                          ),
-                          dmc.GridCol(
-                              span=2,
-                              children=[
-                                  dmc.ActionIcon(
-                                      DashIconify(icon="bi:plus-lg"),
-                                      id=ids.MODAL_ADD_ASSERT_BTN,
-                                      size="lg",
-                                      variant="light",
-                                  )
-                              ],
-                          ),
-                      ]
-                  ),
-              ],
-          ),
-          dmc.Group(
-              justify="flex-end",
-              mt="xl",
-              children=[
-                  dmc.Button(
-                      "Cancel",
-                      id=ids.MODAL_CANCEL_BTN,
-                      variant="subtle",
-                      color="gray",
-                  ),
-                  dmc.Button("Save Test Case", id=ids.MODAL_SAVE_BTN),
-              ],
-          ),
-      ],
-  )
-
-
-def get_assertion_style(a_type: str):
-  """Returns icon, color, label for assertion type matching mockup."""
-  # Default
-  style = {
-      "icon": "material-symbols:help-outline",
-      "color": "gray",
-      "bg": "gray",
-      "label": "Assertion",
-      "badge": "CHECK",
-      "desc": "Validates the response.",
-  }
-
-  if a_type == "text-contains" or a_type == "text-exact-match":
-    style.update({
-        "icon": "material-symbols:text-fields",
-        "color": "blue",
-        "bg": "blue",
-        "label": "Text Contains",
-        "badge": "STRING",
-    })
-  elif a_type == "looker-query-match":
-    style.update({
-        "icon": "material-symbols:query-stats",
-        "color": "pink",
-        "bg": "pink",
-        "label": "Looker Query Match",
-        "badge": "LOOKML",
-        "desc": (
-            "Checks if the generated Looker query matches the specified"
-            " structure. A partial score is computed based on parameter match"
-            " ratio. The assertion evaluates to Pass if the match rate is >="
-            " 0.75."
-        ),
-    })
-  elif a_type == "data-check-row":
-    style.update({
-        "icon": "material-symbols:table-rows",
-        "color": "teal",
-        "bg": "teal",
-        "label": "Data Check Row",
-        "badge": "DATA",
-    })
-  elif a_type == "data-check-row-count":
-    style.update({
-        "icon": "material-symbols:format-list-numbered",
-        "color": "cyan",
-        "bg": "cyan",
-        "label": "Data Check Row Count",
-        "badge": "DATA",
-    })
-  elif a_type == "chart-check-type":
-    style.update({
-        "icon": "material-symbols:bar-chart",
-        "color": "indigo",
-        "bg": "indigo",
-        "label": "Chart Check Type",
-        "badge": "CHART",
-    })
-  elif a_type == "query-contains" or a_type == "sql-valid":
-    style.update({
-        "icon": "material-symbols:manage-search",
-        "color": "orange",
-        "bg": "orange",
-        "label": "Query Contains",
-        "badge": "SQL",
-    })
-  elif a_type == "custom":
-    style.update({
-        "icon": "material-symbols:code",
-        "color": "violet",
-        "bg": "violet",
-        "label": "Custom Python",
-        "badge": "PYTHON",
-    })
-  elif a_type in ["duration-max-ms", "latency-max-ms"]:
-    style.update({
-        "icon": "material-symbols:timer",
-        "color": "indigo",
-        "bg": "indigo",
-        "label": (
-            "Response Duration"
-            if a_type == "duration-max-ms"
-            else "Response Latency"
-        ),
-        "badge": "PERFORMANCE",
-    })
-  elif a_type == "llm-evaluation":
-    style.update({
-        "icon": "material-symbols:psychology",
-        "color": "grape",
-        "bg": "grape",
-        "label": "LLM Evaluation",
-        "badge": "TONE",
-    })
-  elif a_type == "regex-match":
-    style.update({
-        "icon": "material-symbols:code",
-        "color": "emerald",
-        "bg": "emerald",
-        "label": "Regex Pattern",
-        "badge": "MATCH",
-    })
-  elif a_type == "sentiment-score":
-    style.update({
-        "icon": "material-symbols:mood",
-        "color": "sky",
-        "bg": "sky",
-        "label": "Sentiment Analysis",
-        "badge": "SCORE",
-    })
-  elif a_type == "resolution-confirmation":
-    style.update({
-        "icon": "material-symbols:verified",
-        "color": "orange",
-        "bg": "orange",
-        "label": "Resolution Confirmation",
-        "badge": "SCRIPT",
-    })
-  elif a_type == "ai-judge":
-    style.update({
-        "icon": "material-symbols:psychology",
-        "color": "grape",
-        "bg": "grape",
-        "label": "AI Judge",
-        "badge": "LLM",
-    })
-
-  return style
-
-
-def render_assertion_card(assertion: dict[str, Any], index: int):
-  """Renders a detailed assertion card matching the mockup."""
-  a_type = assertion.get("type", "unknown")
-  weight = assertion.get("weight", 0)
-  is_accuracy = weight > 0
-
-  style = get_assertion_style(a_type)
-
-  # Content Block (for regex/custom values)
-  content = None
-  if "params" in assertion or "value" in assertion or "columns" in assertion:
-    # simplistic rendering of params for now
-    val = (
-        assertion.get("value")
-        or assertion.get("params")
-        or assertion.get("columns")
-    )
-    val_str = str(val)
-    if isinstance(val, (dict, list)):
-      val_str = json.dumps(val, indent=2)
-
-    content = dmc.Box(
-        bg="#1e293b",  # slate-800
-        c="white",
-        p="md",
-        mt="sm",
-        mx="lg",  # Indent
-        mb="md",
-        style={
-            "borderRadius": "8px",
-            "fontFamily": "monospace",
-            "fontSize": "12px",
-            "whiteSpace": "pre-wrap",
-        },
-        children=dmc.Text(
-            val_str, c="teal", size="xs"
-        ),  # mimicking code styling
-    )
-
-  badge_list = []
-  if "badge" in style:
-    badge_list.append(
-        dmc.Badge(
-            style.get("badge", "Check"),
-            size="xs",
-            color=style["color"],
-            variant="light",
-        )
-    )
-
-  return dmc.Paper(
-      radius="md",
-      withBorder=True,
-      mb="md",
-      style={"overflow": "hidden"},
-      className="group",
-      children=[
-          # Header Row
-          dmc.Group(
-              justify="space-between",
-              p="md",
-              style={"cursor": "pointer"},
-              className="hover:bg-gray-50 transition-colors",
-              children=[
-                  # Left: Icon + Text
-                  dmc.Group(
-                      children=[
-                          dmc.ThemeIcon(
-                              DashIconify(icon=style["icon"], width=24),
-                              size="xl",
-                              radius="md",
-                              color=style["color"],
-                              variant="light",
-                          ),
-                          dmc.Stack(
-                              gap=2,
-                              children=[
-                                  dmc.Group(
-                                      gap="xs",
-                                      children=[
-                                          dmc.Text(
-                                              style["label"], fw=700, size="sm"
-                                          ),
-                                          *badge_list,
-                                      ],
-                                  ),
-                                  dmc.Text(
-                                      style["desc"], size="xs", c="dimmed"
-                                  ),
-                              ],
-                          ),
-                      ]
-                  ),
-                  # Right: Toggle + Actions
-                  dmc.Group(
-                      gap="lg",
-                      children=[
-                          dmc.Tooltip(
-                              label=(
-                                  "Accuracy assertions contribute to the"
-                                  " overall score. Diagnostic assertions are"
-                                  " used for monitoring without affecting the"
-                                  " score."
-                              ),
-                              position="top",
-                              withArrow=True,
-                              children=dmc.Group(
-                                  gap="xs",
-                                  children=[
-                                      dmc.Text(
-                                          "ACCURACY",
-                                          size="10px",
-                                          fw=700,
-                                          c=(
-                                              "dimmed"
-                                              if not is_accuracy
-                                              else "dark"
-                                          ),
-                                      ),
-                                      dmc.Switch(
-                                          checked=is_accuracy,
-                                          id={
-                                              "type": (
-                                                  Ids.ASSERT_TOGGLE_ACCURACY
-                                              ),
-                                              "index": index,
-                                          },
-                                          size="md",
-                                          color="blue",
-                                      ),
-                                  ],
-                              ),
-                          ),
-                          dmc.Divider(orientation="vertical", h=20),
-                          # Actions
-                          dmc.Group(
-                              gap=4,
-                              children=[
-                                  dmc.ActionIcon(
-                                      DashIconify(icon="bi:pencil", width=18),
-                                      id={
-                                          "type": Ids.ASSERT_EDIT_BTN,
-                                          "index": index,
-                                      },
-                                      variant="subtle",
-                                      color="gray",
-                                  ),
-                                  dmc.ActionIcon(
-                                      DashIconify(icon="bi:trash", width=18),
-                                      id={
-                                          "type": Ids.TC_REMOVE_ASSERTION_BTN,
-                                          "index": index,
-                                      },
-                                      variant="subtle",
-                                      color="red",
-                                  ),
-                              ],
-                          ),
-                      ],
-                  ),
-              ],
-          ),
-          # Content Block (collapsible effectively by presence)
-          content if content else html.Div(),
-      ],
-  )
-
-
-def render_add_test_case_placeholder(suite_id: str):
-  """Renders a styled placeholder card for adding a new test case."""
-  return dmc.Anchor(
-      dmc.Paper(
-          p="lg",
-          radius="md",
-          withBorder=True,
-          style={
-              "borderStyle": "dashed",
-              "cursor": "pointer",
-              "backgroundColor": "#f8fafc",
-          },
-          className="hover:bg-gray-100 transition-colors",
-          children=[
-              dmc.Center(
-                  children=dmc.Group(
-                      children=[
-                          DashIconify(
-                              icon="bi:plus-circle",
-                              width=20,
-                              color="#64748b",
-                          ),
-                          dmc.Text(
-                              "Add New Test Case",
-                              fw=500,
-                              c="dimmed",
-                          ),
-                      ]
-                  )
-              )
-          ],
-      ),
-      href=f"/test_suites/edit/{suite_id}?action=add",
-      underline=False,
-      mb="lg",
-      style={"display": "block"},
   )

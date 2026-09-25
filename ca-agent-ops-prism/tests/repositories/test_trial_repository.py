@@ -1,7 +1,23 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """Unit tests for TrialRepository."""
 
 from prism.common.schemas.agent import AgentConfig
-from prism.server.models.assertion import AssertionResult, AssertionSnapshot, AssertionType
+from prism.server.models.assertion import AssertionResult
+from prism.server.models.assertion import AssertionSnapshot
+from prism.server.models.assertion import AssertionType
 from prism.server.models.assertion import SuggestedAssertion
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
@@ -13,8 +29,6 @@ from sqlalchemy.orm import Session
 
 
 def test_create_trial(db_session: Session):
-  """Tests creating a trial."""
-  # Setup prerequisites
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -32,7 +46,6 @@ def test_create_trial(db_session: Session):
   snapshot = snapshot_service.create_snapshot(suite.id)
   run = run_repo.create(snapshot.id, agent.id)
 
-  # Test
   repo = TrialRepository(db_session)
   trial = repo.create(
       run_id=run.id, example_snapshot_id=snapshot.examples[0].id
@@ -44,8 +57,6 @@ def test_create_trial(db_session: Session):
 
 
 def test_update_result_trial(db_session: Session):
-  """Tests updating trial result."""
-  # Setup prerequisites
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -73,7 +84,8 @@ def test_update_result_trial(db_session: Session):
   db_session.add(snap)
   db_session.commit()
 
-  # Add an assertion result to provide a score
+  # Trial.score is derived from the assertion results, so a trial with none
+  # has nothing to report.
   res = AssertionResult(
       trial_id=trial.id,
       assertion_snapshot_id=snap.id,
@@ -96,8 +108,6 @@ def test_update_result_trial(db_session: Session):
 
 
 def test_update_suggestion(db_session: Session):
-  """Tests updating a suggestion in a trial."""
-  # Setup prerequisites
   agent_repo = AgentRepository(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -117,8 +127,7 @@ def test_update_suggestion(db_session: Session):
   run = run_repo.create(snapshot.id, agent.id)
   trial = trial_repo.create(run.id, snapshot.examples[0].id)
 
-  # Manually set suggestions for test (since create doesn't support it directly yet or we mocked it)
-  # But Trial model supports it.
+  # TrialRepository.create takes no suggestions, so set them on the model.
   trial.suggested_asserts = [
       SuggestedAssertion(
           type="text-contains", weight=1.0, params={"value": "foo"}
@@ -134,3 +143,36 @@ def test_update_suggestion(db_session: Session):
 
   assert updated_trial.suggested_asserts[0].params["value"] == "bar"
   assert updated_trial.suggested_asserts[0].weight == 0
+
+
+def test_list_trials_with_suggestions(db_session: Session):
+  agent_repo = AgentRepository(db_session)
+  suite_repo = SuiteRepository(db_session)
+  example_repo = ExampleRepository(db_session)
+  snapshot_service = SnapshotService(db_session, suite_repo, example_repo)
+  run_repo = RunRepository(db_session)
+  trial_repo = TrialRepository(db_session)
+
+  config = AgentConfig(project_id="p", location="l", agent_resource_id="r")
+  agent = agent_repo.create(name="Bot", config=config)
+  suite = suite_repo.create(name="Suite")
+  example = example_repo.create(suite.id, "Q1")
+  snapshot = snapshot_service.create_snapshot(suite.id)
+  example_snapshot_id = snapshot.examples[0].id
+
+  run = run_repo.create(snapshot.id, agent.id)
+  with_suggestion = trial_repo.create(run.id, example_snapshot_id)
+  with_suggestion.suggested_asserts = [
+      SuggestedAssertion(
+          type="text-contains", weight=1.0, params={"value": "foo"}
+      )
+  ]
+  trial_repo.create(run.id, example_snapshot_id)
+  db_session.commit()
+
+  # The filter used to be suggested_asserts.is_not(None). It's a one-to-many
+  # relationship, which has no IS NOT NULL, so this raised NotImplementedError
+  # and the suggestions modal 500'd.
+  found = trial_repo.list_trials_with_suggestions(example.id)
+
+  assert [t.id for t in found] == [with_suggestion.id]

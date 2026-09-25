@@ -17,39 +17,42 @@
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
-from prism.common.schemas.suite import Suite
+from prism.common.schemas.suite import SuiteDetail
+from prism.ui import utils
 from prism.ui.components.badges import render_coverage_badge
 from prism.ui.pages.agent_ids import AgentIds
 
 
-def get_quality_badge(suite: Suite):
+def get_quality_badge(suite: SuiteDetail):
   """Returns the quality badge based on assertion coverage."""
   total_questions = len(suite.examples)
-  questions_with_asserts = sum(1 for e in suite.examples if e.asserts)
+  # Weight-0 assertions are diagnostic and Trial.score skips them, so a suite
+  # made only of those scores nothing. Counting them here painted it green.
+  questions_with_asserts = sum(
+      1 for e in suite.examples if any(a.weight > 0 for a in e.asserts)
+  )
 
-  if total_questions == 0:
-    return render_coverage_badge("No Test Cases", "gray")
-
-  if questions_with_asserts == total_questions:
-    return render_coverage_badge("Full Coverage", "green")
-  elif questions_with_asserts > 0:
-    return render_coverage_badge("Partial Coverage", "yellow")
-  else:
-    return render_coverage_badge("No Coverage", "red")
+  color, label = utils.coverage_display(
+      total_questions,
+      questions_with_asserts / total_questions if total_questions else 0.0,
+  )
+  return render_coverage_badge(label, color)
 
 
-def render_suite_card(suite: Suite | None):
+def render_suite_card(suite: SuiteDetail | None):
   """Renders the test suite details card."""
 
   if not suite:
     return None
+
+  case_count = len(suite.examples)
+  count_label = f"{case_count} test cases" if case_count != 1 else "1 test case"
 
   return dmc.Paper(
       withBorder=True,
       radius="md",
       p=0,
       children=[
-          # Header
           dmc.Group(
               justify="space-between",
               p="md",
@@ -60,7 +63,6 @@ def render_suite_card(suite: Suite | None):
                   get_quality_badge(suite),
               ],
           ),
-          # Grid
           dmc.SimpleGrid(
               cols=2,
               p="md",
@@ -74,9 +76,7 @@ def render_suite_card(suite: Suite | None):
                           fw=600,
                           tt="uppercase",
                       ),
-                      dmc.Text(
-                          f"{len(suite.examples)} test cases", size="sm", fw=500
-                      ),
+                      dmc.Text(count_label, size="sm", fw=500),
                   ]),
                   html.Div([
                       dmc.Text(
@@ -86,9 +86,8 @@ def render_suite_card(suite: Suite | None):
                           fw=600,
                           tt="uppercase",
                       ),
-                      # Timestamp formatting should happen here or passed in
                       dmc.Text(
-                          suite.modified_at.strftime("%b %d, %Y")
+                          utils.format_timestamp(suite.modified_at)
                           if suite.modified_at
                           else "N/A",
                           size="sm",
@@ -97,7 +96,6 @@ def render_suite_card(suite: Suite | None):
                   ]),
               ],
           ),
-          # Description
           dmc.Box(
               p="md",
               style={"borderTop": "1px solid #e9ecef"},
@@ -133,7 +131,6 @@ def render_modal():
       radius="md",
       centered=True,
       children=[
-          # Header
           dmc.Group(
               justify="space-between",
               p="lg",
@@ -153,19 +150,16 @@ def render_modal():
                       variant="subtle",
                       color="gray",
                       radius="md",
-                      id=AgentIds.Detail.EvalModal.BTN_CANCEL + "-x",
+                      id=AgentIds.Detail.EvalModal.BTN_CLOSE,
                       n_clicks=0,
                   ),
               ],
           ),
-          # Body
           dmc.Stack(
               p="lg",
               gap="lg",
               children=[
-                  # Validation Alert
                   html.Div(id=AgentIds.Detail.EvalModal.ALERT_VALIDATION),
-                  # Select Test Suite
                   dmc.Stack(
                       gap=4,  # Close gap between label and select
                       children=[
@@ -198,17 +192,15 @@ def render_modal():
                           ),
                       ],
                   ),
-                  # Options
                   dmc.Switch(
                       id=AgentIds.Detail.EvalModal.TOGGLE_SUGGESTIONS,
                       label="Generate Suggested Assertions",
                       description=(
                           "Automatically suggest new assertions based on trace"
-                          " results (Uses LLM)."
+                          " results (uses Gemini)."
                       ),
-                      checked=False,  # Default to false
+                      checked=False,
                   ),
-                  # Concurrency Option
                   dmc.NumberInput(
                       id=AgentIds.Detail.EvalModal.INPUT_CONCURRENCY,
                       label="Max Concurrency",
@@ -222,7 +214,6 @@ def render_modal():
                       step=1,
                       radius="md",
                   ),
-                  # Suite Details
                   html.Div(
                       id=AgentIds.Detail.EvalModal.SUITE_DETAILS,
                       children=dmc.Alert(
@@ -233,7 +224,6 @@ def render_modal():
                   ),
               ],
           ),
-          # Footer
           dmc.Group(
               justify="flex-end",
               p="lg",

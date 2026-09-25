@@ -36,7 +36,11 @@ from prism.ui.utils import typed_callback
     prevent_initial_call=True,
 )
 def toggle_choice_modal(*_args):
-  """Toggles the choice modal."""
+  """Toggles the choice modal.
+
+  Create and existing are anchors that navigate away, so for those two all
+  this does is close the modal behind them.
+  """
   is_open = _args[-1]
   return not is_open
 
@@ -44,27 +48,23 @@ def toggle_choice_modal(*_args):
 @typed_callback(
     Output(AgentIds.Home.CARD_GRID, CP.CHILDREN),
     [
-        Input("url", CP.PATHNAME),  # Trigger on load
+        Input("url", CP.PATHNAME),
         Input(AgentIds.Home.SWITCH_ARCHIVED, CP.CHECKED),
     ],
 )
-def update_agent_list(pathname: str, include_archived: bool):
+def update_agent_list(unused_pathname: str, include_archived: bool):
   """Updates the agent list UI with cards."""
-  # Use Clients
   client = get_client()
   agents_client = client.agents
   runs_client = client.runs
 
   agents = agents_client.list_agents(include_archived=include_archived)
 
-  # Fetch Latest Runs for Cards (Schema-based)
   agent_ids = [a.id for a in agents]
   latest_runs_map = runs_client.get_latest_runs_with_stats(agent_ids)
 
-  # Fetch Run History (Schema-based)
   run_history = runs_client.get_run_history_for_agents(agent_ids, limit=20)
 
-  # Render Table
   cards = tables.render_agent_table(agents, latest_runs_map, run_history)
 
   return cards

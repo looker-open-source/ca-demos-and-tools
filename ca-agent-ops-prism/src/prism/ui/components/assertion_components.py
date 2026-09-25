@@ -20,6 +20,7 @@ from typing import Any
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+from prism.common.schemas.assertion import MatchMode
 from prism.common.schemas.execution import Trial
 from prism.ui.constants import ASSERTS_GUIDE, CHART_TYPE_OPTIONS
 from prism.ui.ids import ComparisonIds
@@ -30,18 +31,17 @@ from prism.ui.utils import clean_empty
 import yaml
 
 
-def _render_guide_card(ids_class):
+def _render_guide_card():
   """Renders the dynamic guide card."""
-  # This container will be populated by a client-side callback
-  # based on the selected assertion type.
+  # A server-side callback fills this in from the selected assertion type.
   return dmc.Paper(
-      id=ids_class.ASSERT_GUIDE_CONTAINER,
+      id=Ids.ASSERT_GUIDE_CONTAINER,
       radius="md",
       p="md",
       withBorder=True,
       style={
-          "backgroundColor": "#eff6ff",  # blue-50
-          "borderColor": "#dbeafe",  # blue-100
+          "backgroundColor": "#eff6ff",
+          "borderColor": "#dbeafe",
           "display": "none",  # Toggled by callback
       },
       children=[
@@ -54,7 +54,6 @@ def _render_guide_card(ids_class):
                       align="start",
                       gap="md",
                       children=[
-                          # Icon
                           dmc.ThemeIcon(
                               size="lg",
                               radius="md",
@@ -65,35 +64,32 @@ def _render_guide_card(ids_class):
                                   width=20,
                               ),
                           ),
-                          # Content
                           dmc.Stack(
                               gap=4,
                               children=[
                                   dmc.Text(
-                                      id=ids_class.ASSERT_GUIDE_TITLE,
+                                      id=Ids.ASSERT_GUIDE_TITLE,
                                       fw=700,
                                       size="sm",
-                                      c="#1e40af",  # blue-800
+                                      c="#1e40af",
                                   ),
                                   dmc.Text(
-                                      id=ids_class.ASSERT_GUIDE_DESC,
+                                      id=Ids.ASSERT_GUIDE_DESC,
                                       size="sm",
-                                      c="#1e3a8a",  # blue-900
+                                      c="#1e3a8a",
                                       lh=1.5,
                                   ),
                               ],
                           ),
                       ],
                   ),
-                  # Right side placeholder (optional, keeps layout balanced)
-                  # Can be used for images or close buttons in future
               ],
           )
       ],
   )
 
 
-def _render_code_editor(ids_class):
+def _render_code_editor():
   """Renders the code-editor style inputs."""
   return dmc.Stack(
       gap="xs",
@@ -101,25 +97,40 @@ def _render_code_editor(ids_class):
           dmc.Grid(
               gutter="md",
               children=[
-                  # User Input (2/3 width)
                   dmc.GridCol(
                       span=8,
                       children=dmc.Stack(
-                          gap=4,
+                          gap=8,
                           children=[
                               dmc.Group(
-                                  h=20,
+                                  h=28,
                                   align="flex-end",
                                   justify="space-between",
                                   children=[
                                       dmc.Text(
                                           "Assertion Logic", fw=500, size="sm"
                                       ),
-                                      dmc.Anchor(
-                                          "Test Regex",
-                                          href="#",
+                                      # Only the two contains types read this,
+                                      # so the type callback hides it for the
+                                      # rest.
+                                      dmc.SegmentedControl(
+                                          id=Ids.TC_ASSERT_MODE,
+                                          value=MatchMode.CONTAINS.value,
+                                          data=[
+                                              {
+                                                  "label": "Text Match",
+                                                  "value": (
+                                                      MatchMode.CONTAINS.value
+                                                  ),
+                                              },
+                                              {
+                                                  "label": "Regex Match",
+                                                  "value": (
+                                                      MatchMode.REGEX.value
+                                                  ),
+                                              },
+                                          ],
                                           size="xs",
-                                          c="blue",
                                           style={"display": "none"},
                                       ),
                                   ],
@@ -127,9 +138,21 @@ def _render_code_editor(ids_class):
                               dmc.Box(
                                   style={"position": "relative"},
                                   children=[
-                                      dmc.TextInput(
-                                          id=ids_class.ASSERT_VALUE,
+                                      # Multi-line. The values that go in here
+                                      # are SQL fragments and prose, and a
+                                      # single-line input showed a sliding
+                                      # window of whichever one you were
+                                      # editing. It rested at one row, which
+                                      # read as a single-line field and hid
+                                      # that it takes more. update_assertion_ui
+                                      # drops it back to one row for the types
+                                      # that take a number.
+                                      dmc.Textarea(
+                                          id=Ids.TC_ASSERT_VALUE,
                                           placeholder="Enter value...",
+                                          minRows=4,
+                                          maxRows=8,
+                                          autosize=True,
                                           style={"display": "none"},
                                           styles={
                                               "input": {
@@ -139,7 +162,7 @@ def _render_code_editor(ids_class):
                                           className="font-mono",
                                       ),
                                       dmc.Textarea(
-                                          id=ids_class.ASSERT_YAML,
+                                          id=Ids.TC_ASSERT_YAML,
                                           placeholder="Enter configuration...",
                                           minRows=5,
                                           autosize=True,
@@ -153,16 +176,7 @@ def _render_code_editor(ids_class):
                                           className="font-mono",
                                       ),
                                       dmc.Select(
-                                          id=ids_class.ASSERT_CHART_TYPE
-                                          if hasattr(
-                                              ids_class, "ASSERT_CHART_TYPE"
-                                          )
-                                          else ids_class.TRIAL_SUG_EDIT_CHART_TYPE
-                                          if hasattr(
-                                              ids_class,
-                                              "TRIAL_SUG_EDIT_CHART_TYPE",
-                                          )
-                                          else ids_class.SUG_EDIT_CHART_TYPE,
+                                          id=Ids.ASSERT_CHART_TYPE,
                                           data=CHART_TYPE_OPTIONS,
                                           placeholder="Select chart type...",
                                           style={"display": "none"},
@@ -174,16 +188,15 @@ def _render_code_editor(ids_class):
                           ],
                       ),
                   ),
-                  # Example Block (1/3 width)
                   dmc.GridCol(
                       span=4,
                       children=[
                           dmc.Stack(
-                              id=ids_class.ASSERT_EXAMPLE_CONTAINER,
-                              gap=4,
+                              id=Ids.ASSERT_EXAMPLE_CONTAINER,
+                              gap=8,
                               children=[
                                   dmc.Group(
-                                      h=20,
+                                      h=28,
                                       align="flex-end",
                                       children=[
                                           dmc.Text(
@@ -198,10 +211,17 @@ def _render_code_editor(ids_class):
                                   ),
                                   dmc.Box(
                                       children=[
-                                          dmc.TextInput(
-                                              id=ids_class.ASSERT_EXAMPLE_VALUE,
+                                          # Matches the field it is an example
+                                          # for. A long example was clipped
+                                          # here while the box beside it wrapped
+                                          # the same text.
+                                          dmc.Textarea(
+                                              id=Ids.ASSERT_EXAMPLE_VALUE,
                                               readOnly=True,
                                               disabled=True,
+                                              minRows=4,
+                                              maxRows=8,
+                                              autosize=True,
                                               style={"display": "none"},
                                               styles={
                                                   "input": {
@@ -215,7 +235,7 @@ def _render_code_editor(ids_class):
                                               className="font-mono",
                                           ),
                                           dmc.Textarea(
-                                              id=ids_class.ASSERT_EXAMPLE_YAML,
+                                              id=Ids.ASSERT_EXAMPLE_YAML,
                                               readOnly=True,
                                               disabled=True,
                                               minRows=5,
@@ -245,12 +265,12 @@ def _render_code_editor(ids_class):
   )
 
 
-def _render_accuracy_toggle(ids_class):
+def _render_accuracy_toggle():
   """Renders the card-style accuracy toggle."""
   return dmc.Paper(
       radius="md",
       p="md",
-      bg="gray.0",  # bg-slate-50 equivalent
+      bg="gray.0",
       children=[
           dmc.Group(
               justify="space-between",
@@ -283,7 +303,7 @@ def _render_accuracy_toggle(ids_class):
                       ]
                   ),
                   dmc.Switch(
-                      id=ids_class.ASSERT_WEIGHT,
+                      id=Ids.TC_ASSERT_WEIGHT,
                       size="md",
                       color="blue",
                       checked=True,
@@ -294,24 +314,17 @@ def _render_accuracy_toggle(ids_class):
   )
 
 
-def render_assertion_form_content(
-    ids_class: type[Any],
-    is_edit: bool = False,
-    is_suggestion: bool = False,
-):
-  """Renders the common content for a assertion modal."""
-  del is_edit, is_suggestion  # Unused for now
-
+def render_assertion_form_content():
+  """Renders the body of the assertion modal."""
   return dmc.Stack(
       gap="lg",
       children=[
-          # assertion Type Select
           dmc.Stack(
               gap="xs",
               children=[
                   dmc.Text("Assertion Type", fw=500, size="sm"),
                   dmc.Select(
-                      id=ids_class.ASSERT_TYPE,
+                      id=Ids.TC_ASSERT_TYPE,
                       data=[
                           {"label": g["label"], "value": g["name"]}
                           for g in ASSERTS_GUIDE
@@ -323,15 +336,11 @@ def render_assertion_form_content(
                   ),
               ],
           ),
-          # Dynamic Guide Card
-          _render_guide_card(ids_class),
-          # Logic Editor
-          _render_code_editor(ids_class),
-          # assertion Met Toggle
-          _render_accuracy_toggle(ids_class),
-          # Validation Error Message
+          _render_guide_card(),
+          _render_code_editor(),
+          _render_accuracy_toggle(),
           dmc.Alert(
-              id=ids_class.VAL_MSG,
+              id=Ids.ASSERT_VAL_MSG,
               color="red",
               variant="light",
               title="Validation Error",
@@ -342,127 +351,114 @@ def render_assertion_form_content(
   )
 
 
-def render_assertion_result_compact(result):
-  """Renders a compact assertion result card.
+def is_accuracy_assertion(weight: Any) -> bool:
+  """Whether an assertion counts toward the score.
 
-  Args:
-      result: assertionResult schema object or dict.
-
-  Returns:
-      A Dash component.
+  Weight is the only thing that decides it. Anything at zero is diagnostic:
+  it runs and reports, but the run's accuracy ignores it.
   """
-  # Normalize input if it's a Pydantic model
-  if hasattr(result, "model_dump"):
-    result = result.model_dump()
+  try:
+    return float(weight or 0) > 0
+  except (TypeError, ValueError):
+    return False
 
-  assertion = result.get("assertion", {})
-  a_type = assertion.get("type", "Unknown")
-  a_weight = assertion.get("weight", 0)
-  a_val = assertion.get("value") or assertion.get("params")
 
-  is_accuracy = a_weight > 0
-  passed = result.get("passed", False)
-  reason = result.get("reasoning")
-  error = result.get("error_message")
+def assertion_status_color(passed: bool, is_accuracy: bool) -> str:
+  """The color for one assertion result.
 
-  # Status Color
-  status_color = "green" if passed else "red"
-  if not is_accuracy and not passed:
-    status_color = "orange"
+  A diagnostic failure is not a failed run, so it does not get the red an
+  accuracy failure gets.
+  """
+  if passed:
+    return "teal" if is_accuracy else "gray"
+  return "red" if is_accuracy else "orange"
 
-  type_label = a_type.replace("-", " ").title()
 
-  # Value/Params
-  code_component = None
-  if a_val:
-    code_component = dmc.Code(
-        str(a_val),
-        block=False,
-        c="dimmed",
-        style={
-            "fontSize": "10px",
-            "maxWidth": "250px",
-            "overflow": "hidden",
-            "textOverflow": "ellipsis",
-            "whiteSpace": "nowrap",
+def render_assertion_status_badge(
+    passed: bool,
+    is_accuracy: bool,
+    size: str = "xs",
+    with_icon: bool = False,
+    **kwargs,
+) -> dmc.Badge:
+  """Renders the PASS/FAIL badge for one assertion result.
+
+  Color carries the outcome, variant carries the category. Filled means the
+  result moved the score, outline means it did not. Color alone was not enough:
+  a list of results made a diagnostic failure look like a broken agent.
+  """
+  label = "PASS" if passed else "FAIL"
+  if with_icon:
+    label = [
+        DashIconify(
+            icon="mi:check" if passed else "mi:close",
+            width=14,
+            style={"marginRight": "4px"},
+        ),
+        label,
+    ]
+    kwargs.setdefault(
+        "styles",
+        {
+            "label": {
+                "display": "flex",
+                "alignItems": "center",
+                "fontWeight": 700,
+            }
         },
     )
-
-  return dmc.Paper(
-      withBorder=True,
-      radius="sm",
-      p="xs",
-      mb="xs",
-      style={
-          "borderLeft": f"4px solid var(--mantine-color-{status_color}-5)",
-          "backgroundColor": "var(--mantine-color-gray-0)",
-      },
-      children=[
-          dmc.Group(
-              justify="space-between",
-              align="start",
-              children=[
-                  dmc.Stack(
-                      gap=0,
-                      children=[
-                          dmc.Group(
-                              gap="xs",
-                              children=[
-                                  dmc.Text(type_label, fw=600, size="sm"),
-                                  dmc.Badge(
-                                      "Accuracy"
-                                      if is_accuracy
-                                      else "Diagnostic",
-                                      variant="dot",
-                                      color="blue" if is_accuracy else "gray",
-                                      size="xs",
-                                  ),
-                              ],
-                          ),
-                          code_component,
-                      ],
-                  ),
-                  # Score / Status
-                  dmc.Stack(
-                      gap=0,
-                      align="end",
-                      children=[
-                          dmc.Badge(
-                              "PASS" if passed else "FAIL",
-                              color=status_color,
-                              variant="light",
-                              size="sm",
-                          ),
-                      ],
-                  ),
-              ],
-          ),
-          # Reason / Error
-          dmc.Text(reason, size="xs", mt="xs", c="dimmed", fs="italic")
-          if reason
-          else None,
-          dmc.Text(error, size="xs", mt="xs", c="red") if error else None,
-      ],
+  return dmc.Badge(
+      label,
+      color=assertion_status_color(passed, is_accuracy),
+      variant="filled" if is_accuracy else "outline",
+      size=size,
+      radius="xs",
+      fw=700,
+      **kwargs,
   )
 
 
+def render_assertion_category_badge(is_accuracy: bool, **kwargs) -> dmc.Badge:
+  """Renders the Accuracy/Diagnostic badge for one assertion.
+
+  Same green/gray as the suggestion cards on the suite questions page, so the
+  category looks the same wherever it is shown.
+  """
+  return dmc.Badge(
+      "Accuracy" if is_accuracy else "Diagnostic",
+      color="green" if is_accuracy else "gray",
+      variant="light",
+      size="xs",
+      **kwargs,
+  )
+
+
+# What the category badge means. Shown on hover wherever the badge appears.
+ASSERTION_CATEGORY_HELP = (
+    "Accuracy assertions contribute to the overall score. Diagnostic"
+    " assertions (Accuracy OFF) are used for monitoring without affecting the"
+    " score."
+)
+
+
 def get_assertion_style(a_type: str) -> dict[str, Any]:
-  """Returns icon, color, label for assertion type matching mockup."""
-  # Default
+  """Returns the icon, colours and labels used to render an assertion type."""
   style = {
       "icon": "material-symbols:help-outline",
       "color": "gray",
       "bg": "gray",
-      "label": "assertion",
+      # Title case, like every other label here. It is rendered as display
+      # text, and was the one lowercase label in the map.
+      "label": "Assertion",
       "badge": "CHECK",
       "desc": "Validates the response.",
   }
 
-  if a_type == "text-contains" or a_type == "text-exact-match":
+  if a_type == "text-contains":
     style.update({
         "icon": "material-symbols:text-fields",
         "color": "blue",
-        "bg": "blue",  # blue-50 equivalent handled in component
+        "bg": "blue",
         "label": "Text Contains",
         "badge": "STRING",
         "desc": (
@@ -478,15 +474,15 @@ def get_assertion_style(a_type: str) -> dict[str, Any]:
         "badge": "LOOKML",
         "desc": (
             "Checks if the generated Looker query matches the specified"
-            " structure. A partial score is computed based on parameter match"
-            " ratio. The assertion evaluates to Pass if the match rate is >="
-            " 0.75."
+            " structure. The match rate is the fraction of the parameters you"
+            " specified that matched. It passes at >= 0.75 and scores 1.0 or"
+            " 0.0."
         ),
     })
   elif a_type == "data-check-row":
     style.update({
         "icon": "material-symbols:table-rows",
-        "color": "teal",  # emerald equivalent
+        "color": "teal",
         "bg": "teal",
         "label": "Data Check Row",
         "badge": "DATA",
@@ -510,23 +506,14 @@ def get_assertion_style(a_type: str) -> dict[str, Any]:
         "badge": "CHART",
         "desc": "Checks if the chart type matches the expected type.",
     })
-  elif a_type == "query-contains" or a_type == "sql-valid":
+  elif a_type == "query-contains":
     style.update({
         "icon": "material-symbols:manage-search",
-        "color": "orange",  # amber equivalent
+        "color": "orange",
         "bg": "orange",
         "label": "Query Contains",
         "badge": "SQL",
         "desc": "Checks if the generated SQL contains specific keywords.",
-    })
-  elif a_type == "custom":
-    style.update({
-        "icon": "material-symbols:code",
-        "color": "violet",
-        "bg": "violet",
-        "label": "Custom Python",
-        "badge": "PYTHON",
-        "desc": "Executes custom Python logic for validation.",
     })
   elif a_type in ["duration-max-ms", "latency-max-ms"]:
     style.update({
@@ -540,42 +527,6 @@ def get_assertion_style(a_type: str) -> dict[str, Any]:
         ),
         "badge": "PERFORMANCE",
         "desc": "Ensures response time does not exceed threshold.",
-    })
-  elif a_type == "llm-evaluation":
-    style.update({
-        "icon": "material-symbols:psychology",
-        "color": "grape",
-        "bg": "grape",
-        "label": "LLM Evaluation",
-        "badge": "TONE",
-        "desc": "Validates the politeness and tone of the response.",
-    })
-  elif a_type == "regex-match":
-    style.update({
-        "icon": "material-symbols:code",
-        "color": "emerald",
-        "bg": "emerald",
-        "label": "Regex Pattern",
-        "badge": "MATCH",
-        "desc": "Checks for specific keywords using regex.",
-    })
-  elif a_type == "sentiment-score":
-    style.update({
-        "icon": "material-symbols:mood",
-        "color": "sky",
-        "bg": "sky",
-        "label": "Sentiment Analysis",
-        "badge": "SCORE",
-        "desc": "Monitors sentiment trends over turns.",
-    })
-  elif a_type == "resolution-confirmation":
-    style.update({
-        "icon": "material-symbols:verified",
-        "color": "orange",
-        "bg": "orange",
-        "label": "Resolution Confirmation",
-        "badge": "SCRIPT",
-        "desc": "Verify explicit confirmation.",
     })
   elif a_type == "ai-judge":
     style.update({
@@ -595,7 +546,7 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
   if a_type in ["duration-max-ms", "latency-max-ms"]:
     val = assertion.get("value", "0")
     return dmc.Box(
-        bg="#f8fafc",  # slate-50
+        bg="#f8fafc",
         p="md",
         style={"borderRadius": "8px", "border": "1px solid #f1f5f9"},
         children=dmc.Text(f"{val} ms", c="grape", fw=700, ff="mono", size="sm"),
@@ -622,10 +573,9 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
     )
 
   if a_type == "data-check-row":
-    # Render Columns Dictionary
     columns = assertion.get("columns", {})
     if not columns and "value" in assertion:
-      # Fallback if stored differently
+      # Older rows keep the columns as a JSON string in "value".
       try:
         columns = json.loads(assertion["value"])
       except (ValueError, TypeError):
@@ -636,7 +586,6 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
 
     grid_children = []
     for k, v in columns.items():
-      # Key
       grid_children.append(
           dmc.Text(
               f"{k}:",
@@ -647,7 +596,6 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
               style={"wordBreak": "break-all", "maxWidth": "250px"},
           )
       )
-      # Value (Styled)
       color = "teal" if isinstance(v, str) else "blue"
       if isinstance(v, (int, float)) or (
           isinstance(v, str) and (">" in v or "<" in v)
@@ -666,7 +614,7 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
       )
 
     return dmc.Box(
-        bg="gray.0",  # slate-50
+        bg="gray.0",
         p="md",
         style={"borderRadius": "8px", "border": "1px solid #f1f5f9"},
         children=[
@@ -692,10 +640,10 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
   elif a_type == "looker-query-match":
     return _render_assertion_value_display(a_type, assertion, is_table=False)
 
-  elif a_type in ["text-contains", "text-exact-match"]:
+  elif a_type == "text-contains":
     val = assertion.get("value", "")
     return dmc.Box(
-        bg="#f8fafc",  # slate-50
+        bg="#f8fafc",
         p="md",
         style={"borderRadius": "8px", "border": "1px solid #f1f5f9"},
         children=dmc.Code(
@@ -706,10 +654,10 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
         ),
     )
 
-  elif a_type in ["query-contains", "sql-valid"]:
+  elif a_type == "query-contains":
     val = assertion.get("value", "")
     return dmc.Box(
-        bg="#f8fafc",  # slate-50
+        bg="#f8fafc",
         p="md",
         style={"borderRadius": "8px", "border": "1px solid #f1f5f9"},
         children=dmc.Code(
@@ -723,182 +671,13 @@ def _render_assertion_content(a_type: str, assertion: dict[str, Any]):
   elif a_type == "ai-judge":
     val = assertion.get("value", "")
     return dmc.Box(
-        bg="grape.0",
+        bg="#f8fafc",
         p="md",
-        style={
-            "borderRadius": "8px",
-            "border": "1px solid var(--mantine-color-grape-2)",
-        },
-        children=dmc.Text(val, size="sm", c="grape.9"),
+        style={"borderRadius": "8px", "border": "1px solid #f1f5f9"},
+        children=dmc.Text(val, size="sm", c="dark"),
     )
 
   return None
-
-
-def render_assertion_result_card(
-    assertion: dict[str, Any],
-    result: dict[str, Any] | None = None,
-    is_suggestion: bool = False,
-    index: int = 0,
-    ids_class: Any = None,
-):
-  """Renders a simple, reusable assertion result card matching the mockup."""
-  a_type = assertion.get("type", "unknown")
-  weight = assertion.get("weight", 0)
-  is_accuracy = weight > 0
-  if hasattr(a_type, "value"):
-    a_type = a_type.value
-  style = get_assertion_style(a_type)
-
-  # Title: Use name from params if available, else style label
-  title = (
-      assertion.get("name") or assertion.get("description") or style["label"]
-  )
-
-  # Normalize result
-  result = result or assertion.get("result") or {}
-  passed = result.get("passed", False)
-  reason = result.get("reasoning") or "No reason provided."
-
-  # Colors and Icons
-  if is_suggestion:
-    border_color = "var(--mantine-color-grape-4)"
-    status_badge = dmc.Badge(
-        "AI",
-        variant="light",
-        color="grape",
-        size="xs",
-        radius="sm",
-    )
-    footer = None
-  else:
-    status_color = "teal" if passed else "red"
-    border_color = f"var(--mantine-color-{status_color}-5)"
-    status_badge = dmc.Badge(
-        [
-            DashIconify(
-                icon="mi:check" if passed else "mi:close",
-                width=14,
-                style={"marginRight": "4px"},
-            ),
-            "PASS" if passed else "FAIL",
-        ],
-        variant="outline",
-        color=status_color,
-        size="sm",
-        radius="xs",
-        styles={
-            "label": {
-                "display": "flex",
-                "alignItems": "center",
-                "fontWeight": 700,
-            }
-        },
-    )
-
-    footer_bg = f"var(--mantine-color-{status_color}-0)"
-    footer_border = f"var(--mantine-color-{status_color}-1)"
-    footer_text_color = f"var(--mantine-color-{status_color}-9)"
-
-    footer = dmc.Box(
-        p="sm",
-        px="xl",
-        style={
-            "backgroundColor": footer_bg,
-            "borderTop": f"1px solid {footer_border}",
-        },
-        children=dmc.Text(reason, size="sm", c=footer_text_color),
-    )
-
-  # Content Rendering
-  # Normalize a_type for pseudo-code logic
-  a_type_str = a_type.value if hasattr(a_type, "value") else str(a_type)
-
-  content_box = _render_assertion_content(a_type_str, assertion)
-
-  # Suggestion Actions
-  actions = None
-  if is_suggestion and ids_class:
-    actions = dmc.Group(
-        grow=True,
-        gap="sm",
-        mt="md",
-        children=[
-            dmc.Button(
-                "Accept",
-                id={"type": ids_class.INLINE_SUG_ADD_BTN, "index": index},
-                variant="outline",
-                color="blue",
-                size="xs",
-                leftSection=DashIconify(icon="mi:add-circle"),
-            ),
-            dmc.Button(
-                "Reject",
-                id={"type": ids_class.INLINE_SUG_REJECT_BTN, "index": index},
-                variant="subtle",
-                color="gray",
-                size="xs",
-            ),
-        ],
-    )
-
-  return dmc.Paper(
-      withBorder=True,
-      radius="md",
-      shadow="xs",
-      style={
-          "borderColor": border_color,
-          "borderWidth": "1.5px",
-          "overflow": "hidden",
-          "display": "flex",
-          "flexDirection": "column",
-          "height": "100%",
-          "borderStyle": "dashed" if is_suggestion else "solid",
-      },
-      children=[
-          dmc.Stack(
-              p="xl",
-              gap="md",
-              style={"flex": 1},
-              children=[
-                  dmc.Group(
-                      justify="space-between",
-                      align="start",
-                      children=[
-                          dmc.Group(
-                              gap="xs",
-                              style={"flex": 1},
-                              children=[
-                                  dmc.Text(title, fw=700, size="md"),
-                                  dmc.Text(
-                                      "Accuracy"
-                                      if is_accuracy
-                                      else "Diagnostic",
-                                      size="10px",
-                                      fw=700,
-                                      c="dimmed",
-                                      tt="uppercase",
-                                      lts="0.1em",
-                                  )
-                                  if not is_suggestion
-                                  else None,
-                              ],
-                          ),
-                          status_badge,
-                      ],
-                  ),
-                  content_box,
-                  dmc.Text(
-                      assertion.get("reasoning", ""), size="xs", c="dimmed"
-                  )
-                  if is_suggestion and assertion.get("reasoning")
-                  else None,
-                  actions,
-              ],
-          ),
-          footer,
-      ],
-  )
 
 
 def render_assertion_card(
@@ -907,18 +686,15 @@ def render_assertion_card(
     is_suggestion: bool = False,
     suggestion_actions: Any = None,
     result: dict[str, Any] | None = None,
-    ids_class: Any = Ids,
     show_actions: bool = True,
 ):
-  """Renders a detailed assertion card matching the mockup."""
+  """Renders the detailed card for one assertion."""
   a_type = assertion.get("type", "unknown")
-  weight = assertion.get("weight", 0)
-  is_accuracy = weight > 0
+  is_accuracy = is_accuracy_assertion(assertion.get("weight", 0))
 
   style = get_assertion_style(a_type)
   content = _render_assertion_content(a_type, assertion)
 
-  # Determine actions (Edit/Delete vs Custom Suggestion Actions)
   action_buttons = None
   if show_actions:
     if is_suggestion and suggestion_actions:
@@ -929,35 +705,17 @@ def render_assertion_card(
           children=[
               dmc.ActionIcon(
                   DashIconify(icon="material-symbols:edit", width=20),
-                  id={"type": ids_class.ASSERT_EDIT_BTN, "index": index},
+                  id={"type": Ids.ASSERT_EDIT_BTN, "index": index},
                   variant="subtle",
                   color="gray",
                   size="lg",
                   className=(
                       "hover:bg-blue-50 hover:text-blue-600 transition-colors"
                   ),
-              )
-              if hasattr(ids_class, "ASSERT_EDIT_BTN")
-              else None,
-              dmc.ActionIcon(
-                  DashIconify(icon="material-symbols:delete", width=20),
-                  id={
-                      "type": ids_class.Q_REMOVE_ASSERTION_BTN,
-                      "index": index,
-                  },
-                  variant="subtle",
-                  color="gray",
-                  size="lg",
-                  className=(
-                      "hover:bg-red-50 hover:text-red-600 transition-colors"
-                  ),
-              )
-              if hasattr(ids_class, "Q_REMOVE_ASSERTION_BTN")
-              else None,
+              ),
           ],
       )
 
-  # Result Footer
   result_footer = None
   result = result or assertion.get("result")
   if result:
@@ -965,7 +723,7 @@ def render_assertion_card(
     reason = result.get("reasoning", "No reason provided.")
     error = result.get("error_message")
 
-    status_color = "teal" if passed else "red"
+    status_color = assertion_status_color(passed, is_accuracy)
     icon = None if passed else "material-symbols:warning-amber-rounded"
 
     footer_children = []
@@ -1017,8 +775,7 @@ def render_assertion_card(
 
   paper_style = {}
   if result:
-    passed = result.get("passed", False)
-    p_color = "teal" if passed else "red"
+    p_color = assertion_status_color(result.get("passed", False), is_accuracy)
     paper_style = {
         "borderColor": f"var(--mantine-color-{p_color}-4)",
         "borderWidth": "1.5px",
@@ -1028,7 +785,7 @@ def render_assertion_card(
   content_box = None
   if content:
     content_box = dmc.Box(
-        pl="4.5rem",  # Indent to align with text
+        pl="4.5rem",  # Clears the status icon and its gap, so this lines up
         pr="md",
         pb="md",
         children=content,
@@ -1052,18 +809,16 @@ def render_assertion_card(
           "group transition-all duration-200 hover:border-blue-200 shadow-sm"
       ),
       children=[
-          # Header
           dmc.Group(
               justify="space-between",
               p="md",
               className="cursor-pointer hover:bg-slate-50/50 transition-colors",
               children=[
-                  # Left: Icon + Text
                   dmc.Group(
                       children=[
                           dmc.ThemeIcon(
                               DashIconify(icon=style["icon"], width=24),
-                              size=40,  # size-10 equivalent
+                              size=40,
                               radius="md",
                               color=style["color"],
                               variant="light",
@@ -1100,18 +855,11 @@ def render_assertion_card(
                           ),
                       ]
                   ),
-                  # Right: Toggle + Actions
                   dmc.Group(
                       gap="md",
                       children=[
-                          # Accuracy Toggle
                           dmc.Tooltip(
-                              label=(
-                                  "Accuracy assertions contribute to the"
-                                  " overall score. Diagnostic assertions"
-                                  " (Accuracy OFF) are used for monitoring"
-                                  " without affecting the score."
-                              ),
+                              label=ASSERTION_CATEGORY_HELP,
                               position="top",
                               withArrow=True,
                               children=dmc.Group(
@@ -1131,31 +879,23 @@ def render_assertion_card(
                                           checked=is_accuracy,
                                           id={
                                               "type": (
-                                                  ids_class.ASSERT_TOGGLE_ACCURACY
+                                                  Ids.ASSERT_TOGGLE_ACCURACY
                                               ),
                                               "index": index,
                                           },
                                           size="sm",
                                           color="blue",
-                                      )
-                                      if hasattr(
-                                          ids_class,
-                                          "ASSERT_TOGGLE_ACCURACY",
-                                      )
-                                      else None,
+                                      ),
                                   ],
                               ),
                           ),
                           dmc.Divider(orientation="vertical", h=20),
-                          # Edit / Delete Buttons or Custom Actions
                           action_buttons,
                       ],
                   ),
               ],
           ),
-          # Content Block
           content_box,
-          # Result Footer (New)
           footer_box,
       ],
   )
@@ -1167,7 +907,7 @@ def render_suggested_assertion_card(
     action_buttons: list[dmc.Button | dmc.ActionIcon] | None = None,
     ids_class: Any = Ids,
 ):
-  """Renders a suggested assertion card (Amber theme)."""
+  """Renders a suggested assertion card (grape theme)."""
   a_type = suggestion.get("type", "unknown")
   style = get_assertion_style(a_type)
   content = _render_assertion_content(a_type, suggestion)
@@ -1179,7 +919,6 @@ def render_suggested_assertion_card(
         className="bg-white/80 rounded-lg border border-slate-200 shadow-sm",
     )
 
-  # Actions row
   actions_row = dmc.Group(
       gap="sm",
       justify="end",
@@ -1238,7 +977,6 @@ def render_suggested_assertion_card(
               gap="md",
               wrap="nowrap",
               children=[
-                  # Icon
                   dmc.ThemeIcon(
                       DashIconify(icon=style["icon"], width=20),
                       size=32,
@@ -1247,7 +985,6 @@ def render_suggested_assertion_card(
                       variant="light",
                       className="border border-white/50 shadow-sm",
                   ),
-                  # Info + Content
                   dmc.Stack(
                       gap="sm",
                       style={"flex": 1},
@@ -1283,9 +1020,7 @@ def render_suggested_assertion_card(
                                   ),
                               ],
                           ),
-                          # Card Content (Code/Pattern)
                           content_box,
-                          # Actions at the bottom of the stack
                           actions_row,
                       ],
                   ),
@@ -1296,7 +1031,7 @@ def render_suggested_assertion_card(
 
 
 def render_suggestion_skeleton():
-  """Renders a grid of skeletons for suggested assertion."""
+  """Renders the placeholder cards shown while suggestions load."""
   skeleton_card = dmc.Paper(
       radius="md",
       withBorder=True,
@@ -1333,7 +1068,7 @@ def render_suggestion_skeleton():
 
 
 def render_empty_suggestions(button_id: str | dict[str, Any] | None = None):
-  """Renders a high-fidelity empty state for assertion suggestions."""
+  """Renders the empty state for assertion suggestions."""
   children = [
       dmc.ThemeIcon(
           DashIconify(icon="bi:stars", width=24),
@@ -1379,7 +1114,7 @@ def render_empty_suggestions(button_id: str | dict[str, Any] | None = None):
 
 
 def render_assertion_empty():
-  """Renders a high-fidelity empty state for assertion."""
+  """Renders the empty state for assertions."""
   return dmc.Center(
       py=40,
       children=[
@@ -1410,7 +1145,7 @@ def render_assertion_empty():
 
 
 def render_assertion_summary(summary: AssertionSummary) -> dmc.SimpleGrid:
-  """Renders a summary of assertion results with RingProgress charts."""
+  """Renders a summary of assertion results as a row of metric cards."""
 
   def render_metric_card(
       label: str, metric: AssertionMetric, color: str, icon: str
@@ -1461,7 +1196,8 @@ def render_assertion_summary(summary: AssertionSummary) -> dmc.SimpleGrid:
                         size="sm",
                         c="dimmed",
                         fw=500,
-                        mb=4,  # Subtle alignment adjustment
+                        # Sits on the same baseline as the big percentage.
+                        mb=4,
                     ),
                 ],
             ),
@@ -1487,23 +1223,21 @@ def render_assertion_summary(summary: AssertionSummary) -> dmc.SimpleGrid:
 
 def get_assertion_result_key(ar: Any) -> str:
   """Gets a unique key for an assertion to align them."""
-  # Normalize to dict if pydantic
   if hasattr(ar, "model_dump"):
     ar = ar.model_dump()
   assertion = ar.get("assertion", {})
 
-  # 1. Prioritize original_assertion_id for stable alignment across runs
-  # This corresponds to the ID in the live 'assertions' table.
+  # original_assertion_id is the ID in the live assertions table, so it is
+  # stable across runs.
   if assertion.get("original_assertion_id"):
     return f"orig-{assertion['original_assertion_id']}"
 
-  # 2. Fallback to content-based matching for ad-hoc assertions or missing IDs
-  # We do NOT use assertion.get('id') here because that is often the Snapshot
-  # ID, which changes for every run and prevents alignment.
+  # Ad-hoc assertions and rows with no original ID fall back to content
+  # matching. assertion.get('id') is usually the snapshot ID, which changes
+  # every run, so it cannot align anything.
   a_type = assertion.get("type", "unknown")
   a_val = str(assertion.get("value", ""))
   if not a_val and "params" in assertion:
-    # Use sorted params string for deterministic comparison
     params = assertion["params"]
     if isinstance(params, dict):
       a_val = str(sorted(params.items()))
@@ -1557,7 +1291,6 @@ def _render_assertion_value_display(
     yaml_str = assertion.get("yaml_config")
 
     rows = []
-    # Title/Header
     rows.append(
         dmc.Text(
             "LOOKML",
@@ -1616,7 +1349,8 @@ def _render_assertion_value_display(
         children=dmc.Stack(gap=2, children=rows),
     )
 
-  # Default to YAML dump for other complex types or the requested types
+  # data-check-row and other non-scalar values get a YAML dump, in a code
+  # block when it spans lines.
   if a_type == "data-check-row" or not isinstance(
       assertion.get("value"), (str, int, float, bool)
   ):
@@ -1636,7 +1370,6 @@ def _render_assertion_value_display(
           },
       )
 
-  # Fallback to standard code representation
   return dmc.Code(
       _format_assertion_value(assertion),
       style={
@@ -1655,9 +1388,8 @@ def _render_assertion_value_display(
 
 def render_assertion_diagnostic_table(
     base_trial: Trial | None, chal_trial: Trial | None
-) -> dmc.Table:
+) -> dmc.Paper:
   """Renders a detailed table comparing assertion results between two trials."""
-  # 1. Align assertions
   base_results = (
       {get_assertion_result_key(ar): ar for ar in base_trial.assertion_results}
       if base_trial
@@ -1671,11 +1403,12 @@ def render_assertion_diagnostic_table(
 
   all_keys = list(base_results.keys() | chal_results.keys())
 
-  # Sort keys: Regressions first, then by type
+  # Sort keys: regressions first, then by the alignment key itself. That key
+  # is normally "orig-<original_assertion_id>", so the secondary order is
+  # lexicographic on the live-row id, not on the assertion type.
   def sort_key(k: str) -> tuple[int, str]:
     br = base_results.get(k)
     cr = chal_results.get(k)
-    # Regression = Baseline passed, candidate failed
     is_regression = br and br.passed and cr and not cr.passed
     return (0 if is_regression else 1, k)
 
@@ -1686,14 +1419,12 @@ def render_assertion_diagnostic_table(
     base_ar = base_results.get(key)
     chal_ar = chal_results.get(key)
 
-    # Use whichever assertion definition is available
     ar = chal_ar or base_ar
     if not ar:
       continue
     assertion = ar.assertion
     style = get_assertion_style(assertion.type)
 
-    # Kind / Status
     status_label = "STABLE"
     status_color = "gray"
 
@@ -1721,6 +1452,8 @@ def render_assertion_diagnostic_table(
                 html.Td(
                     dmc.Group(
                         gap="sm",
+                        wrap="nowrap",
+                        align="center",
                         children=[
                             dmc.ThemeIcon(
                                 DashIconify(icon=style["icon"], width=16),
@@ -1735,7 +1468,7 @@ def render_assertion_diagnostic_table(
                     style={
                         "padding": "16px 24px",
                         "whiteSpace": "nowrap",
-                        "minWidth": "150px",
+                        "minWidth": "180px",
                     },
                 ),
                 # Value
@@ -1829,8 +1562,10 @@ def render_assertion_diagnostic_table(
                             dmc.Text(
                                 chal_ar.reasoning or "--",
                                 size="xs",
+                                # Only a regression gets colour. Every
+                                # other reason stays dimmed.
                                 c=(
-                                    "#e03131"  # red-7 for high contrast
+                                    "#e03131"
                                     if status_label == "REGRESSED"
                                     else "dimmed"
                                 ),
@@ -1954,7 +1689,6 @@ def render_assertion_diagnostic_accordion(
   base_results = base_trial.assertion_results if base_trial else []
   chal_results = chal_trial.assertion_results if chal_trial else []
 
-  # Calculate regressions
   base_passed_keys = {
       get_assertion_result_key(ar) for ar in base_results if ar.passed
   }
@@ -2027,29 +1761,21 @@ def render_assertion_diagnostic_accordion(
 
 def render_assertion_results_table(
     assertion_details: list[dict[str, Any]],
-) -> dmc.Table:
+) -> dmc.Paper:
   """Renders a table of assertion results."""
   rows = []
   for item in assertion_details:
     a_type = item.get("type", "unknown")
     style = get_assertion_style(a_type)
     passed = item.get("passed", False)
-    status_color = "teal" if passed else "red"
-    status_label = "PASS" if passed else "FAIL"
+    is_accuracy = is_accuracy_assertion(item.get("weight", 0))
 
     rows.append(
         html.Tr(
             children=[
                 # Status
                 html.Td(
-                    dmc.Badge(
-                        status_label,
-                        color=status_color,
-                        variant="light",
-                        size="xs",
-                        radius="xs",
-                        fw=700,
-                    ),
+                    render_assertion_status_badge(passed, is_accuracy),
                     style={
                         "padding": "16px 24px",
                         "minWidth": "120px",
@@ -2059,19 +1785,10 @@ def render_assertion_results_table(
                 # Category
                 html.Td(
                     dmc.Tooltip(
-                        label=(
-                            "Accuracy assertions contribute to the overall"
-                            " score. Diagnostic assertions (Accuracy OFF) are"
-                            " used for monitoring without affecting the score."
-                        ),
+                        label=ASSERTION_CATEGORY_HELP,
                         position="top",
                         withArrow=True,
-                        children=dmc.Text(
-                            "Accuracy"
-                            if item.get("weight", 0) > 0
-                            else "Diagnostic",
-                            size="sm",
-                        ),
+                        children=render_assertion_category_badge(is_accuracy),
                     ),
                     style={
                         "padding": "16px 24px",
@@ -2083,6 +1800,8 @@ def render_assertion_results_table(
                 html.Td(
                     dmc.Group(
                         gap="sm",
+                        wrap="nowrap",
+                        align="center",
                         children=[
                             dmc.ThemeIcon(
                                 DashIconify(icon=style["icon"], width=14),
@@ -2097,7 +1816,7 @@ def render_assertion_results_table(
                     style={
                         "padding": "16px 24px",
                         "whiteSpace": "nowrap",
-                        "minWidth": "150px",
+                        "minWidth": "180px",
                     },
                 ),
                 # Value
@@ -2165,7 +1884,7 @@ def render_assertion_results_table(
                                       "letterSpacing": "0.05em",
                                       "padding": "16px 24px",
                                       "textAlign": "left",
-                                      "minWidth": "150px",
+                                      "minWidth": "180px",
                                       "whiteSpace": "nowrap",
                                   },
                               ),

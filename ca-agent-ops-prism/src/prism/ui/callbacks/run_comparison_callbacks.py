@@ -28,19 +28,48 @@ from prism.client import get_client
 from prism.common.schemas.execution import RunStatus
 from prism.ui.components.assertion_components import get_assertion_style
 from prism.ui.components.assertion_components import render_assertion_diagnostic_accordion
+from prism.ui.components.cards import error_summary_line
 from prism.ui.components.run_components import render_modern_context_diff
 from prism.ui.ids import ComparisonIds
 from prism.ui.models.comparison_state import RunComparisonUIState
+from prism.ui.utils import format_timestamp
 from prism.ui.utils import handle_errors
 from prism.ui.utils import typed_callback
+import pydantic
+
+# The three statuses with a chip of their own. An errored pair, a case only one
+# run has and a case that never ran fall under the Other chip. Without it they
+# were counted by the All chip and by nothing else, so the breakdown under it
+# added up to less than the total.
+_BUCKETED_STATUSES = ("REGRESSION", "IMPROVED", "STABLE")
+
+# Not a status the service returns. It is what the Other chip writes into the
+# URL, and it selects everything the three buckets above leave out.
+_OTHER_FILTER = "OTHER"
+
+# What each chip puts in the URL, keyed by the id that was clicked. Read from
+# the ids rather than matched against the "comp-filter-" prefix they share, so
+# renaming one in ids.py cannot leave the gate silently matching nothing.
+_FILTER_STATUS = {
+    ComparisonIds.FILTER_ALL: None,
+    ComparisonIds.FILTER_REGRESSIONS: "REGRESSION",
+    ComparisonIds.FILTER_IMPROVEMENTS: "IMPROVED",
+    ComparisonIds.FILTER_UNCHANGED: "STABLE",
+    ComparisonIds.FILTER_OTHER: _OTHER_FILTER,
+}
+
+
+def _in_filter(status: Any, filter_status: str) -> bool:
+  """Whether a case belongs under the chip the URL names."""
+  if filter_status == _OTHER_FILTER:
+    return status not in _BUCKETED_STATUSES
+  return status == filter_status
 
 
 def _render_accuracy_delta_bar(val: float):
-  """Renders a simple horizontal bar for accuracy delta."""
+  """Renders a horizontal bar for accuracy delta."""
   color = "green" if val >= 0 else "red"
   width = abs(val) * 100
-  # Cap at 100 for safety, though it shouldn't exceed 1.0 (100%)
-  width = min(width, 100)
 
   return dmc.Box(
       style={
@@ -69,27 +98,21 @@ def _render_accuracy_delta_bar(val: float):
 
 def _render_performance_delta_chart(cases: list[Any]):
   """Renders the bar chart for trial performance deltas."""
-  # Cases are already ordered by logical_id/test suite order from the service
-  sorted_cases = cases
-
-  # Calculate max absolute delta for vertical scaling
-  max_abs_delta = max(
-      (abs(c.score_delta or 0.0) for c in sorted_cases), default=0.0
-  )
-  # Round up to nearest 5% for Y-axis labels and consistent scaling
+  # The service returns the cases in test suite order, so they are plotted in
+  # that order.
+  max_abs_delta = max((abs(c.score_delta or 0.0) for c in cases), default=0.0)
+  # Round the axis up to the next 5% so the labels stay readable.
   label_max = math.ceil(max_abs_delta / 0.05) * 0.05
   if label_max == 0:
-    label_max = 0.05  # Minimum scale
+    label_max = 0.05
 
   bars = []
-  for case in sorted_cases:
+  for case in cases:
     delta = case.score_delta or 0.0
     color = "green" if delta > 0 else "red" if delta < 0 else "gray"
 
-    # Calculate height as percentage of total container (max 50% for one side)
     pct_height = (abs(delta) / label_max) * 50
 
-    # Ensure minimum visibility
     if delta == 0:
       height_style = "2px"
       margin_top = "-1px"
@@ -104,13 +127,12 @@ def _render_performance_delta_chart(cases: list[Any]):
         dmc.Box(
             style={
                 "flex": 1,
-                "minWidth": "6px",  # Slightly wider min width
+                "minWidth": "6px",
                 "height": "100%",
                 "position": "relative",
                 "cursor": "pointer",
             },
             children=[
-                # 1. The Visible Bar (Absolute positioned)
                 dmc.Box(
                     style={
                         "width": "100%",
@@ -128,7 +150,8 @@ def _render_performance_delta_chart(cases: list[Any]):
                         "zIndex": 1,
                     }
                 ),
-                # 2. The Tooltip Trigger (Invisible overlay filling the column)
+                # The tooltip hangs off an invisible overlay filling the
+                # column, so a thin bar is still hoverable.
                 dmc.Tooltip(
                     label=f"{case.question}: {delta:+.1%}",
                     children=dmc.Box(
@@ -152,16 +175,15 @@ def _render_performance_delta_chart(cases: list[Any]):
           "flexDirection": "row",
           "alignItems": "center",
           "padding": "20px 0",
-          "overflow": "hidden",  # Prevent overflow
+          "overflow": "hidden",
       },
       children=[
-          # Y-axis Labels
           dmc.Box(
               style={
                   "display": "flex",
                   "flexDirection": "column",
                   "justifyContent": "space-between",
-                  "height": "100%",  # Fill container
+                  "height": "100%",
                   "paddingRight": "12px",
                   "borderRight": "1px solid var(--mantine-color-gray-2)",
               },
@@ -171,11 +193,10 @@ def _render_performance_delta_chart(cases: list[Any]):
                   dmc.Text(f"-{label_max:.0%}", size="xs", c="dimmed", fw=500),
               ],
           ),
-          # Chart Area
           dmc.Box(
               style={
                   "flex": 1,
-                  "height": "100%",  # Fill container
+                  "height": "100%",
                   "position": "relative",
                   "display": "flex",
                   "alignItems": "center",
@@ -196,7 +217,7 @@ def _render_performance_delta_chart(cases: list[Any]):
                   ),
                   dmc.Group(
                       gap=3,
-                      align="stretch",  # Ensure columns stretch to full height
+                      align="stretch",
                       style={"zIndex": 1, "width": "100%", "height": "100%"},
                       children=bars,
                       grow=True,
@@ -205,6 +226,13 @@ def _render_performance_delta_chart(cases: list[Any]):
           ),
       ],
   )
+
+
+def _assertion_key(result: Any) -> tuple[str, int | None]:
+  """Identifies one assertion across the two runs' snapshots of a suite."""
+  # Each run snapshots the suite separately, so the snapshot ids differ.
+  # original_assertion_id points back at the live row both were taken from.
+  return (result.assertion.type, result.assertion.original_assertion_id)
 
 
 def _parse_search(search: str | None) -> RunComparisonUIState:
@@ -257,7 +285,21 @@ def _build_search(
   return "?" + urllib.parse.urlencode(params) if params else ""
 
 
-# 1. URL -> UI (Selects & Filters)
+def _kept_run_value(value: str | None, options: list[dict[str, str]]):
+  """What to write into a run dropdown whose list has just been rebuilt.
+
+  Opening the modal fills the suite and both runs from the URL in one write,
+  and that write reaches populate_run_selects as a suite change. Clearing on
+  every suite change therefore emptied the two runs the modal had just
+  pre-filled, so the page someone was looking at could not be applied again. A
+  value the rebuilt list still offers came from that pre-fill, not from the
+  suite that was on screen before, and it stays.
+  """
+  if value and any(option["value"] == value for option in options):
+    return dash.no_update
+  return None
+
+
 @typed_callback(
     inputs=[
         Input(ComparisonIds.LOC_URL, "search"),
@@ -265,6 +307,7 @@ def _build_search(
         Input(ComparisonIds.FILTER_REGRESSIONS, "n_clicks"),
         Input(ComparisonIds.FILTER_IMPROVEMENTS, "n_clicks"),
         Input(ComparisonIds.FILTER_UNCHANGED, "n_clicks"),
+        Input(ComparisonIds.FILTER_OTHER, "n_clicks"),
     ],
     output=[
         Output(ComparisonIds.LOC_URL, "search", allow_duplicate=True),
@@ -278,35 +321,22 @@ def synchronize_filters(
   """Synchronizes filters in URL."""
   ctx = dash.callback_context
   trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
+  clicked = trigger.split(".")[0]
 
-  # Parse current URL state
+  if clicked not in _FILTER_STATUS:
+    return dash.no_update
+
   url_state = _parse_search(current_search)
-
-  # If filter button was clicked, update URL search
-  if "comp-filter-" in trigger:
-    new_filter = url_state.filter_status
-    if ComparisonIds.FILTER_REGRESSIONS in trigger:
-      new_filter = "REGRESSION"
-    elif ComparisonIds.FILTER_IMPROVEMENTS in trigger:
-      new_filter = "IMPROVED"
-    elif ComparisonIds.FILTER_UNCHANGED in trigger:
-      new_filter = "STABLE"
-    elif ComparisonIds.FILTER_ALL in trigger:
-      new_filter = None
-
-    return (
-        _build_search(
-            url_state.base_run_id,
-            url_state.challenger_run_id,
-            url_state.suite_id,
-            new_filter,
-        ),
-    )
-
-  return dash.no_update
+  return (
+      _build_search(
+          url_state.base_run_id,
+          url_state.challenger_run_id,
+          url_state.suite_id,
+          _FILTER_STATUS[clicked],
+      ),
+  )
 
 
-# 2. Modal Callbacks
 @typed_callback(
     inputs=[
         Input(ComparisonIds.BTN_OPEN_SELECT_RUNS, "n_clicks"),
@@ -348,7 +378,7 @@ def handle_select_runs_modal(
 
   if ComparisonIds.BTN_APPLY_SELECT_RUNS in trigger:
     if not base_id or not chal_id:
-      return dash.no_update  # Or show error in modal
+      return dash.no_update
     new_search = _build_search(
         int(base_id), int(chal_id), int(suite_id) if suite_id else None
     )
@@ -357,14 +387,13 @@ def handle_select_runs_modal(
   if ComparisonIds.BTN_CLOSE_SELECT_RUNS in trigger:
     return False, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-  # OPEN triggered - Pre-populate from URL
+  # Opening the modal: pre-populate it from the URL.
   url_state = _parse_search(current_search)
   suite_id = url_state.suite_id
   base_id = url_state.base_run_id
   chal_id = url_state.challenger_run_id
 
   if not suite_id and (base_id or chal_id):
-    # Try to infer suite ID from runs
     client = get_client()
     for rid in [base_id, chal_id]:
       if rid:
@@ -382,8 +411,6 @@ def handle_select_runs_modal(
   )
 
 
-# 3. URL -> Content (Metrics & List)
-@handle_errors
 @typed_callback(
     inputs=[
         Input(ComparisonIds.LOC_URL, "pathname"),
@@ -409,7 +436,6 @@ def update_page_content(
     search: str | None,
 ) -> tuple[Any, ...]:
   """Updates page content based on URL state."""
-  # Parse IDs and filters from search
   state = _parse_search(search)
 
   if not state.base_run_id or not state.challenger_run_id:
@@ -441,14 +467,31 @@ def update_page_content(
     comparison = client.comparison.compare_runs(
         state.base_run_id, state.challenger_run_id
     )
+  except pydantic.ValidationError:
+    # A ValidationError is a ValueError, so the branch below used to render it.
+    # str() on one prints the field paths and input_value=, which here is the
+    # row the schema rejected, and a link to errors.pydantic.dev. A schema that
+    # drifted from the table is a bug to log, not something to explain on the
+    # page, so it goes to handle_errors for a toast and a reference.
+    raise
   except ValueError as e:
+    # Into COMPARISON_LIST, not METRICS_CARDS. METRICS_CARDS is a child of
+    # SUMMARY_SECTION, which this same return hides, so the alert rendered
+    # inside a hidden subtree and the page fell back to the "No runs selected"
+    # empty state. A bookmarked /compare whose base run had been deleted looked
+    # identical to /compare with no query string at all, while the URL still
+    # named both runs. The empty state is hidden here for the same reason: it
+    # invites a choice that has already been made.
+    #
+    # str(e) is our own ValueError ("Base run 12 not found"), raised by
+    # ComparisonService, so it carries no query text or bound parameters.
     return (
-        [dmc.Alert(str(e), color="red")],
         [],
+        [dmc.Alert(str(e), color="red")],
         [],
         "CONTEXT DIFF",
         "gray",
-        {"display": "block"},
+        {"display": "none"},
         {"display": "none"},
         {"display": "none"},
         dash.no_update,
@@ -457,7 +500,6 @@ def update_page_content(
         [],
     )
 
-  # Render Context Diff
   base_run = client.runs.get_run(state.base_run_id)
   chal_run = client.runs.get_run(state.challenger_run_id)
   context_diff = []
@@ -468,38 +510,59 @@ def update_page_content(
     base_snap = base_run.agent_context_snapshot or {}
     chal_snap = chal_run.agent_context_snapshot or {}
 
-    diff_table, change_count = render_modern_context_diff(base_snap, chal_snap)
+    diff_table, has_changes = render_modern_context_diff(base_snap, chal_snap)
     context_diff = [diff_table]
 
-    if change_count > 0:
+    if has_changes:
       badge_text = "Changes detected"
       badge_color = "orange"
     else:
       badge_text = "No changes detected"
       badge_color = "gray"
 
-  # Render Metrics
   delta = comparison.delta
+
+  # Zero is neither direction, and each card used to fold it into one. Two runs
+  # of an unchanged agent, which is the commonest comparison there is, read
+  # "+0.0% Accuracy Gain" in green over "+0ms Faster" in green.
+  if delta.accuracy_delta > 0:
+    accuracy_icon = "material-symbols:trending-up"
+    accuracy_color = "green"
+    accuracy_caption = "Accuracy Gain"
+  elif delta.accuracy_delta < 0:
+    accuracy_icon = "material-symbols:trending-down"
+    accuracy_color = "red"
+    accuracy_caption = "Degradation"
+  else:
+    accuracy_icon = "material-symbols:trending-flat"
+    accuracy_color = "gray"
+    accuracy_caption = "No change"
+
+  if delta.duration_delta_avg > 0:
+    latency_color = "orange"
+    latency_caption = "Slower"
+  elif delta.duration_delta_avg < 0:
+    latency_color = "green"
+    latency_caption = "Faster"
+  else:
+    latency_color = "gray"
+    latency_caption = "No change"
+
   metrics = [
-      # Accuracy
       _render_metric_card(
           "Accuracy Delta",
           f"{delta.accuracy_delta:+.1%}",
-          "material-symbols:trending-up"
-          if delta.accuracy_delta >= 0
-          else "material-symbols:trending-down",
-          "green" if delta.accuracy_delta >= 0 else "red",
-          "Accuracy Gain" if delta.accuracy_delta >= 0 else "Degradation",
+          accuracy_icon,
+          accuracy_color,
+          accuracy_caption,
       ),
-      # Duration
       _render_metric_card(
           "Avg Latency Delta",
           f"{delta.duration_delta_avg:+.0f}ms",
           "material-symbols:timer",
-          "orange" if delta.duration_delta_avg > 0 else "green",
-          "Slower" if delta.duration_delta_avg > 0 else "Faster",
+          latency_color,
+          latency_caption,
       ),
-      # Regressions
       _render_metric_card(
           "Regressions",
           str(delta.regressions_count),
@@ -507,7 +570,6 @@ def update_page_content(
           "red" if delta.regressions_count > 0 else "gray",
           "Cases impacted",
       ),
-      # Improvements
       _render_metric_card(
           "Improvements",
           str(delta.improvements_count),
@@ -517,7 +579,6 @@ def update_page_content(
       ),
   ]
 
-  # Subtitle
   subtitle = dmc.Group(
       gap="xs",
       children=[
@@ -535,12 +596,19 @@ def update_page_content(
       mb="md",
   )
 
-  # Exclusion Notice
+  # Beside the header, not inside it. The header is a flex row of run pills,
+  # so appending to its children laid the note out as a third pill: one line,
+  # squeezed to whatever width was left, with its mt="md" doing nothing.
+  subtitle_children = [subtitle]
+
   if delta.errors_count > 0:
-    subtitle.children.append(
+    subtitle_children.append(
         dmc.Alert(
+            # Latency and nothing else. An errored pair's score still counts
+            # towards the accuracy delta. Only its duration is dropped: a
+            # trial that died on its first event is not a speed-up.
             f"Note: {delta.errors_count} failed trial(s) were excluded from"
-            " accuracy and latency calculations.",
+            " latency calculations.",
             color="orange",
             variant="light",
             radius="md",
@@ -549,23 +617,21 @@ def update_page_content(
         )
     )
 
-  # Assertion Deltas (Aggregate from cases)
   assertion_deltas: dict[str, list[float]] = {}
   for case in comparison.cases:
     if not case.base_trial or not case.challenger_trial:
       continue
-    # Map assertion type -> change in score
+    # Pair per assertion, then bucket the delta by type for display. Keying
+    # the pairing by type alone collapsed a case that has two assertions of
+    # the same type down to the last one, and the other delta disappeared.
     base_scores = {
-        ar.assertion.type: ar.score for ar in case.base_trial.assertion_results
+        _assertion_key(ar): ar.score for ar in case.base_trial.assertion_results
     }
-    chal_scores = {
-        ar.assertion.type: ar.score
-        for ar in case.challenger_trial.assertion_results
-    }
-    for atype, chal_score in chal_scores.items():
-      if atype in base_scores:
-        assertion_deltas.setdefault(atype, []).append(
-            chal_score - base_scores[atype]
+    for ar in case.challenger_trial.assertion_results:
+      key = _assertion_key(ar)
+      if key in base_scores:
+        assertion_deltas.setdefault(ar.assertion.type, []).append(
+            ar.score - base_scores[key]
         )
 
   assertion_delta_elements = []
@@ -608,15 +674,19 @@ def update_page_content(
         )
     )
 
-  # Filter Cases
   cases = comparison.cases
+  active = state.filter_status
 
-  # Calculate Counts
   regressed_count = len([c for c in cases if c.status == "REGRESSION"])
   improved_count = len([c for c in cases if c.status == "IMPROVED"])
   unchanged_count = len([c for c in cases if c.status == "STABLE"])
+  # The chips read as a breakdown of the number on the All chip, so they have
+  # to add up to it. An errored pair, a case only one run has and a case that
+  # never ran had no chip of their own, so a comparison over an edited suite
+  # showed "All 12" above four chips totalling 9, and those three cases were
+  # reachable under All and nowhere else.
+  other_count = len([c for c in cases if c.status not in _BUCKETED_STATUSES])
 
-  # Section Title and Filters
   filter_bar = dmc.Group(
       mt="xl",
       mb="md",
@@ -629,173 +699,54 @@ def update_page_content(
               bg="gray.1",
               style={"borderRadius": "var(--mantine-radius-md)"},
               children=[
-                  dmc.Button(
-                      dmc.Group(
-                          gap=8,
-                          children=[
-                              dmc.Text(
-                                  "All",
-                                  size="sm",
-                                  fw=500,
-                                  c="dark"
-                                  if not state.filter_status
-                                  else "gray.7",
-                              ),
-                              dmc.Badge(
-                                  str(comparison.metadata.total_cases),
-                                  size="xs",
-                                  variant="light",
-                                  color="dark",
-                                  radius="sm",
-                              ),
-                          ],
-                      ),
-                      id=ComparisonIds.FILTER_ALL,
-                      variant="filled" if not state.filter_status else "subtle",
-                      color="dark" if not state.filter_status else "gray",
-                      bg="white" if not state.filter_status else "transparent",
-                      size="xs",
-                      radius="sm",
-                      style={
-                          "boxShadow": (
-                              "var(--mantine-shadow-xs)"
-                              if not state.filter_status
-                              else "none"
-                          )
-                      },
+                  _render_filter_chip(
+                      ComparisonIds.FILTER_ALL,
+                      "All",
+                      comparison.metadata.total_cases,
+                      accent="dark",
+                      badge_color="dark",
+                      active=not active,
                   ),
-                  dmc.Button(
-                      dmc.Group(
-                          gap=8,
-                          children=[
-                              dmc.Text(
-                                  "Regressed",
-                                  size="sm",
-                                  fw=500,
-                                  c="red"
-                                  if state.filter_status == "REGRESSION"
-                                  else "gray.7",
-                              ),
-                              dmc.Badge(
-                                  str(regressed_count),
-                                  size="xs",
-                                  variant="light",
-                                  color="red",
-                                  radius="sm",
-                              ),
-                          ],
-                      ),
-                      id=ComparisonIds.FILTER_REGRESSIONS,
-                      variant="filled"
-                      if state.filter_status == "REGRESSION"
-                      else "subtle",
-                      color="red"
-                      if state.filter_status == "REGRESSION"
-                      else "gray",
-                      bg="white"
-                      if state.filter_status == "REGRESSION"
-                      else "transparent",
-                      size="xs",
-                      radius="sm",
-                      style={
-                          "boxShadow": (
-                              "var(--mantine-shadow-xs)"
-                              if state.filter_status == "REGRESSION"
-                              else "none"
-                          )
-                      },
+                  _render_filter_chip(
+                      ComparisonIds.FILTER_REGRESSIONS,
+                      "Regressed",
+                      regressed_count,
+                      accent="red",
+                      badge_color="red",
+                      active=active == "REGRESSION",
                   ),
-                  dmc.Button(
-                      dmc.Group(
-                          gap=8,
-                          children=[
-                              dmc.Text(
-                                  "Improved",
-                                  size="sm",
-                                  fw=500,
-                                  c="green"
-                                  if state.filter_status == "IMPROVED"
-                                  else "gray.7",
-                              ),
-                              dmc.Badge(
-                                  str(improved_count),
-                                  size="xs",
-                                  variant="light",
-                                  color="green",
-                                  radius="sm",
-                              ),
-                          ],
-                      ),
-                      id=ComparisonIds.FILTER_IMPROVEMENTS,
-                      variant="filled"
-                      if state.filter_status == "IMPROVED"
-                      else "subtle",
-                      color="green"
-                      if state.filter_status == "IMPROVED"
-                      else "gray",
-                      bg="white"
-                      if state.filter_status == "IMPROVED"
-                      else "transparent",
-                      size="xs",
-                      radius="sm",
-                      style={
-                          "boxShadow": (
-                              "var(--mantine-shadow-xs)"
-                              if state.filter_status == "IMPROVED"
-                              else "none"
-                          )
-                      },
+                  _render_filter_chip(
+                      ComparisonIds.FILTER_IMPROVEMENTS,
+                      "Improved",
+                      improved_count,
+                      accent="green",
+                      badge_color="green",
+                      active=active == "IMPROVED",
                   ),
-                  dmc.Button(
-                      dmc.Group(
-                          gap=8,
-                          children=[
-                              dmc.Text(
-                                  "Unchanged",
-                                  size="sm",
-                                  fw=500,
-                                  c="dark"
-                                  if state.filter_status == "STABLE"
-                                  else "gray.7",
-                              ),
-                              dmc.Badge(
-                                  str(unchanged_count),
-                                  size="xs",
-                                  variant="light",
-                                  color="gray",
-                                  radius="sm",
-                              ),
-                          ],
-                      ),
-                      id=ComparisonIds.FILTER_UNCHANGED,
-                      variant="filled"
-                      if state.filter_status == "STABLE"
-                      else "subtle",
-                      color="dark"
-                      if state.filter_status == "STABLE"
-                      else "gray",
-                      bg="white"
-                      if state.filter_status == "STABLE"
-                      else "transparent",
-                      size="xs",
-                      radius="sm",
-                      style={
-                          "boxShadow": (
-                              "var(--mantine-shadow-xs)"
-                              if state.filter_status == "STABLE"
-                              else "none"
-                          )
-                      },
+                  _render_filter_chip(
+                      ComparisonIds.FILTER_UNCHANGED,
+                      "Unchanged",
+                      unchanged_count,
+                      accent="dark",
+                      badge_color="gray",
+                      active=active == "STABLE",
+                  ),
+                  _render_filter_chip(
+                      ComparisonIds.FILTER_OTHER,
+                      "Other",
+                      other_count,
+                      accent="dark",
+                      badge_color="gray",
+                      active=active == _OTHER_FILTER,
                   ),
               ],
           ),
       ],
   )
 
-  if state.filter_status:
-    cases = [c for c in cases if c.status == state.filter_status]
+  if active:
+    cases = [c for c in cases if _in_filter(c.status, active)]
 
-  # Render List
   row_elements = [
       _render_comparison_row(c, state.base_run_id, state.challenger_run_id)
       for c in cases
@@ -814,86 +765,115 @@ def update_page_content(
       {"display": "none"},
       {"display": "block"},
       {"display": "block"},
-      subtitle,
+      subtitle_children,
       _render_performance_delta_chart(comparison.cases),
       assertion_delta_elements,
       filter_bar,
   )
 
 
-# 4. Populate Run Selects (Independent)
-@handle_errors
+# The one raw dash.callback of the 120. Only the two value outputs are written
+# by another callback as well, and typed_callback's allow_duplicate goes on
+# every output it is given, so it cannot express that. Writing the flag per
+# output means writing handle_errors by hand too, and it has to go below the
+# registration: decorators apply bottom-up, so one stacked above dash.callback
+# wraps an object Dash never calls.
 @dash.callback(
     Output(ComparisonIds.SUITE_SELECT, "data"),
     Output(ComparisonIds.BASE_RUN_SELECT, "data"),
     Output(ComparisonIds.CHALLENGE_RUN_SELECT, "data"),
-    Input(ComparisonIds.LOC_URL, "pathname"),  # Trigger on load
-    Input(ComparisonIds.SUITE_SELECT, "value"),  # Trigger on test suite change
-    State(ComparisonIds.LOC_URL, "search"),  # Get current IDs
+    Output(ComparisonIds.BASE_RUN_SELECT, "value", allow_duplicate=True),
+    Output(ComparisonIds.CHALLENGE_RUN_SELECT, "value", allow_duplicate=True),
+    Input(ComparisonIds.LOC_URL, "pathname"),
+    Input(ComparisonIds.SUITE_SELECT, "value"),
+    State(ComparisonIds.LOC_URL, "search"),
+    State(ComparisonIds.BASE_RUN_SELECT, "value"),
+    State(ComparisonIds.CHALLENGE_RUN_SELECT, "value"),
+    prevent_initial_call="initial_duplicate",
 )
+@handle_errors
 def populate_run_selects(
-    pathname: str | None, selected_suite_id: str | None, search: str | None
+    pathname: str | None,
+    selected_suite_id: str | None,
+    search: str | None,
+    base_selected: str | None,
+    chal_selected: str | None,
 ):
   """Populates the run selection dropdowns."""
   if not pathname or pathname != "/compare":
-    return dash.no_update, dash.no_update, dash.no_update
+    return (
+        dash.no_update,
+        dash.no_update,
+        dash.no_update,
+        dash.no_update,
+        dash.no_update,
+    )
 
-  # Parse IDs from search
+  # Changing the suite rewrites both run lists and used to leave the two
+  # values pointing at runs of the suite that was on screen before. The
+  # fields render blank, because the values are not in the data, but Apply
+  # reads them as State and built ?base=<old suite run>&suite=<new suite>.
+  # Only the suite dropdown clears them. On the load path the values are the
+  # URL pre-fill, which is the whole selection.
+  suite_changed = dash.callback_context.triggered_id == (
+      ComparisonIds.SUITE_SELECT
+  )
+
   state = _parse_search(search)
   required_ids = {state.base_run_id, state.challenger_run_id} - {None}
 
   client = get_client()
 
-  # 1. Populate Test Suite Options
   suites = client.runs.get_unique_suites_from_snapshots()
   suite_options = [
       {"label": s["name"], "value": str(s["original_suite_id"])} for s in suites
   ]
 
-  # 2. Determine which test suite to use for filtering runs
-  # Priority: selected_suite_id > state.suite_id > inferred
+  # The dropdown wins, then the URL, then the suite the two runs came from.
   suite_to_use = selected_suite_id or (
       str(state.suite_id) if state.suite_id else None
   )
 
   if not suite_to_use and required_ids:
-    # Try to infer test suite from either required run
     for run_id in required_ids:
       run = client.runs.get_run(run_id)
       if run and run.original_suite_id:
         suite_to_use = str(run.original_suite_id)
         break
 
-  # 3. Populate Run Options
-  if not suite_to_use:
-    return suite_options, [], []
+  runs = []
+  if suite_to_use:
+    runs = client.runs.list_runs(original_suite_id=int(suite_to_use), limit=50)
 
-  # Fetch runs for the selected test suite
-  runs = client.runs.list_runs(original_suite_id=int(suite_to_use), limit=50)
+    # A run named in the URL can be older than the 50 this fetched, so it has
+    # to be fetched by id.
+    existing_ids = {r.id for r in runs}
+    for run_id in required_ids:
+      if run_id not in existing_ids:
+        run = client.runs.get_run(run_id)
+        if run and run.original_suite_id == int(suite_to_use):
+          runs.append(run)
 
-  # Ensure required IDs are in the list if they belong to this test suite
-  existing_ids = {r.id for r in runs}
-  for run_id in required_ids:
-    if run_id not in existing_ids:
-      run = client.runs.get_run(run_id)
-      if run and run.original_suite_id == int(suite_to_use):
-        runs.append(run)
-
-  # Sort again just in case
-  runs.sort(key=lambda r: r.created_at, reverse=True)
+    # Required runs appended above land at the end, so re-sort by recency.
+    runs.sort(key=lambda r: r.created_at, reverse=True)
 
   run_options = [
       {
           "value": str(r.id),
-          "label": f"Run #{r.id} ({r.created_at.strftime('%Y-%m-%d %H:%M')})",
+          "label": f"Run #{r.id} ({format_timestamp(r.created_at)})",
       }
       for r in runs
   ]
 
-  return suite_options, run_options, run_options
+  base_value = dash.no_update
+  chal_value = dash.no_update
+  if suite_changed:
+    base_value = _kept_run_value(base_selected, run_options)
+    chal_value = _kept_run_value(chal_selected, run_options)
+
+  return suite_options, run_options, run_options, base_value, chal_value
 
 
-# 5. Swap Runs
 @typed_callback(
     inputs=[Input(ComparisonIds.BTN_SWAP_RUNS, "n_clicks")],
     state=[
@@ -913,7 +893,6 @@ def swap_runs(_: int, base_id: str | None, chal_id: str | None):
   return chal_id, base_id
 
 
-# 6. Populate Run Nav Links
 @typed_callback(
     output=[
         Output(ComparisonIds.BASE_RUN_NAV, "children"),
@@ -947,9 +926,6 @@ def populate_run_nav(
     ]
 
   return get_nav(base_id), get_nav(chal_id)
-
-
-# --- Helpers ---
 
 
 def _render_run_pill(label: str, href: str):
@@ -1032,25 +1008,66 @@ def _render_metric_card(title, value, icon, color, status_text=None):
   )
 
 
+def _render_filter_chip(
+    chip_id: str,
+    label: str,
+    count: int,
+    *,
+    accent: str,
+    badge_color: str,
+    active: bool,
+):
+  """Renders one chip of the filter bar.
+
+  The chips differ only in their two colors and in what makes them the active
+  one. The bar was four copies of this, and a copy carrying its neighbor's
+  count reads as a real count.
+  """
+  return dmc.Button(
+      dmc.Group(
+          gap=8,
+          children=[
+              dmc.Text(
+                  label,
+                  size="sm",
+                  fw=500,
+                  c=accent if active else "gray.7",
+              ),
+              dmc.Badge(
+                  str(count),
+                  size="xs",
+                  variant="light",
+                  color=badge_color,
+                  radius="sm",
+              ),
+          ],
+      ),
+      id=chip_id,
+      variant="filled" if active else "subtle",
+      color=accent if active else "gray",
+      bg="white" if active else "transparent",
+      size="xs",
+      radius="sm",
+      style={"boxShadow": "var(--mantine-shadow-xs)" if active else "none"},
+  )
+
+
 def _render_comparison_row(case, base_run_id, challenger_run_id):
   """Renders a single comparison row (case)."""
   color = "gray"
   status_label = case.status.value
   if case.status == "REGRESSION":
     color = "red"
-    status_label = "REGRESSION"
   elif case.status == "IMPROVED":
     color = "green"
-    status_label = "IMPROVED"
   elif case.status == "ERROR":
     color = "orange"
   elif case.status == "NEW":
     color = "blue"
     status_label = "ADDED"
-  elif case.status == "REMOVED":
-    color = "gray"
+  elif case.status == "NOT_RUN":
+    status_label = "NOT RUN"
 
-  # Score Delta: 0.00 -> 0.00
   base_score = (
       case.base_trial.score
       if case.base_trial and case.base_trial.score is not None
@@ -1070,8 +1087,32 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
   else:
     latency_color = "gray"
 
-  # Accuracy Change Section
-  if case.status in ["NEW", "REMOVED"]:
+  # NOT_RUN sits with the one-sided cases: the trial that never ran has no
+  # score, and the 0% the arrow would show reads as an answer that scored
+  # nothing.
+  one_sided = case.status in ["NEW", "REMOVED", "NOT_RUN"]
+
+  # The same reasoning as the accuracy column, which the latency column used to
+  # ignore. duration_delta is None for these, and `or 0` printed "+0ms" in
+  # gray, which reads as two runs that took the same time.
+  if one_sided:
+    latency_content = dmc.Text(
+        "N/A",
+        size="sm",
+        fw=700,
+        c="dimmed",
+        style={"fontFamily": "var(--font-mono)"},
+    )
+  else:
+    latency_content = dmc.Text(
+        f"{latency_delta:+}ms",
+        size="sm",
+        fw=700,
+        c=latency_color,
+        style={"fontFamily": "var(--font-mono)"},
+    )
+
+  if one_sided:
     accuracy_change_content = dmc.Text(
         "N/A",
         size="sm",
@@ -1108,7 +1149,6 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
         ],
     )
 
-  # Anchors and diagnostics
   view_trial_anchor = None
   view_trace_anchor = None
   if case.base_trial:
@@ -1192,7 +1232,6 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
           ),
       },
       children=[
-          # Header
           dmc.Box(
               p="lg",
               children=[
@@ -1282,17 +1321,7 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
                                                   )
                                               },
                                           ),
-                                          dmc.Text(
-                                              f"{latency_delta:+}ms",
-                                              size="sm",
-                                              fw=700,
-                                              c=latency_color,
-                                              style={
-                                                  "fontFamily": (
-                                                      "var(--font-mono)"
-                                                  )
-                                              },
-                                          ),
+                                          latency_content,
                                       ],
                                   ),
                               ],
@@ -1301,12 +1330,10 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
                   ),
               ],
           ),
-          # Body
           dmc.Grid(
               gutter=0,
               style={"borderTop": "1px solid var(--mantine-color-gray-1)"},
               children=[
-                  # Base
                   dmc.GridCol(
                       span=6,
                       p="lg",
@@ -1338,7 +1365,6 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
                           base_trial_summary,
                       ],
                   ),
-                  # Challenger
                   dmc.GridCol(
                       span=6,
                       p="lg",
@@ -1380,7 +1406,8 @@ def _render_comparison_row(case, base_run_id, challenger_run_id):
                   ),
               ],
           ),
-          # Footer - Collapsible Assertions
+          # None when neither trial has assertion results, which Dash renders
+          # as nothing.
           assertion_diagnostic,
       ],
   )
@@ -1390,18 +1417,11 @@ def _render_trial_summary(trial, is_base: bool):
   """Renders a summary of a single trial for side-by-side comparison."""
   error_alert = None
   if trial.error_message:
+    # The same line the trial page shows. This rendered the stored message
+    # whole, so a comparison was the one page left that still printed
+    # whatever a writer put after the first line.
     error_alert = dmc.Alert(
-        dmc.Code(
-            trial.error_message,
-            block=True,
-            style={
-                "backgroundColor": "transparent",
-                "padding": 0,
-                "color": "inherit",
-                "whiteSpace": "pre-wrap",
-                "wordBreak": "break-all",
-            },
-        ),
+        error_summary_line(trial.error_message),
         color="red",
         title="Trial Error",
         icon=DashIconify(icon="material-symbols:error-outline", width=18),

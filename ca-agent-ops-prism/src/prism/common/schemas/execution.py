@@ -22,6 +22,24 @@ from prism.common.schemas.assertion import Assertion
 from prism.common.schemas.assertion import AssertionSchema
 import pydantic
 
+logger = logging.getLogger(__name__)
+
+
+def _repair_legacy_assertion(item: Any) -> Any:
+  """Flattens an assertion and rewrites the legacy "contains" type.
+
+  Rows written before "contains" was split into text-contains and
+  query-contains still carry the old value, which names no member of either
+  discriminated union. Reading one raised ValidationError instead of
+  rendering the page.
+  """
+  flattened = AssertionSchema.flatten_params(item)
+  if not isinstance(flattened, dict):
+    return item
+  if flattened.get("type") == "contains":
+    flattened["type"] = "text-contains"
+  return flattened
+
 
 class RunStatus(str, enum.Enum):
   """Status of an Execution Run."""
@@ -46,19 +64,20 @@ class RunSchema(pydantic.BaseModel):
   agent_name: str | None = None
   suite_name: str | None = None
   original_suite_id: int | None = None
-  # Snapshot of the agent's context at the time of the run
+  # What the agent's config was when the run started, so a later edit does
+  # not change what an old run reads as.
   agent_context_snapshot: dict[str, Any] | None = None
   generate_suggestions: bool | None = False
   is_archived: bool = False
 
   status: RunStatus
   created_at: datetime.datetime
+  # Null until a worker picks the run up.
+  started_at: datetime.datetime | None = None
   completed_at: datetime.datetime | None = None
   concurrency: int = 2
 
   # Stats
-  total_examples: int = 0
-  failed_examples: int = 0
   accuracy: float | None = None
   duration_ms: int | None = None
   tool_timings: dict[str, int] | None = None
@@ -78,8 +97,14 @@ class RunHistoryPoint(pydantic.BaseModel):
   """A point in run history."""
 
   created_at: datetime.datetime
-  accuracy: float
+  # Nullable, because a queued or cancelled run has scored nothing. Typed
+  # float, the repository had to send 0.0 instead, and the agent list sparkline
+  # plotted a run that never executed at 0% and turned the trend red. The
+  # "Last eval" text on the same row was already showing "--" for it.
+  accuracy: float | None
   run_id: int
+
+  model_config = pydantic.ConfigDict(from_attributes=True)
 
 
 class RunStatsSchema(pydantic.BaseModel):
@@ -99,6 +124,12 @@ class AssertionResult(pydantic.BaseModel):
   error_message: str | None = None
 
   model_config = pydantic.ConfigDict(from_attributes=True)
+
+  @pydantic.field_validator("assertion", mode="before")
+  @classmethod
+  def fix_legacy_assertion_type(cls, v: Any) -> Any:
+    """Applies the same legacy repair Trial does for its suggestions."""
+    return _repair_legacy_assertion(v) if v else v
 
 
 class Trial(pydantic.BaseModel):
@@ -128,6 +159,12 @@ class Trial(pydantic.BaseModel):
   )
   suggested_asserts: list[Assertion] | None = None
 
+  created_at: datetime.datetime
+  started_at: datetime.datetime | None = None
+  completed_at: datetime.datetime | None = None
+
+  model_config = pydantic.ConfigDict(from_attributes=True)
+
   @pydantic.field_validator("suggested_asserts", mode="before")
   @classmethod
   def fix_legacy_assertion_types(cls, v: Any) -> Any:
@@ -137,35 +174,12 @@ class Trial(pydantic.BaseModel):
     if isinstance(v, list):
       fixed_list = []
       for item in v:
-        # 1. Flatten SQLAlchemy models to dict if needed
-
-        item_dict = AssertionSchema.flatten_params(item)
-        if not isinstance(item_dict, dict):
-          logging.warning("Failed to flatten suggestion item: %s", item)
-          fixed_list.append(item)
-          continue
-
-        # 2. Fix legacy "contains" -> "text-contains"
-        if item_dict.get("type") == "contains":
-          item_dict["type"] = "text-contains"
-
-        fixed_list.append(item_dict)
+        fixed = _repair_legacy_assertion(item)
+        if not isinstance(fixed, dict):
+          logger.warning("Failed to flatten suggestion item: %s", item)
+        fixed_list.append(fixed)
       return fixed_list
     return v
-
-  created_at: datetime.datetime
-  started_at: datetime.datetime | None = None
-  completed_at: datetime.datetime | None = None
-
-  model_config = pydantic.ConfigDict(from_attributes=True)
-
-
-class AdHocRunRequest(pydantic.BaseModel):
-  """Request schema for running an ad-hoc test."""
-
-  agent_id: int
-  question: str
-  asserts: list[Assertion] | None = None
 
 
 class EphemeralTestResult(pydantic.BaseModel):

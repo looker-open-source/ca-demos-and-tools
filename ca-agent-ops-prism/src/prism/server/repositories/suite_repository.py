@@ -14,16 +14,12 @@
 
 """Repository for managing TestSuite entities."""
 
-import logging
-
 from prism.server.models.suite import TestSuite
 from sqlalchemy.orm import Session
 
-logger = logging.getLogger(__name__)
-
 
 class SuiteRepository:
-  """Repository for TestSuite operations."""
+  """CRUD for test suites. Suites are archived, never deleted."""
 
   def __init__(self, session: Session):
     self.session = session
@@ -34,7 +30,10 @@ class SuiteRepository:
       description: str | None = None,
       tags: dict[str, str] | None = None,
   ) -> TestSuite:
-    """Creates a new test suite."""
+    """Inserts a suite.
+
+    Flushes rather than commits, so the caller can roll back.
+    """
     suite = TestSuite(
         name=name,
         description=description,
@@ -46,14 +45,16 @@ class SuiteRepository:
     return suite
 
   def get_by_id(self, suite_id: int) -> TestSuite | None:
-    """Retrieves a suite by ID."""
+    """Reads one suite, archived or not. None if there is no such row."""
     return self.session.get(TestSuite, suite_id)
 
   def list_all(self, include_archived: bool = False) -> list[TestSuite]:
-    """Lists all suites."""
+    """Lists suites, archived ones only when asked for."""
     query = self.session.query(TestSuite)
     if not include_archived:
-      query = query.filter(TestSuite.is_archived == False)  # pylint: disable=singleton-comparison
+      query = query.filter(
+          TestSuite.is_archived == False  # pylint: disable=singleton-comparison
+      )
     return query.all()
 
   def update(
@@ -63,7 +64,11 @@ class SuiteRepository:
       description: str | None = None,
       tags: dict[str, str] | None = None,
   ) -> TestSuite:
-    """Updates a test suite."""
+    """Applies the fields the caller passed. Absent means keep, not clear.
+
+    Raises:
+      ValueError: If there is no suite with that id.
+    """
     suite = self.get_by_id(suite_id)
     if not suite:
       raise ValueError(f"TestSuite with id {suite_id} not found")
@@ -80,7 +85,7 @@ class SuiteRepository:
     return suite
 
   def archive(self, suite_id: int) -> TestSuite:
-    """Archives a test suite."""
+    """Hides a suite from list_all. Raises ValueError if there is no row."""
     suite = self.get_by_id(suite_id)
     if not suite:
       raise ValueError(f"TestSuite with id {suite_id} not found")
@@ -91,7 +96,7 @@ class SuiteRepository:
     return suite
 
   def unarchive(self, suite_id: int) -> TestSuite:
-    """Unarchives a test suite."""
+    """Puts a suite back in list_all. Raises ValueError if there is no row."""
     suite = self.get_by_id(suite_id)
     if not suite:
       raise ValueError(f"TestSuite with id {suite_id} not found")

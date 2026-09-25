@@ -1,0 +1,58 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Local config. scripts/setup_postgres.sh writes a .env with the database
+# password in it, so keep this ignored.
+.env
+.env.*
+!.env.example
+
+# Virtualenvs
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Test output
+.pytest_cache/
+
+# Merge and patch leftovers
+*.orig
+*.rej
+*.bak
+
+# Recorded agent responses. These come from real API traffic and can contain
+# query results, Looker field names and project ids, so they are ignored by
+# default. Drop a line if you want to commit yours. The browser tier writes to
+# the second path, but only under ./scripts/run_e2e.sh --record; a normal run
+# builds what it needs in /tmp.
+tests/cassettes/
+tests/e2e/cassettes/
+
+# The prompt templates are source, not scratch. The repo this is published
+# into ignores *.txt at its root, which silently dropped two of the three on
+# the way out. Re-include them here, and check they are tracked after any
+# export.
+!src/prism/server/services/prompts/*.txt
+
+# Editors
+.idea/
+.vscode/
+
+.DS_Store

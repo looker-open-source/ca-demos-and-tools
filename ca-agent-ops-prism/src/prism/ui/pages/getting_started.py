@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Getting Started page layout - Ultimate Onboarding Version."""
+"""Getting Started page layout."""
 
 from typing import Any
 
@@ -39,13 +39,13 @@ def _pro_tip(content: str):
 def _deep_dive(title: str, content: str | list[str]):
   """Renders a 'Deep Dive' accordion."""
   if isinstance(content, list):
-    content = dmc.List(
+    body = dmc.List(
         spacing="xs",
         size="sm",
         children=[dmc.ListItem(item) for item in content],
     )
   else:
-    content = dmc.Text(content, size="sm")
+    body = dmc.Text(content, size="sm")
 
   return dmc.Accordion(
       variant="separated",
@@ -61,7 +61,7 @@ def _deep_dive(title: str, content: str | list[str]):
                           icon="bi:info-circle", color="indigo", width=18
                       ),
                   ),
-                  dmc.AccordionPanel(content),
+                  dmc.AccordionPanel(body),
               ],
           )
       ],
@@ -134,14 +134,18 @@ def _render_assertion_list():
               "blue",
               "Text Contains",
               "STRING",
-              "Validates that the response text contains a specific substring.",
+              "Validates that the response text contains a specific substring."
+              " Switch the mode to Regex to match a pattern instead. Both"
+              " modes ignore case.",
           ),
           _assertion_item(
               "material-symbols:manage-search",
               "orange",
               "Query Contains",
               "SQL",
-              "Checks if the generated SQL contains specific keywords.",
+              "Checks if the generated SQL contains specific keywords. Switch"
+              " the mode to Regex to match a pattern instead. Both modes"
+              " ignore case.",
           ),
           _assertion_item(
               "material-symbols:query-stats",
@@ -149,10 +153,10 @@ def _render_assertion_list():
               "Looker Query Match",
               "LOOKML",
               "Checks if the generated Looker query matches the specified"
-              " structure (model, explore, fields, filters, sorts, limit). A"
-              " partial score is computed based on the ratio of matching"
-              " parameters. The assertion evaluates to Pass if the match rate"
-              " is >= 0.75, otherwise it Fails.",
+              " structure (model, explore, fields, filters, sorts, limit)."
+              " Prism computes a match rate from the ratio of matching"
+              " parameters. The assertion Passes if the match rate is >= 0.75,"
+              " otherwise it Fails. The score is still 1.0 or 0.0.",
           ),
           _assertion_item(
               "material-symbols:table-rows",
@@ -178,8 +182,8 @@ def _render_assertion_list():
           _assertion_item(
               "material-symbols:timer",
               "indigo",
-              "Latency Limit",
-              "PERF",
+              "Response Duration",
+              "PERFORMANCE",
               "Ensures response time does not exceed threshold.",
           ),
           _assertion_item(
@@ -194,28 +198,26 @@ def _render_assertion_list():
 
 
 def layout():
-  """Returns the expanded getting started page layout."""
   return render_page(
       title="Welcome to Prism",
       description=(
-          "The mission-control for evaluating and perfecting your Gemini Data"
-          " Analytics agents. This guide will take you from total novice to"
-          " evaluation expert."
+          "Prism evaluates Gemini Data Analytics agents. This guide covers"
+          " onboarding an agent, building a test suite, running an evaluation"
+          " and reading the results."
       ),
       container_id=GettingStartedIds.ROOT,
       children=[
           dmc.Stack(
               gap="xl",
               children=[
-                  # SECTION: GLOSSARY
                   _section_card(
                       "New to Prism? Start Here",
                       [
                           dmc.Text(
                               (
                                   "Prism uses a few key terms to organize your"
-                                  " work. Familiarize yourself with these to"
-                                  " navigate like a pro."
+                                  " work. The rest of this guide assumes"
+                                  " them."
                               ),
                               size="sm",
                               mb="md",
@@ -292,7 +294,6 @@ def layout():
                           ),
                       ],
                   ),
-                  # SECTION: GETTING STARTED TIMELINE
                   _section_card(
                       "Getting Started: The Road to Evaluation Mastery",
                       [
@@ -304,11 +305,13 @@ def layout():
                               size="sm",
                           ),
                           dmc.Timeline(
-                              active=9,
+                              # One per step below, so the connecting line is
+                              # drawn in full. The guide is static, there is no
+                              # progress to track.
+                              active=7,
                               bulletSize=36,
                               lineWidth=3,
                               children=[
-                                  # STEP 1: ONBOARD AGENT
                                   dmc.TimelineItem(
                                       title="1. Onboard an Agent",
                                       bullet=DashIconify(
@@ -334,16 +337,26 @@ def layout():
                                               mt="xs",
                                           ),
                                           _pro_tip(
-                                              "Use 'Monitor Existing' for"
-                                              " production agents where you"
-                                              " only want to see how they"
-                                              " perform without changing"
-                                              " their configuration."
+                                              "Prism automatically discovers"
+                                              " agents across every configured"
+                                              " location in parallel, so you"
+                                              " never pick a region by hand."
+                                              " The locations come from"
+                                              " PRISM_GDA_LOCATIONS, which"
+                                              " defaults to global, us and eu."
                                           ),
                                           _deep_dive(
-                                              "Agent Authentication"
-                                              " Requirements",
+                                              "Agent Authentication & Location"
+                                              " Support",
                                               [
+                                                  (
+                                                      "Multi-Location Routing:"
+                                                      " Prism automatically"
+                                                      " connects to global, us,"
+                                                      " eu, or regional"
+                                                      " endpoints based on the"
+                                                      " agent's location."
+                                                  ),
                                                   (
                                                       "Looker Agents: Require"
                                                       " Looker Instance URI,"
@@ -351,18 +364,17 @@ def layout():
                                                       " Secret."
                                                   ),
                                                   (
-                                                      "BQ Agents: Require"
-                                                      " standard IAM roles"
-                                                      " (BigQuery User, Cloud"
-                                                      " SQL Client, etc.) and"
-                                                      " access to the specified"
+                                                      "BQ Agents: Require the"
+                                                      " BigQuery User and"
+                                                      " BigQuery Data Viewer"
+                                                      " IAM roles, and access"
+                                                      " to the specified"
                                                       " BigQuery tables."
                                                   ),
                                               ],
                                           ),
                                       ],
                                   ),
-                                  # STEP 2: CREATE SUITE
                                   dmc.TimelineItem(
                                       title="2. Create a Test Suite",
                                       bullet=DashIconify(
@@ -392,7 +404,6 @@ def layout():
                                           ),
                                       ],
                                   ),
-                                  # STEP 3: DEFINE ASSERTIONS
                                   dmc.TimelineItem(
                                       title="3. Define Test Cases & Assertions",
                                       bullet=DashIconify(
@@ -421,9 +432,14 @@ def layout():
                                               "Scoring Mechanisms",
                                               [
                                                   (
-                                                      "Binary Pass/Fail: Each"
+                                                      "Binary Pass/Fail: Every"
                                                       " assertion returns 1.0"
                                                       " (Pass) or 0.0 (Fail)."
+                                                      " Looker Query Match"
+                                                      " computes a match rate"
+                                                      " first, then applies"
+                                                      " the 0.75 threshold to"
+                                                      " get that 1.0 or 0.0."
                                                   ),
                                                   (
                                                       "Accuracy: These"
@@ -431,12 +447,16 @@ def layout():
                                                       " to the final score."
                                                   ),
                                                   (
-                                                      "Failed Trials: Any trial"
-                                                      " that fails during"
-                                                      " execution or evaluation"
-                                                      " is excluded from"
-                                                      " aggregate accuracy and"
-                                                      " latency calculations."
+                                                      "Failed Trials: A trial"
+                                                      " that fails scores 0"
+                                                      " and counts towards the"
+                                                      " run's accuracy. What"
+                                                      " is left out is a"
+                                                      " completed trial whose"
+                                                      " test case has no"
+                                                      " weighted assertions,"
+                                                      " because there was"
+                                                      " nothing to score."
                                                   ),
                                                   (
                                                       "Diagnostic: Useful for"
@@ -455,7 +475,6 @@ def layout():
                                           ),
                                       ],
                                   ),
-                                  # STEP 4: INFRASTRUCTURE
                                   dmc.TimelineItem(
                                       title="4. Infrastructure & Publishing",
                                       bullet=DashIconify(
@@ -474,17 +493,16 @@ def layout():
                                                   " system instructions or"
                                                   " metadata in Prism, we"
                                                   " 'Publish' those changes to"
-                                                  " the GDA API for you. This"
-                                                  " ensures consistency between"
-                                                  " your configuration and"
-                                                  " evaluation."
+                                                  " the GDA API for you. An"
+                                                  " evaluation then runs"
+                                                  " against the configuration"
+                                                  " you edited here."
                                               ),
                                               size="sm",
                                               mt="xs",
                                           ),
                                       ],
                                   ),
-                                  # STEP 5: LAUNCH EVALUATION
                                   dmc.TimelineItem(
                                       title="5. Launch Evaluation",
                                       bullet=DashIconify(
@@ -501,17 +519,15 @@ def layout():
                                               (
                                                   "Click 'Run Evaluation'."
                                                   " Prism snapshots your"
-                                                  " configuration and runs"
+                                                  " configuration and runs the"
                                                   " trials in parallel"
-                                                  " background processes for"
-                                                  " maximum efficiency."
+                                                  " background processes."
                                               ),
                                               size="sm",
                                               mt="xs",
                                           ),
                                       ],
                                   ),
-                                  # STEP 6: DEBUGGING
                                   dmc.TimelineItem(
                                       title="6. Debug with Trace Results",
                                       bullet=DashIconify(
@@ -537,7 +553,6 @@ def layout():
                                           ),
                                       ],
                                   ),
-                                  # STEP 7: ITERATION
                                   dmc.TimelineItem(
                                       title="7. Delta Analysis & Regression",
                                       bullet=DashIconify(

@@ -1,70 +1,31 @@
-"""Tests to enforce architecture boundaries for prism.client."""
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import ast
-import os
-from typing import Set
+"""Architecture boundary: prism.client must not import prism.ui."""
 
-import pytest
-
-
-def get_imports(file_path: str) -> Set[str]:
-  """Parses a Python file and returns a set of imported module names."""
-  with open(file_path, "r", encoding="utf-8") as f:
-    try:
-      tree = ast.parse(f.read(), filename=file_path)
-    except SyntaxError:
-      return set()
-
-  imports = set()
-  for node in ast.walk(tree):
-    if isinstance(node, ast.Import):
-      for alias in node.names:
-        imports.add(alias.name)
-    elif isinstance(node, ast.ImportFrom):
-      if node.module:
-        imports.add(node.module)
-  return imports
+from tests.conftest import layering_violations
 
 
-def test_client_imports():
-  """Client MUST NOT import from prism.ui.
+def test_the_client_does_not_import_the_ui():
+  """The client sits under the UI, so it cannot reach back up into it.
 
-  Allowed prism.* imports:
-  - prism.client
-  - prism.server
-  - prism.common
+  Only the prism.ui ban is enforced. prism.server and prism.common are both
+  allowed: the client is what the UI calls the server through.
   """
-  # Locate src/prism/client
-  base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-  client_dir = os.path.join(base_dir, "src", "prism", "client")
+  violations = layering_violations("prism.client", ["prism.ui"])
 
-  if not os.path.exists(client_dir):
-    pytest.fail(f"Could not find prism.client directory at {client_dir}")
-
-  forbidden_prefixes = [
-      "prism.ui",
-  ]
-  offending_imports = []
-
-  for root, _, files in os.walk(client_dir):
-    for file in files:
-      if not file.endswith(".py"):
-        continue
-
-      file_path = os.path.join(root, file)
-      rel_path = os.path.relpath(file_path, base_dir)
-
-      imports = get_imports(file_path)
-
-      for imp in imports:
-        for prefix in forbidden_prefixes:
-          if imp == prefix or imp.startswith(prefix + "."):
-            offending_imports.append(f"{rel_path}: imports '{imp}'")
-
-  if offending_imports:
-    msg = (
-        "Architecture Violation: prism.client must NOT import from prism.ui.\n"
-        "Found the following violations:\n"
-        + "\n".join(offending_imports)
-    )
-    pytest.fail(msg)
+  assert not violations, (
+      "Architecture violation: prism.client must not import prism.ui.\n"
+      + "\n".join(violations)
+  )

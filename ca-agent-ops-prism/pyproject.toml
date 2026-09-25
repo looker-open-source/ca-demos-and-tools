@@ -1,42 +1,80 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 [project]
 name = "prism"
 version = "0.1.0"
-description = "Prism Core Backend"
+description = "An evaluation platform for Conversational Analytics agents"
 readme = "README.md"
 requires-python = ">=3.13"
+# The rule: every dependency is capped below the next major above what uv.lock
+# pins. It used to be six of twenty-four, with no rule, so a resolve from this
+# file alone was free to take a breaking major of alembic or flask, both of
+# which are imported at start-up. Dash and dash-mantine-components had already
+# shipped one. The caps do not change what the lock resolves to; they bound
+# what an install without the lock can pick.
 dependencies = [
-    "sqlalchemy>=2.0.0",
-    "pydantic>=2.0.0",
-    "alembic>=1.13.0",
-    "absl-py>=2.0.0",
-    "sqlalchemy-utils>=0.41.0",
+    "sqlalchemy>=2.0.0,<3",
+    "pydantic>=2.0.0,<3",
+    "alembic>=1.13.0,<2",
+    # Exact, not a range. The client is pre-1.0 and its message shapes move
+    # between minors.
     "google-cloud-geminidataanalytics == 0.10.0",
-    "google-auth",
-    "google-cloud-aiplatform",
-    "google-genai",
-    "google-cloud-resource-manager",
-    "dash",
-    "dash-mantine-components",
-    "dash-iconify",
-    "gunicorn",
-    "dash-ace",
-    "PyYAML",
-    "pandas",
-    "dash-vega-components",
-    "fast-depends",
-    "psycopg2-binary",
-    "cloud-sql-python-connector[pg8000]",
-    "pg8000",
-    "scramp",
-    "python-dotenv",
-    "looker-sdk",
-    "psutil",
+    "google-auth<3",
+    "google-genai<3",
+    # Imported directly, not just pulled in by the clients above.
+    "google-api-core<3",
+    "protobuf<7",
+    "dash<5",
+    "dash-mantine-components<3",
+    # Pre-1.0, where the minor is the breaking number, so `<1` was no bound at
+    # all. Capped below the next minor above what uv.lock pins instead.
+    "dash-iconify<0.2",
+    "dash-vega-components<0.12",
+    # Dash brings Flask in, but evaluation_callbacks imports it by name, so it
+    # is ours to declare.
+    "flask<4",
+    "PyYAML<7",
+    "fast-depends<4",
+    "cloud-sql-python-connector[pg8000]<2",
+    "python-dotenv<2",
+    "looker-sdk<27",
+    "psutil<8",
+    "google-cloud-bigquery>=3.0.0,<4",
+    # Never imported. psycopg2-binary and pg8000 are SQLAlchemy drivers named
+    # in a URL, gunicorn is the production entry point.
+    "psycopg2-binary<3",
+    "pg8000<2",
+    "gunicorn<27",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
+    # Dash brings plotly in, the same way it brings Flask in, and three
+    # dispatch tests import it by name to read the figures back off a
+    # serialized graph. Ours to declare.
+    "plotly>=5.0.0",
+]
+# The browser tier only. dev is uv's default group, so nothing here is
+# installed unless you ask for it with --group e2e, which ./scripts/run_e2e.sh
+# does. Pinned, so a resolver change can't move the browser out from under the
+# recorded cassettes.
+e2e = [
+    "playwright==1.62.0",
+    "pytest-playwright==0.9.0",
+    "pytest-timeout==2.4.0",
 ]
 
 [build-system]
@@ -47,7 +85,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"prism" = ["server/services/prompts/*.txt", "ui/assets/*.css"]
+# Dash serves everything under assets/, not just the CSS, so the glob has to
+# match the directory rather than one extension.
+"prism" = ["server/services/prompts/*.txt", "ui/assets/*"]
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"
@@ -56,4 +96,12 @@ default = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-v --strict-markers"
+# e2e is excluded by default: it wants its own database, a gunicorn subprocess
+# and a browser. Ask for it with `-m e2e`. live is excluded because it bills
+# the real agent APIs.
+addopts = "-v --strict-markers -m 'not e2e and not live'"
+markers = [
+    "e2e: browser end-to-end test; needs the E2E database, server and browser",
+    "live: calls the real agent APIs and costs money",
+    "allow_errors: the test is expected to produce browser or server errors",
+]

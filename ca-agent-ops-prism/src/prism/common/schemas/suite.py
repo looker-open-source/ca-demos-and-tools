@@ -20,27 +20,14 @@ from prism.common.schemas.example import Example
 import pydantic
 
 
-class SuiteCreate(pydantic.BaseModel):
-  """Schema for creating a new Test Suite."""
+class Suite(pydantic.BaseModel):
+  """Schema for a persisted Test Suite."""
 
   name: str = pydantic.Field(..., description="Unique name of the suite")
   description: str | None = None
   tags: dict[str, str] = pydantic.Field(
       default_factory=dict, description="Metadata tags"
   )
-
-
-class SuiteUpdate(pydantic.BaseModel):
-  """Schema for updating an existing Test Suite."""
-
-  name: str | None = None
-  description: str | None = None
-  tags: dict[str, str] | None = None
-
-
-class Suite(SuiteCreate):
-  """Schema for a persisted Test Suite."""
-
   id: int
   created_at: datetime.datetime
   modified_at: datetime.datetime | None = None
@@ -61,17 +48,4 @@ class SuiteWithStats(pydantic.BaseModel):
 class SuiteDetail(Suite):
   """Suite data including full examples list."""
 
-  examples: list[Example] = []
-
-
-class TestSuiteSnapshotSchema(pydantic.BaseModel):
-  """Schema for a Test Suite snapshot."""
-
-  id: int
-  original_suite_id: int | None = None
-  name: str
-  description: str | None = None
-  tags: dict[str, str] = pydantic.Field(default_factory=dict)
-  created_at: datetime.datetime
-
-  model_config = pydantic.ConfigDict(from_attributes=True)
+  examples: list[Example] = pydantic.Field(default_factory=list)

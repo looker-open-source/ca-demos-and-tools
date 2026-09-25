@@ -19,6 +19,7 @@ from typing import Sequence
 
 from prism.common.schemas import example as example_schemas
 from prism.common.schemas.assertion import Assertion
+from prism.common.schemas.assertion import AssertionRequest
 from prism.common.schemas.suite import Suite
 from prism.common.schemas.suite import SuiteWithStats
 from prism.server.models.example import Example
@@ -28,6 +29,8 @@ from prism.server.models.suite import TestSuite
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
 import pydantic
+import sqlalchemy
+from sqlalchemy import orm
 from sqlalchemy.orm import Session
 
 
@@ -74,36 +77,60 @@ class SuiteService:
     """Lists all suites with question and run counts.
 
     Args:
-        include_archived: Whether to include archived suites.
-        coverage: Filter by coverage status ('FULL', 'PARTIAL', 'NONE').
+      include_archived: Whether to include archived suites.
+      coverage: Filter by coverage status ('FULL', 'PARTIAL', 'NONE').
 
     Returns:
-        List of SuiteWithStats.
+      List of SuiteWithStats.
     """
-    suites = self.list_suites(include_archived=include_archived)
+    # One query for the suites, one for their examples, one for the examples'
+    # assertions. This used to be a query per suite for its examples, a query
+    # per suite for its run count, and then a lazy load per example for its
+    # assertions: a page of 30 suites at 40 questions each cost over 1200.
+    query = self.session.query(TestSuite).options(
+        orm.selectinload(TestSuite.examples).selectinload(Example.asserts)
+    )
+    if not include_archived:
+      query = query.filter(
+          TestSuite.is_archived == False  # pylint: disable=singleton-comparison
+      )
+    suites = query.all()
+
+    # Through the snapshot, because a run points at its own frozen copy of the
+    # suite and never at the live row. Counted for every suite at once.
+    run_counts = dict(
+        self.session.query(
+            TestSuiteSnapshot.original_suite_id,
+            sqlalchemy.func.count(Run.id),
+        )
+        .join(Run, Run.test_suite_snapshot_id == TestSuiteSnapshot.id)
+        .filter(
+            Run.is_archived == False  # pylint: disable=singleton-comparison
+        )
+        .group_by(TestSuiteSnapshot.original_suite_id)
+        .all()
+    )
+
     stats = []
     for suite in suites:
-      # Question Count
-      examples = self.example_repository.list_by_suite_id(suite.id)
+      # The relationship carries archived examples too, which
+      # list_by_suite_id filtered out.
+      examples = [e for e in suite.examples if not e.is_archived]
       question_count = len(examples)
+      run_count = run_counts.get(suite.id, 0)
 
-      # Run Count
-      # Join Runs with TestSuiteSnapshots that point to this suite id
-      run_count = (
-          self.session.query(Run)
-          .join(TestSuiteSnapshot)
-          .filter(TestSuiteSnapshot.original_suite_id == suite.id)
-          .filter(Run.is_archived == False)  # pylint: disable=singleton-comparison
-          .count()
+      # Weight > 0 only, the same population Trial.score averages over. Any
+      # assertion used to count here, so a suite whose questions each carried
+      # one diagnostic (weight 0) assertion read 1.0, drew a green Full
+      # Coverage badge and passed the FULL filter. Every trial in its run then
+      # scored None and the run had no accuracy at all.
+      questions_with_asserts = sum(
+          1 for e in examples if any(a.weight > 0 for a in e.asserts)
       )
-
-      # Assertion Coverage
-      questions_with_asserts = sum(1 for e in examples if e.asserts)
       assertion_coverage = 0.0
       if question_count > 0:
         assertion_coverage = questions_with_asserts / question_count
 
-      # Filter by coverage
       if coverage:
         if coverage == "FULL" and assertion_coverage < 1.0:
           continue
@@ -153,7 +180,6 @@ class SuiteService:
       questions: list[dict[str, Any]],
   ) -> list[dict[str, Any]]:
     """Synchronizes a suite's examples with the provided questions."""
-    # 1. Get existing examples
     existing_examples = {e.id: e for e in self.list_examples(suite_id)}
     processed_example_ids = set()
     result_questions = []
@@ -162,7 +188,6 @@ class SuiteService:
       question_text = q["question"]
       question_id = q.get("id")
 
-      # Prepare assertions
       asserts_parsed = []
       for a in q.get("asserts", []):
         asserts_parsed.append(
@@ -170,7 +195,6 @@ class SuiteService:
         )
 
       if question_id and question_id in existing_examples:
-        # Update existing
         processed_example_ids.add(question_id)
         updated_example = self.update_example(
             example_id=question_id,
@@ -181,7 +205,6 @@ class SuiteService:
             example_schemas.Example.model_validate(updated_example).model_dump()
         )
       else:
-        # Create new
         new_example = self.add_example(
             suite_id=suite_id,
             question=question_text,
@@ -191,23 +214,24 @@ class SuiteService:
             example_schemas.Example.model_validate(new_example).model_dump()
         )
 
-    # 2. Delete removed examples
+    # questions is the whole new list, so anything left out of it is gone.
     for e_id in existing_examples:
       if e_id not in processed_example_ids:
         self.delete_example(e_id)
 
     return result_questions
 
-  # Example Operations
-
   def add_example(
       self,
       suite_id: int,
       question: str,
-      asserts: list[Assertion] | None = None,
+      asserts: list[Assertion | AssertionRequest] | None = None,
   ) -> Example:
-    """Adds a new example to a suite."""
-    # Validate suite exists
+    """Adds a new example to a suite.
+
+    Raises:
+      ValueError: If there is no suite with that id.
+    """
     if not self.suite_repository.get_by_id(suite_id):
       raise ValueError(f"TestSuite with id {suite_id} not found")
 
@@ -220,7 +244,7 @@ class SuiteService:
       for a in asserts:
         self.example_repository.add_assertion(example.id, a)
 
-    # Refresh to return full object with assertions
+    # Refresh, so the caller sees the assertions just written through it.
     self.session.refresh(example)
     return example
 
@@ -240,60 +264,44 @@ class SuiteService:
       self,
       example_id: int,
       question: str | None = None,
-      asserts: list[Assertion] | None = None,
+      asserts: list[Assertion | AssertionRequest] | None = None,
   ) -> Example:
     """Updates an example."""
-    # First update basic fields
     example = self.example_repository.update(
         example_id=example_id, question=question
     )
 
-    # Then handle assertions reconciliation if provided
     if asserts is not None:
       existing_asserts = {a.id: a for a in example.asserts}
       processed_assert_ids = set()
 
       for a in asserts:
-        # Assertion schema (from Pydantic) might have 'id' if it exists
+        # The schema only carries an id for an assertion already in the DB.
         aid = getattr(a, "id", None)
 
         if aid and aid in existing_asserts:
-          # Update existing
           processed_assert_ids.add(aid)
           self.example_repository.update_assertion(aid, a)
         else:
-          # Create new
           new_a = self.example_repository.add_assertion(example.id, a)
           processed_assert_ids.add(new_a.id)
 
-      # Delete removed assertions
+      # asserts is the whole new list, so anything left out of it is gone.
       for aid in existing_asserts:
         if aid not in processed_assert_ids:
           self.example_repository.delete_assertion(aid)
 
-    # Refresh to return full object
+    # Refresh, so the caller sees the assertions just written through it.
     self.session.refresh(example)
     return example
 
   def delete_example(self, example_id: int) -> Example:
-    """Archives (deletes) an example."""
+    """Archives the example. Nothing here deletes a row."""
     return self.example_repository.archive(example_id=example_id)
 
-  def add_assertion(self, example_id: int, assertion: Assertion) -> Example:
+  def add_assertion(
+      self, example_id: int, assertion: Assertion | AssertionRequest
+  ) -> Example:
     """Adds a single assertion to an example."""
     self.example_repository.add_assertion(example_id, assertion)
     return self.example_repository.get_by_id(example_id)
-
-  def update_assertion(
-      self,
-      assertion_id: int,
-      assertion_data: Assertion,
-  ) -> Example:
-    """Updates an assertion."""
-    return self.example_repository.update_assertion(
-        assertion_id, assertion_data
-    )
-
-  def delete_assertion(self, assertion_id: int) -> None:
-    """Deletes an assertion by ID."""
-    self.example_repository.delete_assertion(assertion_id)

@@ -16,7 +16,7 @@
 
 import datetime
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dash import dcc
 from dash import html
@@ -25,237 +25,21 @@ import dash_mantine_components as dmc
 import dash_vega_components as dvc
 
 
-def render_timeline(
-    timeline_data: Dict[str, Any], raw_payload: Optional[List[Any]] = None
-):
-  """Renders the visual timeline component from a Timeline DTO.
+def _format_event_time(ts: datetime.datetime) -> str:
+  """Renders an event time to the millisecond, labelled with its zone.
 
-  Args:
-    timeline_data: A dictionary containing timeline events and metadata.
-    raw_payload: Optional raw trace payload for the copy-to-clipboard button.
-
-  Returns:
-    A Dash layout component for the timeline.
+  These badges used to render the stored clock unconverted and unlabelled. They
+  sit directly under a trial card drawn by utils.format_timestamp, so one
+  screen showed two times hours apart for the same event. Same UTC label as
+  that formatter, keeping the sub-second part the badges have always had.
   """
-
-  if not timeline_data or not timeline_data.get("events"):
-    return dmc.Alert(
-        "No trace data available for this trial.",
-        color="orange",
-        variant="light",
-    )
-
-  total_duration = timeline_data.get("total_duration_ms", 0)
-
-  accordion_items = []
-  for i, event in enumerate(timeline_data["events"]):
-    content_type = event.get("content_type", "text")
-    item_value = f"event-{i}"
-
-    if content_type == "text":
-      content_display = dmc.Paper(
-          dcc.Markdown(
-              event["content"],
-              style={
-                  "fontSize": "14px",
-                  "wordBreak": "break-word",
-              },
-          ),
-          p="sm",
-          mt="sm",
-          withBorder=True,
-          bg="var(--mantine-color-gray-0)",
-      )
-    elif content_type in ["json", "code", "sql"]:
-      content_display = dmc.Code(
-          event["content"],
-          block=True,
-          mt="sm",
-          style={"whiteSpace": "pre-wrap"},
-      )
-    elif content_type == "vegalite":
-      try:
-        spec = (
-            json.loads(event["content"])
-            if isinstance(event["content"], str)
-            else event["content"]
-        )
-        if isinstance(spec, dict):
-          spec["width"] = "container"
-          spec["autosize"] = {"type": "fit", "contains": "padding"}
-
-        content_display = dvc.Vega(
-            spec=spec,
-            opt={"renderer": "svg", "actions": False},
-            style={"width": "100%", "marginTop": "10px"},
-        )
-      except Exception:  # pylint: disable=broad-exception-caught
-        content_display = dmc.Code(
-            event["content"],
-            block=True,
-            mt="sm",
-            style={"whiteSpace": "pre-wrap"},
-            color="red",
-        )
-    else:
-      # Fallback
-      content_display = dmc.Text(
-          event["content"], style={"whiteSpace": "pre-wrap"}
-      )
-
-    # Calculate progress bar values
-    if total_duration > 0:
-      step_duration_pct = (event.get("duration_ms", 0) / total_duration) * 100
-      prev_duration_pct = (
-          (event.get("cumulative_duration_ms", 0) - event.get("duration_ms", 0))
-          / total_duration
-      ) * 100
-    else:
-      step_duration_pct = 0
-      prev_duration_pct = 0
-
-    # Cap at 100% just in case
-    if step_duration_pct + prev_duration_pct > 100:
-      step_duration_pct = max(0, 100 - prev_duration_pct)
-
-    progress_bar = dmc.ProgressRoot(
-        size=6,
-        children=[
-            dmc.ProgressSection(
-                value=prev_duration_pct,
-                color="gray.2",
-            ),
-            dmc.ProgressSection(
-                value=step_duration_pct,
-                color="blue.6",
-                style={"borderRadius": "var(--mantine-radius-md)"},
-            ),
-        ],
-        style={"backgroundColor": "var(--mantine-color-gray-1)"},
-    )
-
-    accordion_items.append(
-        dmc.AccordionItem(
-            [
-                dmc.AccordionControl(
-                    html.Div(
-                        [
-                            dmc.Group(
-                                justify="space-between",
-                                mb="xs",
-                                children=[
-                                    dmc.Group([
-                                        dmc.ThemeIcon(
-                                            DashIconify(
-                                                icon=event.get(
-                                                    "icon", "bi:circle"
-                                                ),
-                                                width=20,
-                                            ),
-                                            size="lg",
-                                            radius="md",
-                                            variant="light",
-                                            color="blue",
-                                        ),
-                                        dmc.Text(
-                                            event["title"], fw=600, size="sm"
-                                        ),
-                                    ]),
-                                    dmc.Group(
-                                        gap="xs",
-                                        children=[
-                                            dmc.Text(
-                                                f"{event.get('duration_ms', 0)}ms",
-                                                size="xs",
-                                                fw=500,
-                                            ),
-                                            dmc.Text(
-                                                f"{step_duration_pct:.1f}%",
-                                                size="xs",
-                                                c="dimmed",
-                                            ),
-                                            dmc.Badge(
-                                                f"+{event.get('cumulative_duration_ms', 0) / 1000:.1f}s",
-                                                variant="light",
-                                                color="gray",
-                                                size="xs",
-                                                radius="sm",
-                                                tt="none",
-                                            ),
-                                        ],
-                                    ),
-                                ],
-                            ),
-                            progress_bar,
-                        ],
-                    )
-                ),
-                dmc.AccordionPanel(content_display),
-            ],
-            value=item_value,
-        )
-    )
-
-  if raw_payload:
-    copy_button = dmc.Tooltip(
-        label="Copy Full Trace",
-        children=dcc.Clipboard(
-            content=json.dumps(raw_payload, indent=2),
-            className="button is-small",
-            style={
-                "display": "inline-block",
-                "verticalAlign": "middle",
-                "marginLeft": "10px",
-                "cursor": "pointer",
-            },
-        ),
-    )
-  else:
-    copy_button = html.Div()
-
-  return html.Div([
-      dmc.Group(
-          [
-              dmc.Group(
-                  [
-                      copy_button,
-                      dmc.Tooltip(
-                          label="Expand All",
-                          children=dmc.ActionIcon(
-                              DashIconify(icon="bi:arrows-expand"),
-                              id="expand-all-button",
-                              variant="transparent",
-                              color="gray",
-                          ),
-                      ),
-                      dmc.Tooltip(
-                          label="Collapse All",
-                          children=dmc.ActionIcon(
-                              DashIconify(icon="bi:arrows-collapse"),
-                              id="collapse-all-button",
-                              variant="transparent",
-                              color="gray",
-                          ),
-                      ),
-                  ],
-                  gap="xs",
-              ),
-          ],
-          justify="flex-end",
-          mb="xs",
-      ),
-      dmc.Accordion(
-          id="timeline-accordion",
-          multiple=True,
-          children=accordion_items,
-          value=[],  # Start collapsed
-          variant="separated",
-          radius="md",
-      ),
-  ])
+  utc = ts.astimezone(datetime.timezone.utc)
+  return f"{utc.strftime('%H:%M:%S.%f')[:-3]} UTC"
 
 
-def render_trace_timeline(timeline_data: dict[str, Any]) -> dmc.Timeline:
+def render_trace_timeline(
+    timeline_data: dict[str, Any],
+) -> dmc.Timeline | dmc.Text:
   """Renders the execution trace timeline with grouped events."""
   groups = timeline_data.get("groups", [])
   total_duration = timeline_data.get("total_duration_ms", 0)
@@ -270,7 +54,6 @@ def render_trace_timeline(timeline_data: dict[str, Any]) -> dmc.Timeline:
     event_list = group["events"]
     bullet_icon = group["icon"]
 
-    # Calculate timestamps for the group
     first_event = event_list[0]
     ts = first_event.get("timestamp")
     timestamp_str = ""
@@ -278,13 +61,12 @@ def render_trace_timeline(timeline_data: dict[str, Any]) -> dmc.Timeline:
       if isinstance(ts, str):
         try:
           ts_dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-          timestamp_str = ts_dt.strftime("%H:%M:%S.%f")[:-3]
+          timestamp_str = _format_event_time(ts_dt)
         except ValueError:
           timestamp_str = ts
       elif isinstance(ts, datetime.datetime):
-        timestamp_str = ts.strftime("%H:%M:%S.%f")[:-3]
+        timestamp_str = _format_event_time(ts)
 
-    # Progress bar for the whole group
     start_ms = first_event.get("cumulative_duration_ms", 0) - first_event.get(
         "duration_ms", 0
     )
@@ -334,7 +116,6 @@ def render_trace_timeline(timeline_data: dict[str, Any]) -> dmc.Timeline:
         style={"backgroundColor": "var(--mantine-color-gray-2)"},
     )
 
-    # Render all events in the group
     group_children = []
     for event in event_list:
       group_children.append(
@@ -381,7 +162,7 @@ def render_trace_timeline(timeline_data: dict[str, Any]) -> dmc.Timeline:
   )
 
 
-def render_chart_carousel(timeline_data: Dict[str, Any], minimal: bool = False):
+def render_chart_carousel(timeline_data: dict[str, Any], minimal: bool = False):
   """Renders a carousel of agent-generated charts.
 
   Args:
@@ -399,45 +180,54 @@ def render_chart_carousel(timeline_data: Dict[str, Any], minimal: bool = False):
   if not charts:
     return None
 
-  slides = []
-  for i, event in enumerate(charts):
+  # Parse first, caption second. The captions used to be numbered off the
+  # unparsed list while a chart whose spec failed json.loads was skipped, so
+  # three events with a bad one in the middle gave two slides reading "CHART 1
+  # OF 3" and "CHART 3 OF 3" under a badge saying 2 Charts.
+  specs = []
+  for event in charts:
     content = event.get("content", "")
     try:
       spec = json.loads(content) if isinstance(content, str) else content
-      if isinstance(spec, dict):
-        spec["width"] = "container"
-        spec["height"] = 350
-        spec["autosize"] = {"type": "fit", "contains": "padding"}
-
-      slides.append(
-          dmc.CarouselSlide(
-              dmc.Stack(
-                  [
-                      dmc.Text(
-                          f"CHART {i + 1} OF {len(charts)}",
-                          fw=700,
-                          size="xs",
-                          ta="center",
-                          c="dimmed",
-                          lts="0.05em",
-                      ),
-                      dvc.Vega(
-                          spec=spec,
-                          opt={"renderer": "svg", "actions": False},
-                          style={"width": "100%", "height": "350px"},
-                      ),
-                  ],
-                  gap="md",
-                  px="xl",
-                  py="xl",
-              )
-          )
-      )
     except Exception:  # pylint: disable=broad-exception-caught
       continue
+    if isinstance(spec, dict):
+      # Copy first. An event whose content is already a dict is the caller's,
+      # and the inline renderer below draws the same one at its own size.
+      spec = dict(spec)
+      spec["width"] = "container"
+      spec["height"] = 350
+      spec["autosize"] = {"type": "fit", "contains": "padding"}
+    specs.append(spec)
 
-  if not slides:
+  if not specs:
     return None
+
+  slides = [
+      dmc.CarouselSlide(
+          dmc.Stack(
+              [
+                  dmc.Text(
+                      f"CHART {i + 1} OF {len(specs)}",
+                      fw=700,
+                      size="xs",
+                      ta="center",
+                      c="dimmed",
+                      lts="0.05em",
+                  ),
+                  dvc.Vega(
+                      spec=spec,
+                      opt={"renderer": "svg", "actions": False},
+                      style={"width": "100%", "height": "350px"},
+                  ),
+              ],
+              gap="md",
+              px="xl",
+              py="xl",
+          )
+      )
+      for i, spec in enumerate(specs)
+  ]
 
   if len(slides) > 1:
     carousel_content = dmc.Carousel(
@@ -446,7 +236,6 @@ def render_chart_carousel(timeline_data: Dict[str, Any], minimal: bool = False):
         withControls=True,
         emblaOptions={"loop": True, "align": "start"},
         slideSize="100%",
-        id="generated-charts-carousel",
     )
   else:
     carousel_content = slides[0].children
@@ -484,7 +273,9 @@ def render_chart_carousel(timeline_data: Dict[str, Any], minimal: bool = False):
                               ],
                           ),
                           dmc.Badge(
-                              f"{len(slides)} Charts",
+                              f"{len(slides)} Charts"
+                              if len(slides) != 1
+                              else "1 Chart",
                               variant="light",
                               color="gray",
                               size="xs",
@@ -500,13 +291,14 @@ def render_chart_carousel(timeline_data: Dict[str, Any], minimal: bool = False):
   )
 
 
-def _render_event_content(event: dict[str, Any]) -> html.Div:
-  """Helper to render individual event content."""
+def _render_event_content(
+    event: dict[str, Any],
+) -> dmc.Paper | dmc.Accordion | dmc.Code | dmc.Text:
+  """Renders one event body, keyed off its title and content type."""
   content_type = event.get("content_type", "text")
   content = event.get("content", "")
 
-  # Custom rendering based on content and type
-  if event["title"] in ["Test Case", "Final Response", "Agent Thought"]:
+  if event["title"] in ["Question", "Final Response", "Agent Thought"]:
     return dmc.Paper(
         p="md",
         radius="md",
@@ -562,6 +354,7 @@ def _render_event_content(event: dict[str, Any]) -> html.Div:
     try:
       spec = json.loads(content) if isinstance(content, str) else content
       if isinstance(spec, dict):
+        spec = dict(spec)
         spec["width"] = "container"
         spec["autosize"] = {"type": "fit", "contains": "padding"}
 
@@ -596,7 +389,7 @@ def _render_event_content(event: dict[str, Any]) -> html.Div:
 
 
 def _get_icon_color(bullet_icon: str) -> str:
-  """Helper to map icons to colors."""
+  """Picks the bullet colour from the icon name."""
   icon_color = "gray"
   if "database" in bullet_icon:
     icon_color = "blue"

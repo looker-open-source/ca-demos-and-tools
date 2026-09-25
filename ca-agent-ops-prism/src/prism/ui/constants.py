@@ -28,7 +28,6 @@ class ComponentProperty(enum.StrEnum):
   HREF = "href"
   PATHNAME = "pathname"
   SEARCH = "search"
-  ACTIVE = "active"
   STYLE = "style"
   DISABLED = "disabled"
   VISIBLE = "visible"
@@ -37,19 +36,19 @@ class ComponentProperty(enum.StrEnum):
   COLOR = "color"
   LOADING = "loading"
   HIDE = "hide"
-  HIDDEN = "hidden"
 
 
-# Alias for brevity
-# Alias for brevity
 CP = ComponentProperty
 
-# Global Redirect Handler ID
 REDIRECT_HANDLER = "redirect-handler"
 GLOBAL_PROJECT_ID_STORE = "global-project-id-store"
+NOTIFICATION_CONTAINER = "notification-container"
 
 
 CHART_TYPE_OPTIONS = [
+    # Vega-Lite mark names. "arc" is what a pie or a donut chart comes back as,
+    # so leaving it out meant those could not be asserted on at all.
+    {"label": "Arc", "value": "arc"},
     {"label": "Area", "value": "area"},
     {"label": "Bar", "value": "bar"},
     {"label": "Circle", "value": "circle"},
@@ -73,7 +72,8 @@ ASSERTS_GUIDE = [
         "label": "Text Contains",
         "description": (
             "Checks if the agent's final text response contains a specific"
-            " substring."
+            " substring. Matching ignores case. Switch to Regex to match a"
+            " pattern instead."
         ),
         "example": "Expected text",
     },
@@ -82,7 +82,8 @@ ASSERTS_GUIDE = [
         "label": "Query Contains",
         "description": (
             "Checks if the generated SQL or Looker query contains a specific"
-            " substring."
+            " substring. Matching ignores case. Switch to Regex to match a"
+            " pattern instead."
         ),
         "example": "FROM `my_table`",
     },
@@ -91,6 +92,18 @@ ASSERTS_GUIDE = [
         "label": "Max Duration (ms)",
         "description": (
             "Checks if the total time for the trial was below a threshold."
+        ),
+        "example": "5000",
+    },
+    {
+        # Deprecated, but listed anyway. The Assertion Type select is built
+        # from this list, so while it was missing, an existing assertion of
+        # this type opened the select blank and saving changed its type.
+        "name": "latency-max-ms",
+        "label": "Max Latency (ms), deprecated",
+        "description": (
+            "The old name for Max Duration (ms). Existing assertions still"
+            " work. Use Max Duration (ms) for new ones."
         ),
         "example": "5000",
     },
@@ -123,10 +136,11 @@ ASSERTS_GUIDE = [
         "description": (
             "Checks if the generated Looker query matches the specified "
             "structure (model, explore, fields, filters, sorts, limit). "
-            "A partial score is computed based on the ratio of matching "
-            "parameters. The assertion evaluates to Pass if the match rate "
-            "is >= 0.75, otherwise it Fails. Filters are compared "
-            "order-independently handling URL-encoding and commas."
+            "Each parameter you specify counts once, and the match rate is "
+            "the fraction of them that matched. The assertion passes at a "
+            "match rate >= 0.75 and scores 1.0 or 0.0, as every other check "
+            "does. Filters are compared order-independently handling "
+            "URL-encoding and commas."
         ),
         "example": (
             "model: 'thelook'\nexplore: 'orders'\nfields: ['orders.id',"

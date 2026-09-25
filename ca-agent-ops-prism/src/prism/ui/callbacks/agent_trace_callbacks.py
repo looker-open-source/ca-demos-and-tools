@@ -22,6 +22,7 @@ import dash_mantine_components as dmc
 from prism.client import get_client
 from prism.ui.components import timeline
 from prism.ui.ids import EvaluationIds as Ids
+from prism.ui.utils import run_status_display
 from prism.ui.utils import typed_callback
 
 
@@ -97,19 +98,13 @@ def render_agent_trace(
 
   timeline_data = timeline_obj.model_dump()
 
-  # Extract duration and raw trace for other components
-  duration_ms = getattr(trial, "duration_ms", 0) or 0
+  duration_ms = trial.duration_ms or 0
+  raw_trace_json = json.dumps(trial.trace_results or [], indent=2)
 
-  trace_results = getattr(trial, "trace_results", []) or []
-  if isinstance(trace_results, dict):
-    trace_results = trace_results.get("response", [])
-  raw_trace_json = json.dumps(trace_results, indent=2)
+  # Status Label. Six statuses used to collapse into a red "Failed" here, so
+  # the header over a cancelled trial's trace said the agent had failed.
+  status_color, status_label = run_status_display(trial.status)
 
-  # Status Label
-  status_color = "green" if trial.status.value == "COMPLETED" else "red"
-  status_label = "Success" if trial.status.value == "COMPLETED" else "Failed"
-
-  # Actions
   actions = [
       dmc.Button(
           "Download full trace",
@@ -131,7 +126,6 @@ def render_agent_trace(
       ),
   ]
 
-  # Unified Breadcrumbs: Evaluations / Run #<run_id> / Trial #<trial_id> / Trace
   breadcrumbs = dmc.Breadcrumbs(
       separator="/",
       mb="lg",
@@ -240,14 +234,16 @@ def toggle_raw_modal(n_clicks: int, raw_data: str):
     prevent_initial_call=True,
 )
 def download_trace(n_clicks: int, raw_data: str, pathname: str):
-  """Downloads the raw trace as a JSON file."""
+  """Downloads the raw trace as a JSON file.
+
+  The id is read off the path and not off the store, which holds the trace
+  alone. render_agent_trace is the only thing that builds the button, and it
+  returns early unless the path is /evaluations/trials/<id>/trace, so by the
+  time there is a button to click the id is the second segment from the end.
+  """
   if not n_clicks:
     return dash.no_update
 
-  trial_id = "unknown"
-  try:
-    trial_id = pathname.split("/")[-2]
-  except (ValueError, IndexError):
-    pass
+  trial_id = (pathname or "").split("/")[-2]
 
   return dict(content=raw_data, filename=f"trace_{trial_id}.json")

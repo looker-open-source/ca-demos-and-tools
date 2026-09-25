@@ -15,7 +15,6 @@
 """Pydantic schemas for the Agent entity."""
 
 import datetime
-import enum
 from typing import Union
 
 import pydantic
@@ -59,17 +58,42 @@ class LookerGoldenQuery(pydantic.BaseModel):
   looker_query: LookerQuery
 
 
+def normalize_location(location: str | None) -> str:
+  """Normalizes GCP location for Gemini Data Analytics agents.
+
+  Defaults empty or None to 'global', and lowercases locations (e.g. 'US' ->
+  'us').
+
+  Args:
+    location: The GCP location string to normalize.
+
+  Returns:
+    The normalized location string (defaults to 'global').
+  """
+  if not location:
+    return "global"
+  stripped = location.strip()
+  if not stripped:
+    return "global"
+  return stripped.lower()
+
+
 class AgentConfig(pydantic.BaseModel):
   """Configuration for an Agent."""
 
   project_id: str | None = None
-  location: str | None = None
+  location: str | None = "global"
   agent_resource_id: str | None = None
   datasource: Union[BigQueryConfig, LookerConfig, None] = None
   system_instruction: str | None = None
   looker_client_id: str | None = None
   looker_client_secret: str | None = None
   golden_queries: list[LookerGoldenQuery] | None = None
+
+  @pydantic.field_validator("location", mode="before")
+  @classmethod
+  def _validate_location(cls, v: str | None) -> str:
+    return normalize_location(v)
 
 
 class AgentBase(pydantic.BaseModel):
@@ -81,17 +105,6 @@ class AgentBase(pydantic.BaseModel):
   )
 
 
-class AgentCreate(AgentBase):
-  """Schema for creating a new Agent."""
-
-
-class AgentUpdate(pydantic.BaseModel):
-  """Schema for updating an existing Agent."""
-
-  name: str | None = None
-  config: AgentConfig | None = None
-
-
 class Agent(AgentBase):
   """Schema for a persisted Agent."""
 
@@ -101,10 +114,3 @@ class Agent(AgentBase):
   is_archived: bool = False
 
   model_config = pydantic.ConfigDict(from_attributes=True)
-
-
-class UniqueDatasources(pydantic.BaseModel):
-  """Unique datasource names grouped by type."""
-
-  bq: list[str]
-  looker: list[str]

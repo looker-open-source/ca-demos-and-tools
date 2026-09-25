@@ -1,71 +1,35 @@
-"""Tests to ensure prism.common remains a leaf node with no dependencies on other prism modules."""
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import ast
-import os
-import sys
-from typing import Set
+"""Architecture boundary: prism.common must stay a leaf."""
 
-import pytest
-
-
-def get_imports(file_path: str) -> Set[str]:
-  """Parses a Python file and returns a set of imported module names."""
-  with open(file_path, "r", encoding="utf-8") as f:
-    try:
-      tree = ast.parse(f.read(), filename=file_path)
-    except SyntaxError:
-      return set()
-
-  imports = set()
-  for node in ast.walk(tree):
-    if isinstance(node, ast.Import):
-      for alias in node.names:
-        imports.add(alias.name)
-    elif isinstance(node, ast.ImportFrom):
-      if node.module:
-        imports.add(node.module)
-  return imports
+from tests.conftest import layering_violations
 
 
-def test_prism_common_isolation():
-  """Ensures prism.common does not import from prism.server, prism.ui, or prism.client."""
-  # Locate src/prism/common
-  # Assuming this test runs from project root or proper python path
-  # We try to find the absolute path relative to this test file
-  base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-  common_dir = os.path.join(base_dir, "src", "prism", "common")
+def test_the_common_package_does_not_import_the_other_layers():
+  """Everything depends on prism.common, so it may depend on none of them.
 
-  if not os.path.exists(common_dir):
-    pytest.fail(f"Could not find prism.common directory at {common_dir}")
+  One import from here into prism.server, prism.ui or prism.client makes the
+  schemas unusable from the layer they point at, and the cycle only shows up
+  as an ImportError in whichever process imports them in the wrong order.
+  """
+  violations = layering_violations(
+      "prism.common", ["prism.server", "prism.ui", "prism.client"]
+  )
 
-  forbidden_prefixes = [
-      "prism.server",
-      "prism.ui",
-      "prism.client",
-      # We could also ban 'prism.app' etc if they verify existent
-  ]
-
-  offending_imports = []
-
-  for root, _, files in os.walk(common_dir):
-    for file in files:
-      if not file.endswith(".py"):
-        continue
-
-      file_path = os.path.join(root, file)
-      rel_path = os.path.relpath(file_path, base_dir)
-
-      imports = get_imports(file_path)
-
-      for imp in imports:
-        for prefix in forbidden_prefixes:
-          if imp == prefix or imp.startswith(prefix + "."):
-            offending_imports.append(f"{rel_path}: imports '{imp}'")
-
-  if offending_imports:
-    msg = (
-        "Architecture Violation: prism.common must NOT import from other prism"
-        " modules.\nFound the following violations:\n"
-        + "\n".join(offending_imports)
-    )
-    pytest.fail(msg)
+  assert not violations, (
+      "Architecture violation: prism.common must not import any other prism"
+      " package.\n"
+      + "\n".join(violations)
+  )

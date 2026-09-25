@@ -14,118 +14,15 @@
 
 """Reusable dashboard components for Agent Detail page."""
 
-import datetime
 import hashlib
-from typing import Any, Dict, List
+from typing import Any
 from dash import html
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+from prism.ui import utils
 from prism.ui.components import links
 from prism.ui.components.badges import render_status_badge
 from prism.ui.pages.agent_ids import AgentIds
-
-
-def render_kpi_card(
-    title: str,
-    value: str | float | int,
-    unit: str = "",
-    icon: str = "material-symbols:analytics",
-    icon_color: str = "blue",
-    delta: float | None = None,
-    delta_label: str = "vs last week",
-) -> dmc.Paper:
-  """Renders a KPI card with optional sparkline/chart."""
-
-  # Format delta
-  delta_content = None
-  if delta is not None:
-    is_positive = delta >= 0
-    # For duration, negative delta is good (green), positive is bad (red)
-    # But generally "Trending Up" is green. Let's assume standard coloring.
-    # If title implies "Low is Good", we might flip colors.
-    # Actually for "Average Duration", user mock showed "Trending Down" (green).
-
-    color = "green" if is_positive else "red"
-    icon_trend = "trending_up" if is_positive else "trending_down"
-
-    # Custom logic for duration (Lower is better)
-    if "Duration" in title:
-      color = (
-          "green" if delta <= 0 else "orange"
-      )  # Orange for warning if duration increases
-      # Using orange for duration increase to match mock style slightly?
-      # Mock used "green" for "Trending Down" (faster).
-      # So if delta <= 0 (negative), it's green.
-
-    delta_val_str = (
-        f"{abs(delta):.1f}%" if "Rate" in title else f"{abs(int(delta))}"
-    )
-    if "Duration" in title:
-      delta_val_str += "ms"
-
-    delta_content = dmc.Group(
-        gap=4,
-        children=[
-            dmc.Text(
-                delta_val_str,
-                c=color,
-                fw=600,
-                size="sm",
-                style={"display": "flex", "alignItems": "center"},
-            ),
-            DashIconify(
-                icon=f"material-symbols:{icon_trend}", color=color, width=16
-            ),
-            dmc.Text(delta_label, c="dimmed", size="sm"),
-        ],
-    )
-
-  # Chart Background (Mock)
-
-  return dmc.Paper(
-      withBorder=True,
-      radius="md",
-      p="lg",
-      shadow="sm",
-      children=[
-          dmc.Group(
-              justify="space-between",
-              align="start",
-              mb="xs",
-              children=[
-                  dmc.Stack(
-                      gap=2,
-                      children=[
-                          dmc.Text(title, c="dimmed", size="sm", fw=500),
-                          dmc.Group(
-                              gap=4,
-                              align="baseline",
-                              children=[
-                                  dmc.Text(
-                                      str(value),
-                                      fw=700,
-                                      size="xl",
-                                      style={"fontSize": "2rem"},
-                                  ),
-                                  dmc.Text(unit, c="dimmed", size="md")
-                                  if unit
-                                  else None,
-                              ],
-                          ),
-                      ],
-                  ),
-                  dmc.ThemeIcon(
-                      DashIconify(icon=icon, width=24),
-                      size="xl",
-                      radius="md",
-                      color=icon_color,
-                      variant="light",
-                  ),
-              ],
-          ),
-          delta_content,
-      ],
-  )
 
 
 def get_suite_color(suite_name: str, index: int | None = None) -> str:
@@ -134,15 +31,15 @@ def get_suite_color(suite_name: str, index: int | None = None) -> str:
   if index is not None:
     return f"{colors[index % len(colors)]}.6"
 
-  # Fallback to hash-based if index not available
-  # (though we usually have it from sorted list)
+  # Every caller passes an index from a sorted list. The hash keeps the
+  # colour stable for any that does not.
   h = int(hashlib.md5(suite_name.encode()).hexdigest(), 16)
   return f"{colors[h % len(colors)]}.6"
 
 
 def render_evaluation_chart(
-    daily_accuracy: List[Dict[str, Any]],
-    suites: List[str] | None = None,
+    daily_accuracy: list[dict[str, Any]],
+    suites: list[str] | None = None,
     dropdown_id: str | None = None,
     container_id: str | None = None,
     selected_days: str = "Last 30 Days",
@@ -157,10 +54,8 @@ def render_evaluation_chart(
         **({"id": container_id} if container_id else {}),
     )
 
-  # Generate series dynamically if suites provided
   series = []
   if suites:
-    # Sort suites to ensure consistent indexing for colors
     sorted_suites = sorted(suites)
     for i, ds in enumerate(sorted_suites):
       series.append({
@@ -169,18 +64,15 @@ def render_evaluation_chart(
           "label": ds,
       })
   else:
-    # Default single series
     series = [{"name": "accuracy", "color": "violet.6", "label": "Accuracy"}]
 
-  # Transform data to percentages
   processed_data = []
-  if daily_accuracy:
-    for item in daily_accuracy:
-      new_item = item.copy()
-      for k, v in new_item.items():
-        if k != "date" and isinstance(v, (int, float)):
-          new_item[k] = round(v * 100, 1)
-      processed_data.append(new_item)
+  for item in daily_accuracy:
+    new_item = item.copy()
+    for k, v in new_item.items():
+      if k != "date" and isinstance(v, (int, float)):
+        new_item[k] = round(v * 100, 1)
+    processed_data.append(new_item)
 
   dropdown = None
   if dropdown_id:
@@ -310,7 +202,6 @@ def render_duration_chart(
 
   series = []
   if suites:
-    # Sort suites to ensure consistent indexing for colors
     sorted_suites = sorted(suites)
     for i, ds in enumerate(sorted_suites):
       series.append({
@@ -389,45 +280,16 @@ def render_recent_evals_table(
 
   rows = []
   for run in recent_evals:
-    # 1. Status Logic
     status_val = run.get("status", "PENDING")
-    status_config = {
-        "COMPLETED": {"color": "green", "label": "COMPLETED"},
-        "FAILED": {"color": "red", "label": "FAILED"},
-        "RUNNING": {"color": "blue", "label": "IN PROGRESS"},
-        "PENDING": {"color": "gray", "label": "PENDING"},
-        "CANCELLED": {"color": "gray", "label": "CANCELLED"},
-    }
-    config = status_config.get(
-        status_val, {"color": "gray", "label": status_val}
-    )
-    status_color = config["color"]
-    status_label = config["label"]
+    status_color, status_label = utils.run_status_display(status_val)
 
     score_pct = run["score"] * 100 if run["score"] is not None else None
 
-    # Date formatting
-    created_at = run.get("created_at")
+    # When the worker picked the run up, not when it was queued. Null while it
+    # is still queued.
+    started_at = run.get("started_at")
+    started_str = utils.format_timestamp(started_at) if started_at else "--"
 
-    # Started helper
-    def time_ago(dt: datetime.datetime) -> str:
-      now = datetime.datetime.now(dt.tzinfo)
-      diff = now - dt
-      seconds = diff.total_seconds()
-      if seconds < 60:
-        return "Just now"
-      elif seconds < 3600:
-        return f"{int(seconds // 60)} mins ago"
-      elif seconds < 86400:
-        return f"{int(seconds // 3600)} hr ago"
-      elif seconds < 172800:
-        return "Yesterday"
-      else:
-        return dt.strftime("%Y-%m-%d")
-
-    started_str = time_ago(created_at) if created_at else "--"
-
-    # Score Content
     score_content = dmc.Text("--", size="sm", c="dimmed")
     if status_val == "COMPLETED" and score_pct is not None:
       if score_pct >= 90:
@@ -470,7 +332,7 @@ def render_recent_evals_table(
             # Test Suite Link
             html.Td(
                 links.render_test_suite_link(
-                    run.get("suite_id", "N/A"), run.get("suite_name", "N/A")
+                    run.get("suite_id"), run.get("suite_name") or "N/A"
                 ),
                 style={"padding": "16px 24px"},
             ),
@@ -524,7 +386,6 @@ def render_recent_evals_table(
       radius="md",
       shadow="sm",
       children=[
-          # Header
           dmc.Group(
               justify="space-between",
               p="lg",
@@ -541,7 +402,6 @@ def render_recent_evals_table(
                   ),
               ],
           ),
-          # Table
           html.Div(
               style={"overflowX": "auto"},
               children=dmc.Table(

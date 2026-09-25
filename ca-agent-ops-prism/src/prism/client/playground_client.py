@@ -17,7 +17,6 @@
 from fast_depends import Depends
 from fast_depends import inject
 from prism.client import dependencies
-from prism.common.schemas.assertion import Assertion
 from prism.common.schemas.trace import PlaygroundTraceSchema
 from prism.common.schemas.trace import SimulationResult
 from prism.server.repositories.agent_repository import AgentRepository
@@ -28,7 +27,7 @@ from prism.server.services.suite_service import SuiteService
 
 
 class PlaygroundClient:
-  """Playground Client implementation."""
+  """One question against one agent, outside any evaluation run."""
 
   @inject
   def run_simulation(
@@ -44,20 +43,22 @@ class PlaygroundClient:
       suite_service: SuiteService = Depends(dependencies.get_suite_service),
       agent_repo: AgentRepository = Depends(dependencies.get_agent_repository),
   ) -> SimulationResult:
-    """Runs a full simulation using IDs, fetching data from the database."""
-    # 1. Fetch Question and Assertions if example_id is provided
+    """Runs one question against one agent and suggests assertions for it.
+
+    The trace is saved. The suggestions are not: they are returned for the
+    user to accept or discard.
+
+    Raises ValueError if the example does not exist.
+    """
     example = suite_service.get_example(example_id)
     if not example:
       raise ValueError(f"Example with ID {example_id} not found.")
 
-    # 2. Execute and Save Trace
     trace_model = playground_service.execute_and_save(
         agent_id=agent_id, example_id=example_id
     )
     trace = PlaygroundTraceSchema.model_validate(trace_model)
 
-    # 3. Generate Suggestions
-    # We need the agent's location for Vertex AI routing
     agent = agent_repo.get_by_id(agent_id)
     location = agent.location if agent else None
 
@@ -69,7 +70,7 @@ class PlaygroundClient:
         location=location,
     )
 
-    # 4. Construct UI-ready response
+    # Shape the summary the UI renders from.
     result_summary = {
         "passed": trace.passed,
         "score": trace.score,
@@ -87,20 +88,6 @@ class PlaygroundClient:
       suggestions_ui.append(s_dict)
 
     return SimulationResult(
-        trace=trace,
-        suggestions=suggestions,
         result_summary=result_summary,
         suggestions_ui=suggestions_ui,
     )
-
-  @inject
-  def get_trace(
-      self,
-      trace_id: int,
-      service: PlaygroundService = Depends(dependencies.get_playground_service),
-  ) -> PlaygroundTraceSchema | None:
-    """Gets a trace by ID."""
-    model = service.get_trace(trace_id)
-    if not model:
-      return None
-    return PlaygroundTraceSchema.model_validate(model)

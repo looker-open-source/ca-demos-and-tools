@@ -15,16 +15,18 @@
 """Repository for managing Runs."""
 
 import datetime
+import logging
 from typing import Any, Sequence, TypedDict
 
 from prism.common.schemas.execution import RunStatus
 from prism.server.models.assertion import AssertionResult
-from prism.server.models.assertion import AssertionSnapshot
 from prism.server.models.run import Run
 from prism.server.models.run import Trial
 from prism.server.models.snapshot import TestSuiteSnapshot
 import sqlalchemy
 from sqlalchemy import orm
+
+logger = logging.getLogger(__name__)
 
 
 class RunStats(TypedDict):
@@ -32,8 +34,24 @@ class RunStats(TypedDict):
   accuracy: float | None
 
 
+# The worker spawns one Python interpreter per concurrent trial, so this is a
+# ceiling on child processes on a single Cloud Run instance. The NumberInput
+# that feeds it has min=1 max=100, but those are client-side props and a
+# hand-built POST with concurrency 50000 reached Run.concurrency unchecked and
+# took the instance down.
+MAX_CONCURRENCY = 16
+
+# Statuses a run does not come back from. Archiving is only allowed from one of
+# these, because the worker's queries all skip archived runs.
+_TERMINAL_RUN_STATUSES = (
+    RunStatus.COMPLETED,
+    RunStatus.FAILED,
+    RunStatus.CANCELLED,
+)
+
+
 class RunRepository:
-  """Repository for Run entities."""
+  """Run lifecycle queries, plus the aggregates the dashboards read."""
 
   def __init__(self, session: orm.Session):
     self.session = session
@@ -41,12 +59,18 @@ class RunRepository:
   def eager_options(self):
     """Common eager loading options for Run details."""
 
+    # example_snapshot and suggested_asserts are here for the run detail page.
+    # _map_trial reads example_snapshot.question and Trial.model_validate reads
+    # suggested_asserts, so without these the page paid two lazy loads per
+    # trial on a three second poll. Loaded the way TrialRepository does it.
     return [
         orm.joinedload(Run.snapshot_suite),
         orm.joinedload(Run.agent),
         orm.selectinload(Run.trials)
         .selectinload(Trial.assertion_results)
         .joinedload(AssertionResult.assertion_snapshot),
+        orm.selectinload(Run.trials).joinedload(Trial.example_snapshot),
+        orm.selectinload(Run.trials).selectinload(Trial.suggested_asserts),
     ]
 
   def create(
@@ -56,28 +80,64 @@ class RunRepository:
       agent_context_snapshot: dict[str, Any] | None = None,
       generate_suggestions: bool = False,
       concurrency: int = 2,
+      example_snapshot_ids: Sequence[int] = (),
   ) -> Run:
-    """Creates a new Run."""
+    """Creates a new Run and one PENDING trial per example snapshot.
+
+    The trials are committed with the run, not after it. The worker loop reads
+    list_active every two seconds, and a run committed on its own is a PENDING
+    run with no trials: _aggregate_run_statuses finds nothing left to wait for
+    and completes the run before the caller has written its first trial.
+
+    A suite with no examples still produces a trial-less run, which is the case
+    the comment in _aggregate_run_statuses describes, and it still completes.
+
+    concurrency is clamped to 1..MAX_CONCURRENCY here, which is the one place
+    every writer of a run row passes through.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    # None is what a cleared NumberInput sends.
+    requested = 2 if concurrency is None else int(concurrency)
+    clamped_concurrency = max(1, min(requested, MAX_CONCURRENCY))
+    if clamped_concurrency != requested:
+      logger.warning(
+          "Requested concurrency %s is out of range, using %s",
+          concurrency,
+          clamped_concurrency,
+      )
+
     run = Run(
         test_suite_snapshot_id=test_suite_snapshot_id,
         agent_id=agent_id,
         agent_context_snapshot=agent_context_snapshot,
         status=RunStatus.PENDING,
-        created_at=datetime.datetime.now(datetime.timezone.utc),
+        created_at=now,
         generate_suggestions=generate_suggestions,
-        concurrency=concurrency,
+        concurrency=clamped_concurrency,
+        trials=[
+            Trial(
+                example_snapshot_id=example_snapshot_id,
+                status=RunStatus.PENDING,
+                created_at=now,
+            )
+            for example_snapshot_id in example_snapshot_ids
+        ],
     )
     self.session.add(run)
     self.session.commit()
     return run
 
   def promote_next_run(self) -> Run | None:
-    """Promotes the oldest PENDING run to RUNNING if no other run is active."""
-    # 1. Check if any run is already RUNNING
+    """Promotes the oldest PENDING run to RUNNING if no other run is active.
+
+    A PAUSED run still holds the slot. Without that, pausing a run handed the
+    slot to the next one and the two executed side by side.
+    """
+
     active = (
         self.session.execute(
             sqlalchemy.select(Run)
-            .where(Run.status == RunStatus.RUNNING)
+            .where(Run.status.in_([RunStatus.RUNNING, RunStatus.PAUSED]))
             .where(Run.is_archived.is_not(True))
             .limit(1)
         )
@@ -87,7 +147,6 @@ class RunRepository:
     if active:
       return None
 
-    # 2. Find oldest PENDING run
     pending = (
         self.session.execute(
             sqlalchemy.select(Run)
@@ -100,17 +159,50 @@ class RunRepository:
         .first()
     )
 
-    if pending:
-      pending.status = RunStatus.RUNNING
-      pending.started_at = datetime.datetime.now(datetime.timezone.utc)
-      self.session.commit()
-      self.session.refresh(pending)
-      return pending
+    if not pending:
+      return None
 
-    return None
+    # Conditional, because cancel arrives on the web request thread and can
+    # land in the gap between the select above and this write. The plain
+    # assignment put a cancelled run back to RUNNING with every trial already
+    # CANCELLED, and the aggregator then read it as done and completed it.
+    promoted = self.session.execute(
+        sqlalchemy.update(Run)
+        .where(Run.id == pending.id)
+        .where(Run.status == RunStatus.PENDING)
+        .values(
+            status=RunStatus.RUNNING,
+            started_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+    )
+    self.session.commit()
+    if not promoted.rowcount:
+      return None
+
+    self.session.refresh(pending)
+    return pending
+
+  def get_oldest_running(self) -> Run | None:
+    """The RUNNING run the worker should be feeding, or None.
+
+    Oldest first, to agree with promote_next_run. The worker used to read this
+    off list_all, which orders newest first, so on the rare occasion two runs
+    were RUNNING at once the worker fed the one the queue had not got to yet
+    and the older one sat there with its trials unclaimed.
+
+    No eager loads. This runs every two seconds and the caller wants the id.
+    """
+    stmt = (
+        sqlalchemy.select(Run)
+        .where(Run.status == RunStatus.RUNNING)
+        .where(Run.is_archived.is_not(True))
+        .order_by(Run.created_at.asc())
+        .limit(1)
+    )
+    return self.session.scalars(stmt).first()
 
   def get_by_id(self, run_id: int) -> Run | None:
-    """Gets a Run by ID."""
+    """Reads one run with eager_options applied. None if there is no row."""
     stmt = (
         sqlalchemy.select(Run)
         .options(*self.eager_options())
@@ -119,26 +211,48 @@ class RunRepository:
     return self.session.scalars(stmt).unique().first()
 
   def list_active(self) -> Sequence[Run]:
-    """Lists all active (non-completed) runs."""
+    """Lists all active (non-completed) runs.
+
+    PAUSED counts as active. The aggregator works off this list, so leaving it
+    out stranded a run that was paused after its last trial finished: every
+    trial done, nothing left to run it, and no way back to COMPLETED.
+    """
     stmt = (
         sqlalchemy.select(Run)
-        .where(Run.status.in_([RunStatus.PENDING, RunStatus.RUNNING]))
+        .where(
+            Run.status.in_(
+                [RunStatus.PENDING, RunStatus.RUNNING, RunStatus.PAUSED]
+            )
+        )
         .where(Run.is_archived.is_not(True))
     )
     return self.session.scalars(stmt).all()
 
   def archive(self, run_id: int) -> Run:
-    """Archives a run."""
+    """Hides a finished run from the lists. Raises ValueError otherwise.
+
+    Archiving takes a run out of every query the worker runs, so archiving one
+    that was still going abandoned it. Its PENDING trials were never claimed
+    again, the aggregator stopped looking at it, and it sat RUNNING with no
+    completion time for good. Worse, promote_next_run stopped counting it as
+    active and started the next run while this one's workers were still
+    calling the agent, so two runs executed at once.
+    """
     run = self.get_by_id(run_id)
     if not run:
       raise ValueError(f"Run with id {run_id} not found")
+    if run.status not in _TERMINAL_RUN_STATUSES:
+      raise ValueError(
+          f"Run {run_id} is {run.status.value.lower()}. Cancel it first, then"
+          " archive it."
+      )
     run.is_archived = True
     self.session.commit()
     self.session.refresh(run)
     return run
 
   def unarchive(self, run_id: int) -> Run:
-    """Unarchives a run."""
+    """Puts a run back in the lists. Raises ValueError if there is no row."""
     run = self.get_by_id(run_id)
     if not run:
       raise ValueError(f"Run with id {run_id} not found")
@@ -146,16 +260,6 @@ class RunRepository:
     self.session.commit()
     self.session.refresh(run)
     return run
-
-  def get_latest_for_agent(self, agent_id: int) -> Run | None:
-    """Gets the latest run for an agent."""
-    stmt = (
-        sqlalchemy.select(Run)
-        .where(Run.agent_id == agent_id)
-        .order_by(Run.created_at.desc())
-        .limit(1)
-    )
-    return self.session.scalars(stmt).first()
 
   def list_all(
       self,
@@ -166,7 +270,7 @@ class RunRepository:
       status: RunStatus | None = None,
       include_archived: bool = False,
   ) -> Sequence[Run]:
-    """Lists recent runs with optional filtering."""
+    """Lists runs newest first, filtered by whichever arguments are set."""
     stmt = sqlalchemy.select(Run).options(*self.eager_options())
 
     if not include_archived:
@@ -184,27 +288,13 @@ class RunRepository:
     stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
     return self.session.scalars(stmt).all()
 
-  def count(self) -> int:
-    """Counts total number of runs."""
-    stmt = sqlalchemy.select(sqlalchemy.func.count()).select_from(Run)
-    return self.session.scalar(stmt) or 0
-
   def get_latest_runs_with_stats(
       self, agent_ids: Sequence[int]
   ) -> dict[int, RunStats]:
-    """Gets the latest run for multiple agents, including average accuracy.
-
-    Args:
-      agent_ids: List of agent IDs to fetch runs for.
-
-    Returns:
-      A dictionary mapping agent_id to a dict containing "run" (Run object)
-      and "accuracy" (float or None).
-    """
+    """Gets the latest run for multiple agents, including average accuracy."""
     if not agent_ids:
       return {}
 
-    # Rank runs by created_at desc for each agent
     subquery = (
         sqlalchemy.select(
             Run.id,
@@ -221,57 +311,32 @@ class RunRepository:
         .subquery()
     )
 
-    # Filter for the latest run (rn=1)
     latest_run_ids_stmt = sqlalchemy.select(subquery.c.id).where(
         subquery.c.rn == 1
     )
 
-    # Let's do it cleanly:
-    # 1. Get latest Run IDs
     latest_run_ids = self.session.scalars(latest_run_ids_stmt).all()
 
     if not latest_run_ids:
       return {}
 
-    # 2. Fetch Runs eagerly loading snapshot
+    # Eager load the trials so Run.accuracy does not fire a query per run.
     runs = (
         self.session.query(Run)
-        .options(orm.joinedload(Run.snapshot_suite))
+        .options(*self.eager_options())
         .filter(Run.id.in_(latest_run_ids))
         .all()
     )
 
-    # 3. Calculate Accuracy for these runs (Average of Trial Averages)
-    # First, get average score per trial
-    trial_scores_subquery = (
-        sqlalchemy.select(
-            Trial.run_id,
-            Trial.id.label("trial_id"),
-            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
-        )
-        .join(AssertionResult, Trial.id == AssertionResult.trial_id)
-        .join(
-            AssertionSnapshot,
-            AssertionResult.assertion_snapshot_id == AssertionSnapshot.id,
-        )
-        .where(AssertionSnapshot.weight > 0)
-        .where(Trial.run_id.in_(latest_run_ids))
-        .group_by(Trial.run_id, Trial.id)
-        .subquery()
-    )
-
-    # Then, average those trial scores per run
-    accuracy_stmt = sqlalchemy.select(
-        trial_scores_subquery.c.run_id,
-        sqlalchemy.func.avg(trial_scores_subquery.c.trial_score),
-    ).group_by(trial_scores_subquery.c.run_id)
-    accuracy_map = dict(self.session.execute(accuracy_stmt).all())
-
+    # Run.accuracy is the one definition of accuracy. The SQL aggregate that
+    # used to live here inner joined AssertionResult, so a FAILED trial had no
+    # rows and left the denominator entirely. A run where half the trials
+    # crashed reported the accuracy of the half that worked.
     result = {}
     for run in runs:
       result[run.agent_id] = {
           "run": run,
-          "accuracy": accuracy_map.get(run.id),
+          "accuracy": run.accuracy,
       }
 
     return result
@@ -279,37 +344,43 @@ class RunRepository:
   def get_agent_dashboard_stats(
       self, agent_id: int, days: int = 30
   ) -> dict[str, Any]:
-    """Calculates dashboard statistics for an agent.
-
-    Args:
-      agent_id: The ID of the agent.
-      days: Number of days to look back.
-
-    Returns:
-      A dictionary containing KPI metrics and charts data.
-    """
+    """Calculates the KPI metrics and chart series for an agent dashboard."""
     now = datetime.datetime.now(datetime.timezone.utc)
     start_date = now - datetime.timedelta(days=days)
     prev_start_date = start_date - datetime.timedelta(days=days)
 
-    # Helper to get stats for a period
+    # The trial join fans the rows out, so every run-level aggregate here has
+    # to be distinct on Run.id. A plain count gave one row per trial, which
+    # made a 50-case run that passed and a 2-case run that failed read as 96%
+    # executed instead of 50%. avg_duration is the exception: it is a per-trial
+    # average on purpose.
+    #
+    # active_suites counts the original suite, not the snapshot. Each run gets
+    # its own snapshot row, so counting those always returned the run count.
     def _get_period_stats(start, end):
       stmt = (
           sqlalchemy.select(
-              sqlalchemy.func.count(Run.id).label("total_runs"),
-              sqlalchemy.func.sum(
-                  sqlalchemy.case(
-                      (Run.status == RunStatus.COMPLETED, 1), else_=0
+              sqlalchemy.func.count(sqlalchemy.distinct(Run.id)).label(
+                  "total_runs"
+              ),
+              sqlalchemy.func.count(
+                  sqlalchemy.distinct(
+                      sqlalchemy.case(
+                          (Run.status == RunStatus.COMPLETED, Run.id)
+                      )
                   )
               ).label("completed_runs"),
               sqlalchemy.func.avg(Trial.duration_ms).label("avg_duration"),
               sqlalchemy.func.count(
-                  sqlalchemy.distinct(Run.test_suite_snapshot_id)
+                  sqlalchemy.distinct(TestSuiteSnapshot.original_suite_id)
               ).label("active_suites"),
-              # Approximate total test cases (trials)
-              sqlalchemy.func.count(Trial.id).label("total_trials"),
           )
           .join(Trial, Trial.run_id == Run.id, isouter=True)
+          .join(
+              TestSuiteSnapshot,
+              TestSuiteSnapshot.id == Run.test_suite_snapshot_id,
+              isouter=True,
+          )
           .where(
               Run.agent_id == agent_id,
               Run.created_at >= start,
@@ -322,23 +393,22 @@ class RunRepository:
     curr = _get_period_stats(start_date, now)
     prev = _get_period_stats(prev_start_date, start_date)
 
-    # 1. Execution Rate
     exec_rate = (curr.completed_runs or 0) / (curr.total_runs or 1)
     prev_exec_rate = (prev.completed_runs or 0) / (prev.total_runs or 1)
     exec_rate_delta = exec_rate - prev_exec_rate
 
-    # 2. Duration
     avg_duration = float(curr.avg_duration or 0)
     prev_duration = float(prev.avg_duration or 0)
     duration_delta = avg_duration - prev_duration
 
-    # 3. Recent Evaluations (Top 5)
+    # eager_options, because r.accuracy below reads every trial's score, and
+    # that walks the assertion results and their snapshots. Loading the trials
+    # alone left two queries per trial. The joinedload on the trials was also
+    # fanning the rows out under the limit, so this asked for five runs and
+    # got as few as one.
     recent_stmt = (
         sqlalchemy.select(Run)
-        .options(
-            orm.joinedload(Run.trials),
-            orm.joinedload(Run.snapshot_suite),
-        )
+        .options(*self.eager_options())
         .where(
             Run.agent_id == agent_id,
             Run.is_archived.is_not(True),
@@ -349,10 +419,12 @@ class RunRepository:
     recent_runs = self.session.scalars(recent_stmt).unique().all()
     recent_evals = []
     for r in recent_runs:
-      # Duration Logic
+
       duration_str = "--"
-      if r.completed_at and r.created_at:
-        delta = r.completed_at - r.created_at
+      # From when the worker picked the run up, so a long queue does not read
+      # as a slow run. Run.duration_ms measures it the same way.
+      if r.completed_at and r.started_at:
+        delta = r.completed_at - r.started_at
         total_seconds = int(delta.total_seconds())
         minutes = total_seconds // 60
         seconds = total_seconds % 60
@@ -369,88 +441,92 @@ class RunRepository:
           ),
           "status": r.status.value,
           "duration": duration_str,
-          "created_at": r.created_at,
+          "started_at": r.started_at,
       })
 
-    # 4. Daily Metrics (for Charts)
-    # Average of Trial Averages
-
-    # First, get trial-level stats
-    trial_stats_subquery = (
-        sqlalchemy.select(
-            sqlalchemy.func.date(Run.created_at).label("date"),
-            Run.id.label("run_id"),
-            Trial.id.label("trial_id"),
-            TestSuiteSnapshot.name.label("suite_name"),
-            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
-            sqlalchemy.func.max(Trial.duration_ms).label("trial_duration"),
-        )
-        .join(Trial, Trial.run_id == Run.id)
-        .join(
-            AssertionResult, Trial.id == AssertionResult.trial_id, isouter=True
-        )
-        .join(
-            AssertionSnapshot,
-            AssertionResult.assertion_snapshot_id == AssertionSnapshot.id,
-            isouter=True,
-        )
-        .join(
-            TestSuiteSnapshot,
-            Run.test_suite_snapshot_id == TestSuiteSnapshot.id,
-        )
-        .where(
+    # Daily chart metrics, aggregated in Python off Trial.score so these
+    # points match the accuracy on the run page. The SQL version this replaces
+    # averaged AssertionResult rows, and a FAILED trial has none, so it left
+    # the denominator and the chart read higher than the run it came from.
+    window_runs = (
+        self.session.query(Run)
+        .options(*self.eager_options())
+        .filter(
             Run.agent_id == agent_id,
             Run.created_at >= start_date,
             Run.is_archived.is_not(True),
-            sqlalchemy.or_(
-                AssertionSnapshot.weight > 0, AssertionSnapshot.id.is_(None)
-            ),
         )
-        .group_by(
-            sqlalchemy.func.date(Run.created_at),
-            Run.id,
-            Trial.id,
-            TestSuiteSnapshot.name,
-        )
-        .subquery()
+        .all()
     )
 
-    # Then, aggregate to daily/suite level
-    chart_stmt = (
-        sqlalchemy.select(
-            trial_stats_subquery.c.date,
-            trial_stats_subquery.c.suite_name,
-            sqlalchemy.func.avg(trial_stats_subquery.c.trial_score).label(
-                "daily_score"
-            ),
-            sqlalchemy.func.avg(trial_stats_subquery.c.trial_duration).label(
-                "daily_duration"
-            ),
-        )
-        .group_by(
-            trial_stats_subquery.c.date, trial_stats_subquery.c.suite_name
-        )
-        .order_by(trial_stats_subquery.c.date)
-    )
-    daily_results = self.session.execute(chart_stmt).all()
+    # Series key, and the name each one is drawn under. Grouped on
+    # original_suite_id, not the name. The snapshot copies whatever the suite
+    # was called at the time, so renaming a suite split its history into two
+    # series on the chart. A snapshot with no suite behind it has nothing to
+    # group with, so it keeps a series of its own.
+    scores_by_day: dict[tuple[str, tuple[str, int]], list[float]] = {}
+    durations_by_day: dict[tuple[str, tuple[str, int]], list[int]] = {}
+    suite_names: dict[tuple[str, int], tuple[Any, str]] = {}
+    for run in window_runs:
+      if not run.snapshot_suite or not run.trials:
+        continue
+      snapshot = run.snapshot_suite
+      if snapshot.original_suite_id is not None:
+        series = ("suite", snapshot.original_suite_id)
+      else:
+        series = ("snapshot", snapshot.id)
 
-    # pivot to wide format
+      # Newest snapshot wins the name, the way
+      # get_unique_suites_from_snapshots picks it. id breaks a tie between two
+      # snapshots taken in the same clock tick.
+      stamp = (snapshot.created_at, snapshot.id)
+      if series not in suite_names or stamp > suite_names[series][0]:
+        suite_names[series] = (stamp, snapshot.name)
+
+      key = (str(run.created_at.date()), series)
+      scores_by_day.setdefault(key, [])
+      durations_by_day.setdefault(key, [])
+      for trial in run.trials:
+        if trial.status == RunStatus.FAILED:
+          scores_by_day[key].append(0.0)
+        elif trial.status == RunStatus.COMPLETED and trial.score is not None:
+          scores_by_day[key].append(trial.score)
+        if trial.duration_ms is not None:
+          durations_by_day[key].append(trial.duration_ms)
+
+    # The pivot below uses the name as the column, and two suites are allowed
+    # to share one. Undisambiguated, whichever came second overwrote the first
+    # on every day they both ran.
+    display_names: dict[tuple[str, int], str] = {}
+    taken: set[str] = set()
+    for series in sorted(suite_names):
+      name = suite_names[series][1]
+      if name in taken:
+        name = f"{name} (#{series[1]})"
+      taken.add(name)
+      display_names[series] = name
+
+    # Pivot to wide format: a row per day, a column per suite name.
     daily_accuracy_map: dict[str, dict[str, Any]] = {}
     daily_duration_map: dict[str, dict[str, Any]] = {}
     all_datasets = set()
 
-    for row in daily_results:
-      d_str = str(row.date)
+    for d_str, series in sorted(scores_by_day):
       if d_str not in daily_accuracy_map:
         daily_accuracy_map[d_str] = {"date": d_str}
         daily_duration_map[d_str] = {"date": d_str}
 
-      if row.daily_score is not None:
-        daily_accuracy_map[d_str][row.suite_name] = row.daily_score
-      if row.daily_duration is not None:
-        daily_duration_map[d_str][row.suite_name] = int(row.daily_duration)
+      suite_name = display_names[series]
+      scores = scores_by_day[(d_str, series)]
+      durations = durations_by_day[(d_str, series)]
+      if scores:
+        daily_accuracy_map[d_str][suite_name] = sum(scores) / len(scores)
+      if durations:
+        daily_duration_map[d_str][suite_name] = int(
+            sum(durations) / len(durations)
+        )
 
-      all_datasets.add(row.suite_name)
+      all_datasets.add(suite_name)
 
     daily_accuracy = sorted(
         daily_accuracy_map.values(), key=lambda x: x["date"]
@@ -476,18 +552,12 @@ class RunRepository:
   ) -> dict[int, list[dict[str, Any]]]:
     """Gets execution history for multiple agents.
 
-    Args:
-      agent_ids: List of agent IDs.
-      limit: Max number of history points per agent.
-
-    Returns:
-      Dict mapping agent_id to list of history points (accuracy, created_at).
+    Each point is an accuracy and a created_at, and limit is per agent, not
+    across all of them.
     """
     if not agent_ids:
       return {}
 
-    # 1. Fetch recent runs for these agents
-    # We want top N per agent. Window functions again.
     subquery = (
         sqlalchemy.select(
             Run.id,
@@ -517,80 +587,63 @@ class RunRepository:
 
     run_ids = [r.id for r in recent_runs]
 
-    # 2. Calculate accuracy for these runs (Average of Trial Averages)
-    trial_scores_subquery = (
-        sqlalchemy.select(
-            Trial.run_id,
-            sqlalchemy.func.avg(AssertionResult.score).label("trial_score"),
+    # Same one definition of accuracy as get_latest_runs_with_stats.
+    accuracy_map = {
+        run.id: run.accuracy
+        for run in (
+            self.session.query(Run)
+            .options(*self.eager_options())
+            .filter(Run.id.in_(run_ids))
+            .all()
         )
-        .join(AssertionResult, Trial.id == AssertionResult.trial_id)
-        .join(
-            AssertionSnapshot,
-            AssertionResult.assertion_snapshot_id == AssertionSnapshot.id,
-        )
-        .where(AssertionSnapshot.weight > 0)
-        .where(Trial.run_id.in_(run_ids))
-        .group_by(Trial.run_id, Trial.id)
-        .subquery()
-    )
+    }
 
-    accuracy_stmt = sqlalchemy.select(
-        trial_scores_subquery.c.run_id,
-        sqlalchemy.func.avg(trial_scores_subquery.c.trial_score),
-    ).group_by(trial_scores_subquery.c.run_id)
-    accuracy_map = dict(self.session.execute(accuracy_stmt).all())
-
-    # 3. Assemble result
     result = {aid: [] for aid in agent_ids}
 
-    # Process in reverse temporal order (oldest first) if we want a timeline?
-    # Usually sparklines want left-to-right (old -> new).
-    # recent_runs is mixed order, let's sort locally.
-
-    # Map run_id -> details
-    run_details = {}
+    # recent_runs comes back in mixed order. Sparklines read oldest to newest,
+    # so sort each agent's list below.
+    #
+    # A run that has scored nothing keeps its None. Coerced to 0.0, a queued or
+    # cancelled run plotted as 0% on the sparkline and turned the trend red,
+    # while the "Last eval" text beside it read "--".
     for r in recent_runs:
-      run_details[r.id] = {
+      result[r.agent_id].append({
           "run_id": r.id,
-          "agent_id": r.agent_id,
           "created_at": r.created_at,
-          "accuracy": accuracy_map.get(
-              r.id, 0.0
-          ),  # Default to 0 if no score? or None?
-      }
-
-    for details in run_details.values():
-      # Only include if accuracy is not None (i.e. has trials)?
-      # Or include 0? Let's include what we have.
-      # If score is None (no trials), maybe average is None.
-      score = details["accuracy"]
-      if score is None:
-        score = 0.0
-
-      result[details["agent_id"]].append({
-          "run_id": details["run_id"],
-          "created_at": details["created_at"],
-          "accuracy": score,
+          "accuracy": accuracy_map.get(r.id),
       })
 
-    # Sort each agent's list by date ascending
     for aid in result:
       result[aid].sort(key=lambda x: x["created_at"])
 
     return result
 
   def get_unique_suites_from_snapshots(self) -> list[dict[str, Any]]:
-    """Gets unique suites that have been snapshotted for runs."""
+    """Gets unique suites that have been snapshotted for runs.
+
+    The name is the one on the newest snapshot of each suite. This used to be
+    max(name), which is the lexicographically greatest name the suite has ever
+    had, so renaming "Sales QA" to "Adhoc Checks" left the run filter showing
+    "Sales QA" for good.
+    """
     results = (
         self.session.query(
             TestSuiteSnapshot.original_suite_id,
-            sqlalchemy.func.max(TestSuiteSnapshot.name).label("name"),
+            TestSuiteSnapshot.name,
         )
-        .group_by(TestSuiteSnapshot.original_suite_id)
+        .filter(TestSuiteSnapshot.original_suite_id.is_not(None))
+        .distinct(TestSuiteSnapshot.original_suite_id)
+        # DISTINCT ON keeps the first row per suite, so the ordering is what
+        # picks the name. id breaks a tie between two snapshots taken in the
+        # same clock tick.
+        .order_by(
+            TestSuiteSnapshot.original_suite_id,
+            TestSuiteSnapshot.created_at.desc(),
+            TestSuiteSnapshot.id.desc(),
+        )
         .all()
     )
     return [
         {"original_suite_id": r.original_suite_id, "name": r.name}
         for r in results
-        if r.original_suite_id is not None
     ]

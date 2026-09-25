@@ -1,4 +1,24 @@
-"""Unit tests for GenAIClient."""
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""What GenAIClient answers with, and what it lets through.
+
+The two generate methods return None on an empty response and raise whatever
+the SDK raised. Both are read as a result by their callers, so the difference
+between "the model said nothing" and "the call failed" has to survive the
+wrapper.
+"""
 
 import unittest.mock
 
@@ -9,7 +29,7 @@ import pytest
 
 
 class TestGenAIClient:
-  """Tests for GenAIClient."""
+  """The SDK client is patched out, so nothing here leaves the process."""
 
   @pytest.fixture
   def mock_client(self):
@@ -25,7 +45,6 @@ class TestGenAIClient:
     )
 
   def test_generate_text_success(self, client, mock_client):
-    """Tests successful text generation."""
     mock_client_instance = mock_client.return_value
     mock_response = unittest.mock.MagicMock()
     mock_response.text = "Generated Text"
@@ -35,11 +54,10 @@ class TestGenAIClient:
 
     assert result == "Generated Text"
     mock_client_instance.models.generate_content.assert_called_with(
-        model="gemini-2.5-pro", contents="prompt"
+        model="gemini-3.8-flash", contents="prompt"
     )
 
   def test_generate_structured_success(self, client, mock_client):
-    """Tests structured generation success."""
     mock_client_instance = mock_client.return_value
     mock_response = unittest.mock.MagicMock()
     mock_response.text = '{"foo": "bar"}'
@@ -51,7 +69,6 @@ class TestGenAIClient:
     result = client.generate_structured("prompt", TestSchema)
 
     assert result.foo == "bar"
-    # Verify generation_config was passed with JSON mime type
     call_args = mock_client_instance.models.generate_content.call_args
     assert call_args
     _, kwargs = call_args
@@ -60,7 +77,7 @@ class TestGenAIClient:
     assert config.response_mime_type == "application/json"
 
   def test_generate_text_empty_response(self, client, mock_client):
-    """Tests handling of empty response."""
+    """An empty response comes back as None."""
     mock_client_instance = mock_client.return_value
     mock_client_instance.models.generate_content.return_value = (
         unittest.mock.MagicMock(text=None)
@@ -71,7 +88,7 @@ class TestGenAIClient:
     assert result is None
 
   def test_generate_text_exception(self, client, mock_client):
-    """Tests exception handling."""
+    """The client lets the API error propagate."""
     mock_client_instance = mock_client.return_value
     mock_client_instance.models.generate_content.side_effect = Exception(
         "API Error"

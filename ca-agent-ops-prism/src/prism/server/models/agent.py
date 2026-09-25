@@ -34,8 +34,13 @@ class Agent(Base, BaseMixin):
   project_id: orm.Mapped[str] = orm.mapped_column(
       sqlalchemy.String, nullable=False
   )
+  # Server default as well as a Python one, because 87d5db0c5bc2 puts one on
+  # the column and a default only the ORM knows about leaves the two disagreed.
   location: orm.Mapped[str] = orm.mapped_column(
-      sqlalchemy.String, nullable=False
+      sqlalchemy.String,
+      nullable=False,
+      default="global",
+      server_default="global",
   )
   agent_resource_id: orm.Mapped[str] = orm.mapped_column(
       sqlalchemy.String, nullable=False

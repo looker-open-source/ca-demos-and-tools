@@ -28,7 +28,8 @@ class ComparisonStatus(str, enum.Enum):
   STABLE = "STABLE"
   NEW = "NEW"  # Only in challenger
   REMOVED = "REMOVED"  # Only in base
-  ERROR = "ERROR"  # Error in challenger (maybe base was success)
+  ERROR = "ERROR"  # Either side errored on this case
+  NOT_RUN = "NOT_RUN"  # Either side never produced a result
 
 
 class ComparisonCase(pydantic.BaseModel):
@@ -37,7 +38,7 @@ class ComparisonCase(pydantic.BaseModel):
   logical_id: str
   question: str
 
-  # Trials (Optional because might be NEW or REMOVED)
+  # One side is None when the case ran in only one of the two runs.
   base_trial: Trial | None = None
   challenger_trial: Trial | None = None
 

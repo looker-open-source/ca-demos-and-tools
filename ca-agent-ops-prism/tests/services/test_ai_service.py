@@ -1,3 +1,17 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import json
 from unittest import mock
 from prism.common.schemas import agent as agent_schemas
@@ -7,29 +21,12 @@ import pytest
 
 
 def test_format_golden_queries_success():
-  """Tests successful formatting of golden queries."""
   mock_client = mock.MagicMock(spec=GenAIClient)
-  # Mocking the prompt template loading if necessary, but AIService loads it in __init__
-  # We might need to mock open/read if we can't rely on the file being present,
-  # but usually integration/unit tests in this codebase seem to rely on local files or mocks.
-  # Let's see if AIService constructor reads the file.
-
-  # We will mock the open call for the prompt template to avoid file system dependencies if possible,
-  # or just assume it exists. Given the previous file view, it's a real file.
-  # Let's inspect AIService init if it fails. For now, we assume we can instantiate it.
-
-  # Actually, we should probably mock the _golden_query_template attribute if validation fails,
-  # but let's try to instantiate it normally first.
-  # Wait, AIService reads the file in __init__.
-  # self._golden_query_template = self._load_prompt("golden_query_prompt.txt")
-
-  # We can patch `open` or `pathlib.Path.read_text` or just let it read the real file.
-  # Reading the real file is better for integration testing, but unit tests should be isolated.
-  # Let's try to just instantiate it, if it fails we mock.
+  # AIService loads golden_query_prompt.txt in __init__. The test lets it read
+  # the real file instead of patching open.
 
   service = AIService(mock_client)
 
-  # Mock response
   mock_gq = agent_schemas.LookerGoldenQuery(
       natural_language_questions=["Show me sales"],
       looker_query=agent_schemas.LookerQuery(
@@ -37,9 +34,8 @@ def test_format_golden_queries_success():
       ),
   )
 
-  # The service defines an internal class GoldenQueriesResponse.
-  # The client returns an instance of that class.
-  # We can just return an object with a .golden_queries attribute.
+  # The client returns the service's internal GoldenQueriesResponse, so any
+  # object with a .golden_queries attribute stands in for it.
   mock_response = mock.MagicMock()
   mock_response.golden_queries = [mock_gq]
   mock_client.generate_structured.return_value = mock_response
@@ -55,7 +51,7 @@ def test_format_golden_queries_success():
 
 
 def test_format_golden_queries_empty_input():
-  """Tests that empty input returns empty string."""
+  """Empty input returns an empty string."""
   mock_client = mock.MagicMock(spec=GenAIClient)
   service = AIService(mock_client)
 
@@ -64,24 +60,25 @@ def test_format_golden_queries_empty_input():
 
 
 def test_format_golden_queries_ai_error():
-  """Tests that AI errors result in returning the original text."""
+  """An AI error raises, so the caller can say the fix did not happen.
+
+  This used to log and return the input. The callback treats a return as
+  success and clears the validation error under the box, so a quota error
+  looked like a model that found nothing to change.
+  """
   mock_client = mock.MagicMock(spec=GenAIClient)
   service = AIService(mock_client)
   mock_client.generate_structured.side_effect = Exception("AI Error")
 
-  input_text = "Show me sales"
-  result = service.format_golden_queries(input_text)
-
-  assert result == input_text
+  with pytest.raises(Exception, match="AI Error"):
+    service.format_golden_queries("Show me sales")
 
 
 def test_format_golden_queries_empty_response():
-  """Tests that empty/invalid AI response returns original text."""
+  """A response with nothing in it is a failure, not a no-op."""
   mock_client = mock.MagicMock(spec=GenAIClient)
   service = AIService(mock_client)
   mock_client.generate_structured.return_value = None
 
-  input_text = "Show me sales"
-  result = service.format_golden_queries(input_text)
-
-  assert result == input_text
+  with pytest.raises(RuntimeError, match="no golden queries"):
+    service.format_golden_queries("Show me sales")
