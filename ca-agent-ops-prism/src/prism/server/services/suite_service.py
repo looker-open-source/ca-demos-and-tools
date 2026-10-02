@@ -174,6 +174,31 @@ class SuiteService:
     """Unarchives a test suite."""
     return self.suite_repository.unarchive(suite_id=suite_id)
 
+  def duplicate_suite(
+      self, suite_id: int, new_name: str | None = None
+  ) -> TestSuite:
+    """Duplicates a test suite and all of its non-archived examples."""
+    suite = self.get_suite(suite_id)
+    if not suite:
+      raise ValueError(f"TestSuite with id {suite_id} not found")
+
+    new_suite = self.create_suite(
+        name=new_name or f"Copy of {suite.name}",
+        description=suite.description,
+        tags=dict(suite.tags) if suite.tags else {},
+    )
+
+    for example in self.list_examples(suite_id, include_archived=False):
+      parsed = example_schemas.Example.model_validate(example)
+      self.add_example(
+          suite_id=new_suite.id,
+          question=parsed.question,
+          asserts=list(parsed.asserts),
+      )
+
+    self.session.refresh(new_suite)
+    return new_suite
+
   def sync_suite(
       self,
       suite_id: int,

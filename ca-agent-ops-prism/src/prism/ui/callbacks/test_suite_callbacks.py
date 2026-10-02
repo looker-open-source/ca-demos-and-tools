@@ -515,3 +515,82 @@ def save_edit_config(
     return typed_callback.no_update
 
   return _rename_suite(pathname, name, desc)
+
+
+@typed_callback(
+    [
+        (test_suite_ids.TestSuiteIds.MODAL_DUPLICATE, "opened"),
+        (test_suite_ids.TestSuiteIds.INPUT_DUPLICATE_NAME, CP.VALUE),
+    ],
+    inputs=[
+        (test_suite_ids.TestSuiteIds.BTN_DUPLICATE, CP.N_CLICKS),
+        (test_suite_ids.TestSuiteIds.BTN_DUPLICATE_CANCEL, CP.N_CLICKS),
+    ],
+    state=[("url", CP.PATHNAME)],
+    prevent_initial_call=True,
+)
+def toggle_duplicate_suite_modal(open_clicks, cancel_clicks, pathname):
+  """Toggles the Duplicate Test Suite modal and pre-fills the default name."""
+  del open_clicks, cancel_clicks
+  trigger = typed_callback.triggered_id()
+  if trigger == test_suite_ids.TestSuiteIds.BTN_DUPLICATE:
+    default_name = "Copy of Test Suite"
+    try:
+      suite_id = id_from_pathname(pathname)
+    except (ValueError, IndexError):
+      suite_id = None
+    if suite_id is not None:
+      client = get_client()
+      suite = client.suites.get_suite(suite_id)
+      if suite:
+        default_name = f"Copy of {suite.name}"
+    return True, default_name
+  return False, typed_callback.no_update
+
+
+@typed_callback(
+    [
+        (REDIRECT_HANDLER, CP.HREF),
+        (test_suite_ids.TestSuiteIds.MODAL_DUPLICATE, "opened"),
+        (test_suite_ids.TestSuiteIds.INPUT_DUPLICATE_NAME, "error"),
+    ],
+    inputs=[
+        (test_suite_ids.TestSuiteIds.BTN_DUPLICATE_SUBMIT, CP.N_CLICKS),
+    ],
+    state=[
+        ("url", CP.PATHNAME),
+        (test_suite_ids.TestSuiteIds.INPUT_DUPLICATE_NAME, CP.VALUE),
+    ],
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def submit_duplicate_suite(submit_clicks, pathname, new_name):
+  """Creates a duplicate of the current test suite and redirects to it."""
+  if not submit_clicks:
+    return (
+        typed_callback.no_update,
+        typed_callback.no_update,
+        typed_callback.no_update,
+    )
+
+  if not new_name or not new_name.strip():
+    return (
+        typed_callback.no_update,
+        True,
+        "Test suite name is required.",
+    )
+
+  try:
+    suite_id = id_from_pathname(pathname)
+  except (ValueError, IndexError):
+    return (
+        typed_callback.no_update,
+        False,
+        None,
+    )
+
+  client = get_client()
+  new_suite = client.suites.duplicate_suite(
+      suite_id=suite_id, new_name=new_name.strip()
+  )
+  return f"/test_suites/view/{new_suite.id}", False, None

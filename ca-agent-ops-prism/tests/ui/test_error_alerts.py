@@ -187,9 +187,10 @@ def test_a_failed_fetch_leaves_edit_disabled_and_duplicate_usable():
   ):
     result = agent_detail_callbacks.fetch_remote_config({"agent_id": 7})
 
-  # Indices 4 and 5 are the edit and duplicate button disabled flags.
+  # Indices 4, 5 and 6 are the edit, duplicate and run-eval disabled flags.
   assert result[4] is True
   assert result[5] is False
+  assert result[6] is False
 
 
 @pytest.mark.parametrize(

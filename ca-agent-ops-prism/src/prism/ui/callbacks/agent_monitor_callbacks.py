@@ -173,6 +173,13 @@ def perform_discovery(
         [],
     )
 
+  new_agents.sort(
+      key=lambda a: (
+          (a.name or a.config.agent_resource_id or "").lower(),
+          a.config.location or "",
+          a.config.agent_resource_id or "",
+      )
+  )
   store_data = [a.model_dump() for a in new_agents]
 
   rows = []

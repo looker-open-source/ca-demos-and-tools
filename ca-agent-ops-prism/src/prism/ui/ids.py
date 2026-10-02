@@ -286,6 +286,11 @@ class TestSuiteIds:
 
   BTN_ARCHIVE = "test-suite-detail-btn-archive"
   BTN_RESTORE = "test-suite-detail-btn-restore"
+  BTN_DUPLICATE = "test-suite-detail-btn-duplicate"
+  MODAL_DUPLICATE = "test-suite-detail-modal-duplicate"
+  INPUT_DUPLICATE_NAME = "test-suite-detail-input-duplicate-name"
+  BTN_DUPLICATE_SUBMIT = "test-suite-detail-btn-duplicate-submit"
+  BTN_DUPLICATE_CANCEL = "test-suite-detail-btn-duplicate-cancel"
 
 
 class TestSuiteHomeIds:
@@ -300,6 +305,7 @@ class TestSuiteHomeIds:
 class ShellIds:
   """IDs for the app shell, which every page renders inside."""
 
+  VERSION = "shell-version"
   NAV_OVERVIEW = "nav-overview"
   NAV_AGENTS = "nav-agents"
   NAV_EVALUATIONS = "nav-evaluations"

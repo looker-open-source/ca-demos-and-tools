@@ -563,6 +563,20 @@ def fetch_remote_config(trigger_data):
     gcp_agent = client.get_gcp_agent_details(agent_id)
   except Exception as e:  # pylint: disable=broad-except
     logger.error("Failed to fetch GCP details: %s", e)
+    run_eval_disabled = dash.no_update
+    try:
+      local_agent = client.get_agent(agent_id)
+      if local_agent and local_agent.config:
+        is_looker = isinstance(
+            local_agent.config.datasource, agent_schemas.LookerConfig
+        )
+        can_run = not is_looker or (
+            bool(local_agent.config.looker_client_id)
+            and bool(local_agent.config.looker_client_secret)
+        )
+        run_eval_disabled = not can_run
+    except Exception:  # pylint: disable=broad-except
+      pass
     return (
         # Not the exception text. It is whatever the GDA client raised, which
         # carries the resource name and the request it was building, and this
@@ -583,7 +597,7 @@ def fetch_remote_config(trigger_data):
         # the empty string, and the user got a green success toast.
         True,
         False,  # Re-enable duplicate button
-        dash.no_update,
+        run_eval_disabled,
         dash.no_update,
     )
 

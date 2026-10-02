@@ -180,3 +180,51 @@ def test_the_coverage_filter_uses_the_same_population(suite_svc: SuiteService):
 
   assert full == {scoring.id}
   assert none == {diagnostic.id}
+
+
+def test_duplicate_suite_copies_active_examples_and_assertions(
+    suite_svc: SuiteService,
+):
+  """Duplicating a suite copies metadata, active examples, and assertions."""
+  source = suite_svc.create_suite(
+      name="Original Suite",
+      description="Original description",
+      tags={"env": "prod"},
+  )
+  suite_svc.add_example(
+      source.id,
+      "Active Q1",
+      asserts=[TextContainsSchema(value="expected", weight=1.0)],
+  )
+  archived_ex = suite_svc.add_example(
+      source.id,
+      "Archived Q2",
+      asserts=[TextContainsSchema(value="old", weight=1.0)],
+  )
+  suite_svc.delete_example(archived_ex.id)
+
+  copy = suite_svc.duplicate_suite(source.id)
+
+  assert copy.id != source.id
+  assert copy.name == "Copy of Original Suite"
+  assert copy.description == "Original description"
+  assert copy.tags == {"env": "prod"}
+
+  copied_examples = suite_svc.list_examples(copy.id)
+  assert len(copied_examples) == 1
+  assert copied_examples[0].id != archived_ex.id
+  assert copied_examples[0].question == "Active Q1"
+  assert len(copied_examples[0].asserts) == 1
+  assert copied_examples[0].asserts[0].type == "text-contains"
+  assert copied_examples[0].asserts[0].params["value"] == "expected"
+
+
+def test_duplicate_suite_with_custom_name_and_missing_suite(
+    suite_svc: SuiteService,
+):
+  source = suite_svc.create_suite(name="Source")
+  copy = suite_svc.duplicate_suite(source.id, new_name="Custom Copy Name")
+  assert copy.name == "Custom Copy Name"
+
+  with pytest.raises(ValueError, match="not found"):
+    suite_svc.duplicate_suite(999999)

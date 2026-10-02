@@ -189,11 +189,12 @@ def test_discovery_renders_the_agents_it_found(
   assert "Unknown" not in table
 
   # The store is what the Monitor button reads back, so the rows on screen are
-  # useless if it did not come with them.
+  # useless if it did not come with them. Rows and store are sorted
+  # alphabetically by display name.
   stored = body[AgentIds.Monitor.STORE_DISCOVERED]["data"]
   assert [a["config"]["agent_resource_id"] for a in stored] == [
-      "orders-analyst",
       "looker-analyst",
+      "orders-analyst",
   ]
 
 
