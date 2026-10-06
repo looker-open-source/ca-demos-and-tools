@@ -37,6 +37,7 @@ from prism.server.models.assertion import SuggestedAssertion
 from prism.server.models.example import Example
 from prism.server.models.run import Trial
 from prism.server.repositories.example_repository import ExampleRepository
+
 # Importing the app registers every page and every callback.
 from prism.ui.app import app  # pylint: disable=unused-import
 from prism.ui.callbacks import evaluation_callbacks
