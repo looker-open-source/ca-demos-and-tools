@@ -343,3 +343,14 @@ def test_one_readers_failure_does_not_silence_anothers_toast(
 
   assert len(callback_errors.messages) == 3, "every failure has a log line"
   callback_errors.clear()
+
+
+def test_shell_header_renders_version_badge():
+  """Every page header renders the package version in a badge for screenshots."""
+  import prism  # pylint: disable=g-import-not-at-top
+
+  assert prism.__version__
+  header = shell.render_header()
+  serialized = str(header)
+  assert ShellIds.VERSION in serialized
+  assert f"v{prism.__version__}" in serialized

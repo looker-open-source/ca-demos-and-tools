@@ -46,7 +46,7 @@ def get_gda_endpoint(location: str | None) -> str | None:
   if not location:
     return None
   loc = location.strip().lower()
-  if not loc or loc == "global":
+  if not loc or loc in ("global", "-"):
     return None
   # One form for every non-global location, multi-region and region alike. The
   # locations documentation gives geminidataanalytics.us.rep.googleapis.com and
@@ -155,9 +155,9 @@ class GeminiDataAnalyticsClient:
 
   @property
   def chat_client(self) -> geminidataanalytics.DataChatServiceClient | None:
-    """The chat transport for self.location, opened on first read."""
+    """The chat transport, opened on first read on the global endpoint."""
     if self._chat is None and not recording.offline():
-      self._chat = self._create_chat_client(self.location)
+      self._chat = self._create_chat_client()
     return self._chat
 
   @chat_client.setter
@@ -236,15 +236,10 @@ class GeminiDataAnalyticsClient:
 
   @classmethod
   def _create_chat_client(
-      cls, location: str | None
+      cls, location: str | None = None
   ) -> geminidataanalytics.DataChatServiceClient:
-    endpoint = get_gda_endpoint(location)
-    options = (
-        client_options.ClientOptions(api_endpoint=endpoint)
-        if endpoint
-        else None
-    )
-    return geminidataanalytics.DataChatServiceClient(client_options=options)
+    del location
+    return geminidataanalytics.DataChatServiceClient()
 
   @classmethod
   def _create_agent_client(
@@ -266,21 +261,11 @@ class GeminiDataAnalyticsClient:
         if resource_name
         else self.location
     )
-    if loc == self.location:
+    if loc == self.location or (
+        loc in ("global", "-") and self.location in ("global", "-")
+    ):
       return self.agent_client
     return self._transport_for_location("agent", loc)
-
-  def _get_chat_client_for_resource(
-      self, resource_name: str | None
-  ) -> geminidataanalytics.DataChatServiceClient:
-    loc = (
-        self._extract_location(resource_name)
-        if resource_name
-        else self.location
-    )
-    if loc == self.location:
-      return self.chat_client
-    return self._transport_for_location("chat", loc)
 
   def _cassette_identity(self) -> dict[str, Any]:
     """Fields identifying this client in a cassette key."""
@@ -348,6 +333,29 @@ class GeminiDataAnalyticsClient:
 
     return AgentBase(name=agent_pb.display_name, config=config)
 
+  def _parse_agent_pager(
+      self, pager: Any, *, location_filter: str | None = None
+  ) -> list[AgentBase]:
+    """Converts a ListDataAgents pager into AgentBase objects."""
+    agents = []
+    for agent in pager:
+      # Per agent, because one the converter cannot read used to abandon the
+      # page. A project with 58 agents listed 7, and nothing said so.
+      try:
+        agent_obj = self._pb_to_agent_base(agent)
+      except Exception as e:  # pylint: disable=broad-except
+        logger.warning("Skipping agent %s: %s", agent.name, e)
+        continue
+      if agent_obj:
+        if (
+            location_filter is not None
+            and agent_obj.config
+            and agent_obj.config.location != location_filter
+        ):
+          continue
+        agents.append(agent_obj)
+    return agents
+
   @recording.cassette(recording.ModelListCodec(AgentBase))
   def list_agents(self) -> list[AgentBase]:
     """Lists all data agents for the configured project.
@@ -358,22 +366,30 @@ class GeminiDataAnalyticsClient:
     Returns:
       A list of AgentBase objects.
     """
+    match = re.match(r"projects/([^/]+)/locations/([^/]+)$", self.project)
+    if self.location not in ("global", "-") and match:
+      wildcard_parent = f"projects/{match.group(1)}/locations/-"
+      try:
+        global_client = self._get_agent_client_for_resource(wildcard_parent)
+        pager = global_client.list_data_agents(
+            request=geminidataanalytics.ListDataAgentsRequest(
+                parent=wildcard_parent
+            )
+        )
+        return self._parse_agent_pager(pager, location_filter=self.location)
+      except Exception:  # pylint: disable=broad-except
+        logger.debug(
+            "Global wildcard list_data_agents failed for %s; falling back to"
+            " regional endpoint",
+            self.project,
+            exc_info=True,
+        )
+
     request = geminidataanalytics.ListDataAgentsRequest(
         parent=self.project,
     )
-    agents = []
     pager = self.agent_client.list_data_agents(request=request)
-    for agent in pager:
-      # Per agent, because one the converter cannot read used to abandon the
-      # page. A project with 58 agents listed 7, and nothing said so.
-      try:
-        agent_obj = self._pb_to_agent_base(agent)
-      except Exception as e:  # pylint: disable=broad-except
-        logger.warning("Skipping agent %s: %s", agent.name, e)
-        continue
-      if agent_obj:
-        agents.append(agent_obj)
-    return agents
+    return self._parse_agent_pager(pager)
 
   def _get_datasource_references(
       self, config: AgentConfig
@@ -548,13 +564,41 @@ class GeminiDataAnalyticsClient:
       logger.error("An error occurred: %s", e)
       raise e
 
+  def _get_agent_client_data_agent_pb(self, agent_name: str) -> Any:
+    """Fetches a DataAgent proto via '-' on the global endpoint first for regional agents."""
+    loc = self._extract_location(agent_name)
+    match = re.match(
+        r"projects/([^/]+)/locations/[^/]+/dataAgents/[^/]+", agent_name
+    )
+    if loc not in ("global", "-") and match:
+      wildcard_parent = f"projects/{match.group(1)}/locations/-"
+      try:
+        global_client = self._get_agent_client_for_resource(wildcard_parent)
+        pager = global_client.list_data_agents(
+            request=geminidataanalytics.ListDataAgentsRequest(
+                parent=wildcard_parent
+            )
+        )
+        for candidate in pager:
+          if getattr(candidate, "name", None) == agent_name:
+            return candidate
+      except Exception:  # pylint: disable=broad-except
+        logger.debug(
+            "Global wildcard lookup failed for %s; falling back to regional"
+            " endpoint",
+            agent_name,
+            exc_info=True,
+        )
+
+    agent_client = self._get_agent_client_for_resource(agent_name)
+    request = geminidataanalytics.GetDataAgentRequest(name=agent_name)
+    return agent_client.get_data_agent(request=request)
+
   @recording.cassette(recording.ModelCodec(AgentBase))
   def get_agent(self, agent_name: str) -> AgentBase | None:
     """Retrieves a single data agent by its full resource name."""
-    agent_client = self._get_agent_client_for_resource(agent_name)
-    request = geminidataanalytics.GetDataAgentRequest(name=agent_name)
     try:
-      agent = agent_client.get_data_agent(request=request)
+      agent = self._get_agent_client_data_agent_pb(agent_name)
       return self._pb_to_agent_base(agent)
     except Exception as e:
       logger.error("An error occurred: %s", e)
@@ -565,10 +609,8 @@ class GeminiDataAnalyticsClient:
       self, agent_name: str, context_target: str
   ) -> dict[str, Any] | None:
     """Fetches the full agent definition and extracts context."""
-    agent_client = self._get_agent_client_for_resource(agent_name)
-    request = geminidataanalytics.GetDataAgentRequest(name=agent_name)
     try:
-      agent = agent_client.get_data_agent(request=request)
+      agent = self._get_agent_client_data_agent_pb(agent_name)
       da_agent = getattr(agent, "data_analytics_agent", None)
       if da_agent:
         context = None
@@ -601,9 +643,9 @@ class GeminiDataAnalyticsClient:
     names a datasource. The get call is unguarded so the caller can tell a
     failed read from an agent with no datasource.
     """
-    agent_client = self._get_agent_client_for_resource(agent_name)
-    request = geminidataanalytics.GetDataAgentRequest(name=agent_name)
-    da_agent = agent_client.get_data_agent(request=request).data_analytics_agent
+    da_agent = self._get_agent_client_data_agent_pb(
+        agent_name
+    ).data_analytics_agent
 
     for context in (da_agent.published_context, da_agent.staging_context):
       context_pb = context._pb  # pylint: disable=protected-access
@@ -801,7 +843,6 @@ class GeminiDataAnalyticsClient:
       )
       if match:
         req_parent = match.group(1)
-        chat_client = self._get_chat_client_for_resource(agent_id)
 
     messages = [geminidataanalytics.Message(user_message={"text": question})]
 

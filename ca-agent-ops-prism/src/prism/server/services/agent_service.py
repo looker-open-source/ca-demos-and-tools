@@ -266,7 +266,9 @@ class AgentService:
     all_agents: list[AgentBase] = []
     failed_locations: list[str] = []
 
-    def _fetch_location_agents(loc: str) -> list[AgentBase]:
+    def _fetch_location_agents(
+        loc: str, *, record_failure: bool = True
+    ) -> list[AgentBase]:
       parent = f"projects/{project_id}/locations/{loc}"
       client = None
       try:
@@ -279,7 +281,8 @@ class AgentService:
             project_id,
             e,
         )
-        failed_locations.append(loc)
+        if record_failure:
+          failed_locations.append(loc)
         return []
       finally:
         # One client per location per sweep, and the settings page sweeps on
@@ -308,6 +311,17 @@ class AgentService:
           _add_agents(result)
     else:
       _add_agents(_fetch_location_agents(locations[0]))
+
+    # When the global endpoint responds but regional .rep.googleapis.com
+    # endpoints fail (for example in a VPC without .rep.googleapis.com DNS),
+    # fall back to the aggregated '-' parent on the global endpoint.
+    if (
+        failed_locations
+        and "global" in locations
+        and "global" not in failed_locations
+        and "-" not in locations
+    ):
+      _add_agents(_fetch_location_agents("-", record_failure=False))
 
     # One location down is worth a log and the agents from the others. Every
     # location down is not a project with no agents in it, which is what the

@@ -787,3 +787,116 @@ def test_a_looker_agent_without_credentials_warns_before_the_run(
   assert "Missing Credentials" not in str(fine)
 
   callback_errors.assert_none()
+
+
+def test_duplicating_a_suite_from_the_view_page(
+    dash_client, callback_errors, db_session
+):
+  """The Duplicate modal pre-fills 'Copy of <name>', validates, and clones active test cases."""
+  suite = _suite(db_session, "Revenue Suite", covered=1, uncovered=1)
+  examples = (
+      db_session.query(Example)
+      .filter_by(test_suite_id=suite.id)
+      .order_by(Example.id)
+      .all()
+  )
+  # Archive the second example to verify only active examples are duplicated.
+  examples[1].is_archived = True
+  db_session.commit()
+
+  deps = dash_http.dependencies(dash_client)
+  pathname = f"/test_suites/view/{suite.id}"
+  page = _page(dash_http.fire_url(dash_client, _router(deps), pathname))
+  assert _component(page, TestSuiteIds.BTN_DUPLICATE)
+  assert _component(page, TestSuiteIds.MODAL_DUPLICATE)
+
+  toggle = _callback(
+      deps,
+      f"{TestSuiteIds.BTN_DUPLICATE}.n_clicks",
+      TestSuiteIds.MODAL_DUPLICATE,
+  )
+  opened = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          toggle,
+          {
+              f"{TestSuiteIds.BTN_DUPLICATE}.n_clicks": 1,
+              "url.pathname": pathname,
+          },
+          changed=[f"{TestSuiteIds.BTN_DUPLICATE}.n_clicks"],
+      )
+  )["response"]
+  assert opened[TestSuiteIds.MODAL_DUPLICATE]["opened"]
+  assert (
+      opened[TestSuiteIds.INPUT_DUPLICATE_NAME]["value"]
+      == "Copy of Revenue Suite"
+  )
+
+  closed = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          toggle,
+          {
+              f"{TestSuiteIds.BTN_DUPLICATE}.n_clicks": 1,
+              f"{TestSuiteIds.BTN_DUPLICATE_CANCEL}.n_clicks": 1,
+              "url.pathname": pathname,
+          },
+          changed=[f"{TestSuiteIds.BTN_DUPLICATE_CANCEL}.n_clicks"],
+      )
+  )["response"]
+  assert not closed[TestSuiteIds.MODAL_DUPLICATE]["opened"]
+  assert TestSuiteIds.INPUT_DUPLICATE_NAME not in closed
+
+  submit = _callback(
+      deps,
+      f"{TestSuiteIds.BTN_DUPLICATE_SUBMIT}.n_clicks",
+      REDIRECT_HANDLER,
+  )
+  blank = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          submit,
+          {
+              f"{TestSuiteIds.BTN_DUPLICATE_SUBMIT}.n_clicks": 1,
+              "url.pathname": pathname,
+              f"{TestSuiteIds.INPUT_DUPLICATE_NAME}.value": "   ",
+          },
+          changed=[f"{TestSuiteIds.BTN_DUPLICATE_SUBMIT}.n_clicks"],
+      )
+  )["response"]
+  assert REDIRECT_HANDLER not in blank
+  assert blank[TestSuiteIds.MODAL_DUPLICATE]["opened"]
+  assert (
+      blank[TestSuiteIds.INPUT_DUPLICATE_NAME]["error"]
+      == "Test suite name is required."
+  )
+
+  saved = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          submit,
+          {
+              f"{TestSuiteIds.BTN_DUPLICATE_SUBMIT}.n_clicks": 2,
+              "url.pathname": pathname,
+              f"{TestSuiteIds.INPUT_DUPLICATE_NAME}.value": "Revenue Suite v2",
+          },
+          changed=[f"{TestSuiteIds.BTN_DUPLICATE_SUBMIT}.n_clicks"],
+      )
+  )["response"]
+  assert not saved[TestSuiteIds.MODAL_DUPLICATE]["opened"]
+  assert saved[TestSuiteIds.INPUT_DUPLICATE_NAME]["error"] is None
+
+  db_session.expire_all()
+  copied = (
+      db_session.query(SuiteRow)
+      .filter(SuiteRow.name == "Revenue Suite v2")
+      .one()
+  )
+  assert saved[REDIRECT_HANDLER]["href"] == f"/test_suites/view/{copied.id}"
+  copied_examples = (
+      db_session.query(Example).filter_by(test_suite_id=copied.id).all()
+  )
+  assert [e.question for e in copied_examples] == [examples[0].question]
+  assert len(copied_examples[0].asserts) == 1
+
+  callback_errors.assert_none()

@@ -24,7 +24,9 @@ from prism.client import prism_client
 from prism.client import suite_client
 from prism.client.run_client import RunsClient
 from prism.common.schemas import agent as agent_schemas
+from prism.server.models.suite import TestSuite as SuiteModel
 from prism.server.services.agent_service import AgentService
+from prism.server.services.suite_service import SuiteService
 import pydantic
 
 
@@ -79,6 +81,33 @@ class TestClientDI(unittest.TestCase):
     self.assertEqual(len(agents), 1)
     self.assertEqual(agents[0].name, "Test Agent")
     mock_service.list_agents.assert_called_once_with(include_archived=False)
+
+  def test_suite_client_duplicate_suite_injection(self):
+    """duplicate_suite resolves SuiteService via FastDepends and maps the row."""
+    mock_service = mock.Mock(spec=SuiteService)
+    row = SuiteModel(
+        id=42,
+        name="Cloned Suite",
+        description="Copied description",
+        tags={"team": "data"},
+    )
+    row.created_at = "2024-01-01T00:00:00"
+    row.modified_at = "2024-01-01T00:00:00"
+    row.is_archived = False
+    mock_service.duplicate_suite.return_value = row
+
+    client = suite_client.SuitesClient()
+    with fast_depends.dependency_provider.scope(
+        dependencies.get_suite_service, lambda: mock_service
+    ):
+      duplicated = client.duplicate_suite(suite_id=7, new_name="Cloned Suite")
+
+    self.assertEqual(duplicated.id, 42)
+    self.assertEqual(duplicated.name, "Cloned Suite")
+    self.assertEqual(duplicated.description, "Copied description")
+    mock_service.duplicate_suite.assert_called_once_with(
+        suite_id=7, new_name="Cloned Suite"
+    )
 
   def test_pydantic_type_validation(self):
     runs = RunsClient()

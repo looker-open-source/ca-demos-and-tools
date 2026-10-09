@@ -134,6 +134,17 @@ class SuitesClient:
     return _map_suite(model)
 
   @inject
+  def duplicate_suite(
+      self,
+      suite_id: int,
+      new_name: str | None = None,
+      service: SuiteService = Depends(dependencies.get_suite_service),
+  ) -> suite_schemas.Suite:
+    """Duplicates a suite and all of its non-archived examples."""
+    model = service.duplicate_suite(suite_id=suite_id, new_name=new_name)
+    return _map_suite(model)
+
+  @inject
   def list_examples(
       self,
       suite_id: int,

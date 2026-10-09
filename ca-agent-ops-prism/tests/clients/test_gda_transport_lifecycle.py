@@ -175,3 +175,98 @@ def test_the_context_manager_closes_on_the_way_out(client):
     assert entered is client
 
   transport.close.assert_called_once()
+
+
+def test_chat_uses_global_endpoint_while_agent_uses_regional_endpoint():
+  """Chat always uses the global endpoint; DataAgentService uses get_gda_endpoint."""
+  with (
+      mock.patch("google.auth.default", return_value=(None, "test-project")),
+      mock.patch(
+          "google.cloud.geminidataanalytics_v1beta.DataAgentServiceClient"
+      ) as agent_cls,
+      mock.patch(
+          "google.cloud.geminidataanalytics_v1beta.DataChatServiceClient"
+      ) as chat_cls,
+  ):
+    c_us = GeminiDataAnalyticsClient(
+        project="projects/test-project/locations/us"
+    )
+    _ = c_us.agent_client
+    _ = c_us.chat_client
+
+    c_wildcard = GeminiDataAnalyticsClient(
+        project="projects/test-project/locations/-"
+    )
+    _ = c_wildcard.agent_client
+
+  assert agent_cls.call_count == 2
+  us_call_kwargs = agent_cls.call_args_list[0].kwargs
+  assert (
+      us_call_kwargs["client_options"].api_endpoint
+      == "geminidataanalytics.us.rep.googleapis.com"
+  )
+  assert agent_cls.call_args_list[1].kwargs == {"client_options": None}
+  chat_cls.assert_called_once_with()
+
+
+def test_regional_reads_use_global_wildcard_first_without_opening_regional(
+    client,
+):
+  """Regional get_agent and list_agents query '-' on the global endpoint first."""
+  agent_name = "projects/test-project/locations/us/dataAgents/agent-us"
+  regional_transport = mock.MagicMock()
+  candidate = mock.MagicMock()
+  candidate.name = agent_name
+  candidate.display_name = "US Agent"
+  candidate.data_analytics_agent = None
+
+  global_transport = mock.MagicMock()
+  global_transport.list_data_agents.return_value = [candidate]
+
+  def _transport_for(kind, loc):
+    assert kind == "agent"
+    return regional_transport if loc == "us" else global_transport
+
+  with mock.patch.object(
+      client, "_transport_for_location", side_effect=_transport_for
+  ):
+    resolved = client.get_agent(agent_name)
+
+  assert resolved is not None
+  assert resolved.name == "US Agent"
+  assert resolved.config.location == "us"
+  assert resolved.config.agent_resource_id == "agent-us"
+  global_transport.list_data_agents.assert_called_once()
+  regional_transport.get_data_agent.assert_not_called()
+
+
+def test_get_agent_falls_back_to_regional_when_global_wildcard_fails(client):
+  """When '-' on the global endpoint fails, regional GetDataAgent recovers it."""
+  agent_name = "projects/test-project/locations/us/dataAgents/agent-us"
+  candidate = mock.MagicMock()
+  candidate.name = agent_name
+  candidate.display_name = "US Agent"
+  candidate.data_analytics_agent = None
+
+  regional_transport = mock.MagicMock()
+  regional_transport.get_data_agent.return_value = candidate
+
+  global_transport = mock.MagicMock()
+  global_transport.list_data_agents.side_effect = RuntimeError(
+      "wildcard list failed"
+  )
+
+  def _transport_for(kind, loc):
+    assert kind == "agent"
+    return regional_transport if loc == "us" else global_transport
+
+  with mock.patch.object(
+      client, "_transport_for_location", side_effect=_transport_for
+  ):
+    resolved = client.get_agent(agent_name)
+
+  assert resolved is not None
+  assert resolved.name == "US Agent"
+  assert resolved.config.location == "us"
+  assert resolved.config.agent_resource_id == "agent-us"
+  regional_transport.get_data_agent.assert_called_once()

@@ -16,6 +16,7 @@
 
 from dash_iconify import DashIconify
 import dash_mantine_components as dmc
+import prism
 from prism.ui.ids import ShellIds
 
 
@@ -67,6 +68,13 @@ def render_header():
                                       fw=700,
                                       size="md",
                                       lh=1,
+                                  ),
+                                  dmc.Badge(
+                                      f"v{prism.__version__}",
+                                      id=ShellIds.VERSION,
+                                      variant="light",
+                                      color="gray",
+                                      size="xs",
                                   ),
                               ],
                           ),

@@ -22,10 +22,12 @@ route with the console-error gate turned on is what makes that visible.
 import dash
 from playwright.sync_api import expect
 from playwright.sync_api import Page
+import prism
 
 # Imported for the side effect. Importing the app populates dash.page_registry,
 # which the parametrization below is built from.
 from prism.ui import app as prism_app  # pylint: disable=unused-import
+from prism.ui.ids import ShellIds
 import pytest
 
 pytestmark = pytest.mark.e2e
@@ -61,6 +63,9 @@ def test_route_loads(page: Page, base_url: str, route: str):
 
   page.wait_for_load_state("networkidle")
   expect(page.locator("#react-entry-point")).not_to_be_empty()
+  version_badge = page.locator(f"#{ShellIds.VERSION}")
+  expect(version_badge).to_be_visible()
+  expect(version_badge).to_have_text(f"v{prism.__version__}")
 
 
 def test_unknown_route_shows_the_404_page(page: Page, base_url: str):
@@ -78,3 +83,6 @@ def test_unknown_route_shows_the_404_page(page: Page, base_url: str):
   ).to_be_visible()
   # The shell stays up, so there is a way back out.
   expect(page.locator("#react-entry-point")).not_to_be_empty()
+  expect(page.locator(f"#{ShellIds.VERSION}")).to_have_text(
+      f"v{prism.__version__}"
+  )

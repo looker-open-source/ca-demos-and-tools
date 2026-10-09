@@ -230,6 +230,14 @@ def test_discover_gcp_agents_multi_location(db_session: Session):
 
     mock_client_cls.reset_mock()
 
+    # '-' wildcard queries the aggregated '-' parent on the global endpoint
+    service.discover_gcp_agents(project_id="my-project", location="-")
+    mock_client_cls.assert_called_once_with(
+        project="projects/my-project/locations/-"
+    )
+
+    mock_client_cls.reset_mock()
+
     # Explicit 'us' multi-region
     service.discover_gcp_agents(project_id="my-project", location="us")
     mock_client_cls.assert_called_once_with(
@@ -258,6 +266,52 @@ def test_discover_gcp_agents_multi_location(db_session: Session):
       mock_client_cls.assert_any_call(
           project="projects/my-project/locations/asia-northeast1"
       )
+
+
+def test_discovery_falls_back_to_wildcard_when_regional_endpoints_fail(
+    db_session: Session,
+):
+  """When global succeeds and regional endpoints fail, '-' recovers them."""
+  repo = agent_repository.AgentRepository(db_session)
+  service = agent_service.AgentService(db_session, repo)
+
+  global_bot = schemas.AgentBase(
+      name="Global Bot",
+      config=schemas.AgentConfig(
+          project_id="my-project",
+          location="global",
+          agent_resource_id="r-global",
+      ),
+  )
+  us_bot = schemas.AgentBase(
+      name="US Bot",
+      config=schemas.AgentConfig(
+          project_id="my-project",
+          location="us",
+          agent_resource_id="r-us",
+      ),
+  )
+
+  def _client(project: str):
+    c = mock.MagicMock()
+    if project.endswith("/global"):
+      c.list_agents.return_value = [global_bot]
+      return c
+    if project.endswith("/-"):
+      c.list_agents.return_value = [global_bot, us_bot]
+      return c
+    raise RuntimeError("rep.googleapis.com DNS unavailable")
+
+  with mock.patch(
+      "prism.server.services.agent_service.GeminiDataAnalyticsClient",
+      side_effect=_client,
+  ):
+    found = service.discover_gcp_agents(project_id="my-project")
+
+  assert [(a.name, a.config.location) for a in found] == [
+      ("Global Bot", "global"),
+      ("US Bot", "us"),
+  ]
 
 
 def test_discovery_says_so_when_every_location_failed(db_session: Session):
@@ -391,6 +445,7 @@ def test_gda_endpoint_resolution():
   assert get_gda_endpoint("") is None
   assert get_gda_endpoint("global") is None
   assert get_gda_endpoint("GLOBAL") is None
+  assert get_gda_endpoint("-") is None
   assert get_gda_endpoint("us") == "geminidataanalytics.us.rep.googleapis.com"
   assert get_gda_endpoint("US") == "geminidataanalytics.us.rep.googleapis.com"
   assert get_gda_endpoint("eu") == "geminidataanalytics.eu.rep.googleapis.com"
