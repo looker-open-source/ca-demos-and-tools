@@ -13,3 +13,8 @@
 // limitations under the License.
 
 declare module "*.module.css";
+
+declare module "vega-embed" {
+  const embed: (el: HTMLElement | string, spec: any, opt?: any) => Promise<any>;
+  export default embed;
+}
