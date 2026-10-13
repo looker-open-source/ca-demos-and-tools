@@ -129,3 +129,32 @@ def test_a_trace_with_no_sql_in_it_reports_no_sql(
 
   assert result.generated_sql == ""
   assert result.response_text == _ANSWER
+
+
+def test_a_matched_verified_query_populates_generated_sql(
+    db_session: Session, agent: Agent
+):
+  """Verified queries set matched_query.example_query.sql_query instead of generated_sql."""
+  messages: list[dict[str, Any]] = [
+      {
+          "system_message": {
+              "data": {"matched_query": {"example_query": {"sql_query": _SQL}}}
+          }
+      },
+      {
+          "system_message": {
+              "data": {"result": {"data": [{"order_count": "128"}]}}
+          }
+      },
+      {
+          "system_message": {
+              "text": {"text_type": "FINAL_RESPONSE", "parts": [_ANSWER]}
+          }
+      },
+  ]
+  service = _service(db_session, messages)
+
+  result = service.execute_ephemeral_test(agent.id, _QUESTION, [])
+
+  assert result.generated_sql == _SQL
+  assert result.response_text == _ANSWER

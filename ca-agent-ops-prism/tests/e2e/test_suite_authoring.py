@@ -172,3 +172,41 @@ def test_create_a_suite_with_a_question_and_an_assertion(
 
   copied_card_list = page.locator(f"#{TestSuiteIds.TEST_CASE_LIST}")
   expect(copied_card_list.get_by_text(_QUESTION, exact=True)).to_be_visible()
+
+
+def test_author_data_check_row_assertion_with_regex_match(
+    page: Page, base_url: str, seed, db
+):
+  """Authoring a Data Check Row assertion with Regex Match persists mode=regex."""
+  suite = seed.suite(name="Regex Row Suite")
+
+  page.goto(f"{base_url}/test_suites/edit/{suite.id}")
+  page.wait_for_load_state("networkidle")
+
+  page.locator(f"#{TestSuiteIds.TC_PLAYGROUND_ADD_BTN}").click()
+  question = page.locator(f"#{TestSuiteIds.TC_INPUT_TEST_CASE}")
+  expect(question).to_be_visible()
+  question.fill(_QUESTION)
+  page.locator(f"#{TestSuiteIds.TC_SAVE_BTN}").click()
+
+  page.locator(f"#{TestSuiteIds.ASSERT_MODAL_OPEN_BTN}").click()
+  modal = page.get_by_role("dialog", name="Manage Assertion")
+  expect(modal).to_be_visible()
+
+  select_option(page, TestSuiteIds.TC_ASSERT_TYPE, "Row Value Match")
+  modal.get_by_text("Regex Match", exact=True).click()
+
+  yaml_input = page.locator(f"#{TestSuiteIds.TC_ASSERT_YAML}")
+  expect(yaml_input).to_be_visible()
+  yaml_input.fill('"^region[_\\\\s]code$": "^EMEA-\\\\d+$"')
+
+  page.locator(f"#{TestSuiteIds.ASSERT_MODAL_CONFIRM_BTN}").click()
+  expect(modal).to_be_hidden(timeout=30_000)
+
+  db.expire_all()
+  assertion = db.execute(sqlalchemy.select(Assertion)).scalars().one()
+  assert assertion.type == AssertionType.DATA_CHECK_ROW
+  assert assertion.params.get("mode") == "regex"
+  assert assertion.params.get("columns") == {
+      r"^region[_\s]code$": r"^EMEA-\d+$"
+  }

@@ -230,7 +230,9 @@ class Trial(Base, BaseMixin):
     # writes 0 or 1, so the two agree today, but the column is a float and
     # anything that writes a real weight would have been silently ignored.
     scored_results = [
-        r for r in self.assertion_results if r.assertion_snapshot.weight > 0
+        r
+        for r in self.assertion_results
+        if r.assertion_snapshot.weight > 0 and r.error_message is None
     ]
     if not scored_results:
       return None
@@ -261,6 +263,7 @@ class Trial(Base, BaseMixin):
             AssertionResult.assertion_snapshot_id == AssertionSnapshot.id,
         )
         .where(AssertionSnapshot.weight > 0)
+        .where(AssertionResult.error_message.is_(None))
         .correlate_except(AssertionResult)
         .scalar_subquery()
     )

@@ -671,7 +671,7 @@ wheels = [
 
 [[package]]
 name = "google-cloud-geminidataanalytics"
-version = "0.10.0"
+version = "0.13.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "google-api-core", extra = ["grpc"] },
@@ -681,9 +681,9 @@ dependencies = [
     { name = "proto-plus" },
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/03/5d/9ba11863b243356af749e564cdbf4ab867bffddde6d80d17c250527fe85b/google_cloud_geminidataanalytics-0.10.0.tar.gz", hash = "sha256:c98e660b8cad5ccf42fb1a0738d74b4a8f6dd97995cbb599b56af745b971f570", size = 334935, upload-time = "2026-02-04T23:42:21.04Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/72/b3/b3567e34bebf3be70c1d93250d13728b40081e450c0c6a0c3e81c943f2d0/google_cloud_geminidataanalytics-0.13.4.tar.gz", hash = "sha256:5897cbaa49549a556561fecb675be589a6d0f64695e52b6730ab0755f33cf819", size = 649866, upload-time = "2026-09-24T23:20:08.597Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/88/36c3f70a773f8ff9705cacdfdcc488f31e49d85693c6224fcd5870245951/google_cloud_geminidataanalytics-0.10.0-py3-none-any.whl", hash = "sha256:fb9beb9bee80552972dfec8d1d2b54cb3cebc9b81e24c772e20f20b9db210779", size = 292067, upload-time = "2026-02-04T23:42:18.967Z" },
+    { url = "https://files.pythonhosted.org/packages/8a/4b/318b770a8b3dedcb56e9a3bf9ba585ba24dd21b311b2839ccb08cd769255/google_cloud_geminidataanalytics-0.13.4-py3-none-any.whl", hash = "sha256:5969f384e3136467f0cd1f364609f9a881d9c625c2c0709da26bd8148dcf4707", size = 568080, upload-time = "2026-09-24T23:19:44.826Z" },
 ]
 
 [[package]]
@@ -1274,7 +1274,7 @@ requires-dist = [
     { name = "google-api-core", specifier = "<3" },
     { name = "google-auth", specifier = "<3" },
     { name = "google-cloud-bigquery", specifier = ">=3.0.0,<4" },
-    { name = "google-cloud-geminidataanalytics", specifier = "==0.10.0" },
+    { name = "google-cloud-geminidataanalytics", specifier = "==0.13.4" },
     { name = "google-genai", specifier = "<3" },
     { name = "gunicorn", specifier = "<27" },
     { name = "looker-sdk", specifier = "<27" },

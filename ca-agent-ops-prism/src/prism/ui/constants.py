@@ -81,9 +81,9 @@ ASSERTS_GUIDE = [
         "name": "query-contains",
         "label": "Query Contains",
         "description": (
-            "Checks if the generated SQL or Looker query contains a specific"
-            " substring. Matching ignores case. Switch to Regex to match a"
-            " pattern instead."
+            "Checks if the generated SQL, Looker query, or matched Verified"
+            " Query contains a specific substring. Matching ignores case."
+            " Switch to Regex to match a pattern instead."
         ),
         "example": "FROM `my_table`",
     },
@@ -120,7 +120,9 @@ ASSERTS_GUIDE = [
         "label": "Row Value Match",
         "description": (
             "Checks if a row exists that matches all specified column-value"
-            " pairs."
+            " pairs. Column matching normalizes spaces, underscores, and"
+            " brackets. Switch to Regex to match column names and string"
+            " values against regular expressions."
         ),
         "example": "city: 'Paris'\npopulation: 2141000",
     },

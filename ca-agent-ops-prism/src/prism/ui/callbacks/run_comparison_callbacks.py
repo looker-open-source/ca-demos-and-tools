@@ -625,9 +625,13 @@ def update_page_content(
     # the pairing by type alone collapsed a case that has two assertions of
     # the same type down to the last one, and the other delta disappeared.
     base_scores = {
-        _assertion_key(ar): ar.score for ar in case.base_trial.assertion_results
+        _assertion_key(ar): ar.score
+        for ar in case.base_trial.assertion_results
+        if not ar.error_message
     }
     for ar in case.challenger_trial.assertion_results:
+      if ar.error_message:
+        continue
       key = _assertion_key(ar)
       if key in base_scores:
         assertion_deltas.setdefault(ar.assertion.type, []).append(

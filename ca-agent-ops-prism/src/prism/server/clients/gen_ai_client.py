@@ -24,7 +24,7 @@ import pydantic
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 
 ResponseSchema = TypeVar("ResponseSchema", bound=pydantic.BaseModel)
 

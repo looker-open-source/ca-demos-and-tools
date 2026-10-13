@@ -368,7 +368,10 @@ def test_a_remote_fetch_that_fails_leaves_edit_disabled(
   # is not overwritten with an error. This absence is why Edit is disabled
   # above: the two go together.
   assert _DETAIL.STORE_GCP_CONFIG not in body
-  assert _DETAIL.BTN_RUN_EVAL not in body
+  if case == "raised":
+    assert body[_DETAIL.BTN_RUN_EVAL][CP.DISABLED] is False
+  else:
+    assert _DETAIL.BTN_RUN_EVAL not in body
 
   rendered = str(body[_DETAIL.INSTRUCTION][CP.CHILDREN])
   assert expected in rendered

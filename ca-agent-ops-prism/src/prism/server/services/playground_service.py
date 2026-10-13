@@ -68,10 +68,12 @@ class PlaygroundService:
       snap_service = snapshot_service.SnapshotService(
           self._session, self._suite_repo, self._example_repo
       )
-      gen_ai_client_inst = gen_ai_client.GenAIClient(
-          project=settings.gcp_genai_project,
-          location=settings.gcp_genai_location,
-      )
+      gen_ai_client_inst = None
+      if settings.gcp_genai_project:
+        gen_ai_client_inst = gen_ai_client.GenAIClient(
+            project=settings.gcp_genai_project,
+            location=settings.gcp_genai_location,
+        )
       sug_service = suggestion_service.SuggestionService(
           gen_ai_client_inst,
           trial_repository.TrialRepository(self._session),

@@ -54,7 +54,7 @@ class TestGenAIClient:
 
     assert result == "Generated Text"
     mock_client_instance.models.generate_content.assert_called_with(
-        model="gemini-3.8-flash", contents="prompt"
+        model="gemini-2.5-flash", contents="prompt"
     )
 
   def test_generate_structured_success(self, client, mock_client):

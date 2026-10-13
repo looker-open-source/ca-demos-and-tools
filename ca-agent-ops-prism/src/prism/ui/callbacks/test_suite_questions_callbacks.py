@@ -610,9 +610,12 @@ def update_assertion_ui(assert_type: str | None):
   # display:flex and its gap. Setting display:block broke flex and dropped the
   # gap, pushing the example box above the input box.
   container_style = {} if example else {"display": "none"}
-  # Contains and regex are two readings of the same value, so the selector
-  # only belongs to the types that take one.
-  is_contains = assert_type in ["text-contains", "query-contains"]
+  # Text Contains, Query Contains, and Data Check Row use the mode selector.
+  is_contains = assert_type in [
+      "text-contains",
+      "query-contains",
+      "data-check-row",
+  ]
   # Showing it means clearing the inline display, not setting one. A
   # SegmentedControl lays its options out with flex, and display:block stacked
   # them vertically with no pill behind them, tall enough to spill out of the
@@ -659,7 +662,7 @@ def update_assertion_ui(assert_type: str | None):
         container_style,
         {"display": "none"},
         {"display": "none"},
-        {"display": "none"},
+        mode_style,
         value_rows,
         value_rows,
     )
@@ -878,6 +881,7 @@ def save_assertion_from_modal(
 
   if assert_type == "data-check-row":
     assertion_data["columns"] = val
+    assertion_data["mode"] = assert_mode or MatchMode.CONTAINS.value
   elif assert_type == "looker-query-match":
     assertion_data["params"] = val
   else:

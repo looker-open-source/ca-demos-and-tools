@@ -81,6 +81,11 @@ _SYSTEM_MESSAGES = {
             questions=[gda.ClarificationQuestion(question="which year")]
         )
     ),
+    "citation": gda.SystemMessage(
+        citation=gda.Citation(
+            sources=[gda.CitationSource(uri="https://example.com")]
+        )
+    ),
 }
 
 
@@ -227,6 +232,39 @@ def test_a_looker_query_groups_with_the_sql_it_replaces():
   ]
   # The query opens the data phase and the result closes it, the same pair
   # generated_sql makes.
+  assert timeline.events[0].group_title == "Agent Reasoning - Data Query"
+  assert timeline.events[1].group_title == "Data Query"
+
+
+def test_a_matched_verified_query_groups_with_the_sql_it_replaces():
+  """A verified query sends matched_query instead of generated_sql."""
+  matched = gda.SystemMessage(
+      data=gda.DataMessage(
+          matched_query=gda.MatchedQuery(
+              example_query=gda.ExampleQuery(
+                  sql_query="SELECT COUNT(*) FROM orders"
+              )
+          )
+      )
+  )
+  query_result = gda.SystemMessage(
+      data=gda.DataMessage(result=gda.DataResult(name="orders"))
+  )
+
+  (query_event,) = _trace(matched)
+  (result_event,) = _trace(query_result)
+  result_event["timestamp"] = _LATER_TIMESTAMP
+
+  timeline = TimelineService().create_timeline_from_trace(
+      trace=[query_event, result_event], ttfr_ms=0, total_duration_ms=100
+  )
+
+  assert [e.title for e in timeline.events] == [
+      "Matched Verified Query",
+      "Query Result",
+  ]
+  assert timeline.events[0].content == "SELECT COUNT(*) FROM orders"
+  assert timeline.events[0].content_type == "sql"
   assert timeline.events[0].group_title == "Agent Reasoning - Data Query"
   assert timeline.events[1].group_title == "Data Query"
 

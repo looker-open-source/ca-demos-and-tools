@@ -56,7 +56,7 @@ class DataCheckRowSuggestionSchema(assertion_schemas.AssertionSchema):
   """Schema for LLM-suggested row check assertions.
 
   Uses an explicit list of ColumnMatch items so constrained decoding on
-  models like gemini-3.8-flash enforces key-value emission instead of
+  models like gemini-2.5-flash enforces key-value emission instead of
   collapsing to an empty object.
   """
 

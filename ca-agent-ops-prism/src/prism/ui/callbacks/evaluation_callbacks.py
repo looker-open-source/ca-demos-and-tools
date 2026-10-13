@@ -439,6 +439,8 @@ def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
 
   for t in trials:
     for ar in t.assertion_results:
+      if ar.error_message:
+        continue
       type_val = ar.assertion.type
       type_name = name_map.get(type_val, type_val.replace("-", " ").title())
 
@@ -1146,6 +1148,8 @@ def _calculate_assertion_summary(
   diagnostic = {"total": 0, "passed": 0}
 
   for a in assertion_details:
+    if a.get("error_message"):
+      continue
     weight = a.get("weight", 0)
     passed = 1 if a.get("passed", False) else 0
 
@@ -1463,9 +1467,12 @@ def render_trial_detail(
         continue
       if filter_stat != "all":
         item_passed = item.get("passed", False)
+        item_error = bool(item.get("error_message"))
         if filter_stat == "passed" and not item_passed:
           continue
-        if filter_stat == "failed" and item_passed:
+        if filter_stat == "failed" and (item_passed or item_error):
+          continue
+        if filter_stat == "error" and not item_error:
           continue
       if filter_type != "all" and a_type != filter_type:
         continue
@@ -1523,6 +1530,10 @@ def render_trial_detail(
                             {
                                 "label": "Failed",
                                 "value": "failed",
+                            },
+                            {
+                                "label": "Error",
+                                "value": "error",
                             },
                         ],
                         size="xs",

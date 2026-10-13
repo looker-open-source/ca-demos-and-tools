@@ -96,3 +96,83 @@ def test_agent_trace_renders_the_replayed_trace(
   container = page.locator(f"#{EvaluationIds.AGENT_TRACE_CONTAINER}")
   expect(container).to_contain_text("COUNT(*)")
   expect(container).to_contain_text(traces.ANSWER)
+
+
+def test_trial_detail_shows_an_errored_assertion(
+    page: Page, base_url: str, seed
+):
+  """An un-evaluated assertion renders an ERROR badge and diagnostic reason."""
+  agent = seed.agent()
+  suite = seed.suite()
+  seed.example(
+      suite,
+      question=traces.QUESTION,
+      assertions=[(AssertionType.AI_JUDGE, {"value": "Is the tone helpful?"})],
+  )
+  snapshot = seed.snapshot(suite)
+  run = seed.run(agent, snapshot, status=RunStatus.COMPLETED)
+  trial = run.trials[0]
+  seed.finish_trial(
+      trial,
+      passed=False,
+      assertion_error_message=(
+          "AI Judge requires PRISM_GENAI_CLIENT_PROJECT to evaluate criteria."
+      ),
+  )
+
+  page.goto(f"{base_url}/evaluations/trials/{trial.id}")
+  page.wait_for_load_state("networkidle")
+
+  container = page.locator(f"#{EvaluationIds.TRIAL_DETAIL_CONTAINER}")
+  expect(container).to_contain_text("AI Judge")
+  expect(container).to_contain_text("ERROR")
+  expect(container).to_contain_text("PRISM_GENAI_CLIENT_PROJECT")
+
+
+def test_agent_trace_renders_matched_verified_query(
+    page: Page, base_url: str, seed
+):
+  """The trace page renders matched Verified Query SQL and parameters."""
+  agent = seed.agent()
+  suite = seed.suite()
+  seed.example(
+      suite,
+      question=traces.QUESTION,
+      assertions=[(AssertionType.QUERY_CONTAINS, {"value": "verified_orders"})],
+  )
+  snapshot = seed.snapshot(suite)
+  run = seed.run(agent, snapshot, status=RunStatus.COMPLETED)
+  trial = run.trials[0]
+  verified_trace = [
+      {
+          "system_message": {
+              "data": {
+                  "matched_query": {
+                      "example_query": {
+                          "sql_query": "SELECT COUNT(*) FROM verified_orders"
+                      },
+                      "query_parameter_values": [
+                          {"name": "status", "value": "SHIPPED"}
+                      ],
+                  }
+              }
+          }
+      },
+      {
+          "system_message": {
+              "text": {"text_type": "RESPONSE", "parts": [traces.ANSWER]}
+          }
+      },
+  ]
+  for message, timestamp in zip(
+      verified_trace, traces._timestamps(len(verified_trace))  # pylint: disable=protected-access
+  ):
+    message["timestamp"] = timestamp
+  seed.finish_trial(trial, trace=verified_trace, passed=True)
+
+  page.goto(f"{base_url}/evaluations/trials/{trial.id}/trace")
+  page.wait_for_load_state("networkidle")
+
+  container = page.locator(f"#{EvaluationIds.AGENT_TRACE_CONTAINER}")
+  expect(container).to_contain_text("Matched Verified Query")
+  expect(container).to_contain_text("SELECT COUNT(*) FROM verified_orders")

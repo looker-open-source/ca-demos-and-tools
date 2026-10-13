@@ -30,7 +30,7 @@ dependencies = [
     "alembic>=1.13.0,<2",
     # Exact, not a range. The client is pre-1.0 and its message shapes move
     # between minors.
-    "google-cloud-geminidataanalytics == 0.10.0",
+    "google-cloud-geminidataanalytics == 0.13.4",
     "google-auth<3",
     "google-genai<3",
     # Imported directly, not just pulled in by the clients above.

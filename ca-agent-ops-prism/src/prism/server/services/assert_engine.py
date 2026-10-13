@@ -264,6 +264,15 @@ def check_query_contains(
         data_msg = sys_msg.data
         if "generated_sql" in data_msg:
           all_query_text.append(data_msg.generated_sql)
+        if "matched_query" in data_msg:
+          matched = data_msg.matched_query
+          if "example_query" in matched and matched.example_query.sql_query:
+            all_query_text.append(matched.example_query.sql_query)
+          if matched.query_parameter_values:
+            params_dict = type(matched).to_dict(matched)
+            all_query_text.append(
+                json.dumps(params_dict.get("query_parameter_values", []))
+            )
         if "query" in data_msg:
           # Serialize the structured query so a contains check can search it.
           # to_dict gives a plain dict, which json.dumps can render.
@@ -347,31 +356,46 @@ def check_data_row_count(
   )
 
 
-def _values_match(actual: Any, expected: Any) -> bool:
-  """Checks if two values match, handling loose numeric equality."""
+def _values_match(
+    actual: Any, expected: Any, mode: MatchMode = MatchMode.CONTAINS
+) -> bool:
+  """Checks if two values match via loose numeric equality or regex."""
   # Stripped, because an expected value typed into a cell of a CSV keeps the
   # space after the comma it was pasted next to, and no result ever has one.
-  if str(actual).strip() == str(expected).strip():
+  actual_str = str(actual).strip()
+  expected_str = str(expected).strip()
+  if actual_str == expected_str:
     return True
   try:
     if float(actual) == float(expected):
       return True
   except (ValueError, TypeError):
     pass
+  if mode == MatchMode.REGEX and isinstance(expected, str):
+    return _search_with_deadline(expected_str, actual_str)
   return False
 
 
 _MISSING = object()
 
 
-def _lookup_column(row: dict[str, Any], key: str) -> Any:
-  """Reads a column out of a result row, ignoring the case of its name.
+def _normalize_column_name(name: str) -> str:
+  """Normalizes column names across spaces, brackets, and underscores."""
+  return re.sub(r"[\s_\[\]]+", "_", name.strip()).strip("_").casefold()
 
-  The column name comes from whatever the agent's SQL aliased, so an assertion
-  written for `Total_Sales` used to miss a column returned as `total_sales`.
-  An exact match still wins, so a result carrying both names is unambiguous.
 
-  Returns ``_MISSING`` when there is no such column, which a None value is not.
+def _lookup_column(
+    row: dict[str, Any], key: str, mode: MatchMode = MatchMode.CONTAINS
+) -> Any:
+  """Reads a column out of a result row, ignoring case/separators or by regex.
+
+  Args:
+    row: Structured data result row mapping column headers to values.
+    key: Expected column name or regex pattern.
+    mode: Matching mode for column lookup (`CONTAINS` or `REGEX`).
+
+  Returns:
+    The matched cell value, or ``_MISSING`` when no column matches.
   """
   if key in row:
     return row[key]
@@ -379,6 +403,14 @@ def _lookup_column(row: dict[str, Any], key: str) -> Any:
   for actual, value in row.items():
     if str(actual).casefold() == folded:
       return value
+  normalized_key = _normalize_column_name(key)
+  for actual, value in row.items():
+    if _normalize_column_name(str(actual)) == normalized_key:
+      return value
+  if mode == MatchMode.REGEX:
+    for actual, value in row.items():
+      if _search_with_deadline(key, str(actual)):
+        return value
   return _MISSING
 
 
@@ -422,43 +454,54 @@ def check_data_row(
   # A column the result never returned and a column whose value is wrong both
   # used to read "No row found matching {...}". They need different fixes, so
   # they get different messages.
-  missing = [
-      key
-      for key in assertion.columns
-      if all(_lookup_column(row, key) is _MISSING for row in data_rows)
-  ]
-  if missing:
-    returned = sorted({str(key) for row in data_rows for key in row})
+  try:
+    missing = [
+        key
+        for key in assertion.columns
+        if all(
+            _lookup_column(row, key, assertion.mode) is _MISSING
+            for row in data_rows
+        )
+    ]
+    if missing:
+      returned = sorted({str(key) for row in data_rows for key in row})
+      return AssertionResult(
+          assertion=assertion,
+          passed=False,
+          score=0.0,
+          reasoning=(
+              f"Column(s) {missing} are not in the result. The query returned"
+              f" {returned}."
+          ),
+      )
+
+    closest = None
+    for row in data_rows:
+      mismatches = []
+      for key, val in assertion.columns.items():
+        row_val = _lookup_column(row, key, assertion.mode)
+        if row_val is _MISSING:
+          # Another row has the column, this one does not. A Struct row drops
+          # its nulls, so this is how a null column arrives.
+          mismatches.append(f"{key}: expected {val!r}, not in this row")
+        elif not _values_match(row_val, val, assertion.mode):
+          mismatches.append(f"{key}: expected {val!r}, got {row_val!r}")
+      if not mismatches:
+        return AssertionResult(
+            assertion=assertion,
+            passed=True,
+            score=1.0,
+            reasoning=f"Found row matching {assertion.columns}.",
+        )
+      if closest is None or len(mismatches) < len(closest):
+        closest = mismatches
+  except TimeoutError as timeout:
     return AssertionResult(
         assertion=assertion,
         passed=False,
         score=0.0,
-        reasoning=(
-            f"Column(s) {missing} are not in the result. The query returned"
-            f" {returned}."
-        ),
+        reasoning=str(timeout),
     )
-
-  closest = None
-  for row in data_rows:
-    mismatches = []
-    for key, val in assertion.columns.items():
-      row_val = _lookup_column(row, key)
-      if row_val is _MISSING:
-        # Another row has the column, this one does not. A Struct row drops
-        # its nulls, so this is how a null column arrives.
-        mismatches.append(f"{key}: expected {val!r}, not in this row")
-      elif not _values_match(row_val, val):
-        mismatches.append(f"{key}: expected {val!r}, got {row_val!r}")
-    if not mismatches:
-      return AssertionResult(
-          assertion=assertion,
-          passed=True,
-          score=1.0,
-          reasoning=f"Found row matching {assertion.columns}.",
-      )
-    if closest is None or len(mismatches) < len(closest):
-      closest = mismatches
 
   return AssertionResult(
       assertion=assertion,
@@ -833,7 +876,10 @@ def check_ai_judge(
         assertion=assertion,
         passed=False,
         score=0.0,
-        reasoning="LLM client not provided for AI Judge.",
+        reasoning=(
+            "LLM client not provided for AI Judge (check"
+            " PRISM_GENAI_CLIENT_PROJECT)."
+        ),
         error_message="No LLM client, so the AI judge did not run.",
     )
 

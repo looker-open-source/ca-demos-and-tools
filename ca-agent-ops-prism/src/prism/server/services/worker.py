@@ -18,6 +18,7 @@ import datetime
 import logging
 import multiprocessing
 import os
+import socket
 import sys
 import threading
 from typing import Any
@@ -56,7 +57,10 @@ def execute_trial(trial_id: int):
   )
 
   logger.info(
-      "Starting execution of trial %s in process %s", trial_id, os.getpid()
+      "Starting execution of trial %s in process %s on host %s",
+      trial_id,
+      os.getpid(),
+      socket.gethostname(),
   )
 
   try:
@@ -321,7 +325,11 @@ class WorkerProcessManager:
 
   def _management_loop(self):
     """Main loop for monitoring and spawning trial processes."""
-    logger.info("Started WorkerProcessManager loop")
+    logger.info(
+        "Started WorkerProcessManager loop on host=%s pid=%s",
+        socket.gethostname(),
+        os.getpid(),
+    )
 
     while not self.stop_event.is_set():
       try:
@@ -418,9 +426,16 @@ class WorkerProcessManager:
 
           if not is_alive:
             logger.warning(
-                "Trial %s PID %s is dead or defunct. Marking FAILED/RETRY.",
+                "Trial %s PID %s is dead or missing on host=%s manager_pid=%s"
+                " (retry %s/%s). If multiple instances share one database"
+                " without --max-instances=1, each host re-runs in-flight"
+                " trials claimed by other instances. Marking FAILED/RETRY.",
                 trial.id,
                 trial.trial_pid,
+                socket.gethostname(),
+                os.getpid(),
+                trial.retry_count,
+                trial.max_retries,
             )
             self._retry_or_fail(session, trial, "Worker process crashed")
     except Exception:  # pylint: disable=broad-exception-caught
