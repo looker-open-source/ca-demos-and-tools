@@ -13,3 +13,7 @@
 # limitations under the License.
 
 """Prism Core Backend Package."""
+
+from importlib import metadata
+
+__version__ = metadata.version("prism")

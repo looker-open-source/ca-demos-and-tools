@@ -201,6 +201,15 @@ def layout(suite_id: str | None = None):
               else {"display": "none"},
           ),
           dmc.Button(
+              "Duplicate",
+              id=Ids.BTN_DUPLICATE,
+              leftSection=DashIconify(
+                  icon="material-symbols:content-copy", width=20
+              ),
+              variant="default",
+              radius="md",
+          ),
+          dmc.Button(
               "Edit Test Suite",
               id=Ids.BTN_CONFIG_EDIT,
               leftSection=DashIconify(icon="material-symbols:edit", width=20),
@@ -295,6 +304,7 @@ def layout(suite_id: str | None = None):
           html.Div(id=Ids.MODAL_DELETE),
           dash.dcc.Store(id=Ids.STORE_SELECTED_INDEX, data=None),
           render_config_edit_modal(Ids.MODAL_CONFIG_SAVE_BTN),
+          render_duplicate_modal(),
           render_run_eval_modal(),
       ],
   )
@@ -413,6 +423,43 @@ def render_config_edit_modal(save_btn_id: str):
                   ),
               ],
           ),
+      ],
+  )
+
+
+def render_duplicate_modal():
+  """Renders the Duplicate Test Suite modal."""
+  return dmc.Modal(
+      id=Ids.MODAL_DUPLICATE,
+      title="Duplicate Test Suite",
+      size="md",
+      radius="md",
+      centered=True,
+      children=[
+          dmc.Stack(
+              gap="lg",
+              children=[
+                  dmc.TextInput(
+                      id=Ids.INPUT_DUPLICATE_NAME,
+                      label="New Test Suite Name",
+                      required=True,
+                  ),
+                  dmc.Group(
+                      justify="flex-end",
+                      children=[
+                          dmc.Button(
+                              "Cancel",
+                              id=Ids.BTN_DUPLICATE_CANCEL,
+                              variant="subtle",
+                          ),
+                          dmc.Button(
+                              "Create Copy",
+                              id=Ids.BTN_DUPLICATE_SUBMIT,
+                          ),
+                      ],
+                  ),
+              ],
+          )
       ],
   )
 

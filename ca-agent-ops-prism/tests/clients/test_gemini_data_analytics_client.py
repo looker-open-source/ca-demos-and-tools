@@ -474,3 +474,57 @@ def test_update_agent_with_golden_queries(client, mock_gemini_lib):
   _, lq_kwargs = mock_gemini_lib.LookerQuery.call_args
   assert lq_kwargs["explore"] == "new_view"
   assert lq_kwargs["fields"] == ["f"]
+
+
+def test_regional_resource_calls_route_reads_and_chat_to_global_and_writes_to_regional(
+    client, mock_gemini_lib, mock_json_format  # pylint: disable=redefined-outer-name
+):
+  """Regional reads and chat use the global endpoint; writes use regional."""
+  del mock_json_format
+  regional_name = "projects/test-project/locations/us/dataAgents/agent-us"
+  mock_agent = make_mock_agent_pb("agent-us")
+  mock_agent.name = regional_name
+
+  global_agent_client = mock.MagicMock()
+  global_agent_client.list_data_agents.return_value = [mock_agent]
+
+  us_agent_client = mock.MagicMock()
+  us_agent_client.get_data_agent.return_value = mock_agent
+  mock_op = mock.Mock()
+  mock_op.result.return_value = mock_agent
+  us_agent_client.update_data_agent.return_value = mock_op
+
+  def _make_agent_client(client_options=None):
+    if client_options is None:
+      return global_agent_client
+    return us_agent_client
+
+  mock_gemini_lib.DataAgentServiceClient.side_effect = _make_agent_client
+
+  mock_response = mock.Mock(_pb=mock.Mock())
+  client.chat_client.chat.return_value = iter([mock_response])
+
+  client.get_agent(regional_name)
+  client.get_agent_context(regional_name, context_target="published")
+  assert mock_gemini_lib.DataAgentServiceClient.call_count == 1
+  assert mock_gemini_lib.DataAgentServiceClient.call_args.kwargs == {
+      "client_options": None
+  }
+  us_agent_client.get_data_agent.assert_not_called()
+
+  client.update_agent(regional_name, system_instruction="regional instruction")
+  client.ask_question(regional_name, "How many sales in US?")
+
+  assert mock_gemini_lib.DataAgentServiceClient.call_count == 2
+  _, agent_kwargs = mock_gemini_lib.DataAgentServiceClient.call_args
+  assert (
+      agent_kwargs["client_options"].api_endpoint
+      == "geminidataanalytics.us.rep.googleapis.com"
+  )
+  mock_gemini_lib.DataChatServiceClient.assert_called_once_with()
+
+  # ChatRequest preserves the regional parent and full regional data_agent path.
+  _, chat_kwargs = mock_gemini_lib.ChatRequest.call_args
+  assert chat_kwargs["parent"] == "projects/test-project/locations/us"
+  _, context_kwargs = mock_gemini_lib.DataAgentContext.call_args
+  assert context_kwargs["data_agent"] == regional_name

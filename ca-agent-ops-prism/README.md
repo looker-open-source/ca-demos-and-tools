@@ -262,8 +262,9 @@ Prism interacts with GCP services for agent execution and LLM-based evaluation:
 
 -   `PRISM_GDA_PROJECTS`: comma-separated GCP projects containing GDA agents,
     for example `project-1,project-2`.
--   `PRISM_GDA_LOCATIONS`: comma-separated GCP locations to scan for agents.
-    Defaults to `global,us,eu`.
+-   `PRISM_GDA_LOCATIONS`: comma-separated GCP locations to scan for agents (or
+    `-` for an aggregated multi-region listing on the global endpoint). Defaults
+    to `global,us,eu`.
 -   `PRISM_GENAI_CLIENT_PROJECT`: the GCP project the Gen AI evaluation calls
     bill to, for example `my-genai-project`.
 -   `PRISM_GENAI_CLIENT_LOCATION`: the GCP location for those calls. Defaults to
@@ -274,14 +275,18 @@ under Quick Start.
 
 ### Agent locations
 
-An agent's location is stored on its row, and it is what picks the endpoint for
-every call to that agent. `global` uses the default endpoint. Every other
-location, multi-region and region alike, uses
-`geminidataanalytics.<location>.rep.googleapis.com`. Discovery queries all of
+An agent's location (`global`, `us`, `eu`, or a specific GCP region) is stored
+on its row and embedded in the resource path
+(`projects/{project}/locations/{location}/...`) for every call to that agent.
+Chat requests (`DataChatServiceClient`) and agent reads
+(`DataAgentServiceClient`) connect through the global endpoint
+(`geminidataanalytics.googleapis.com`), with regional agent reads querying
+`locations/-` on the global endpoint first and falling back to
+`geminidataanalytics.{location}.rep.googleapis.com` if needed. Regional agent
+writes (`create_agent`, `update_agent`) use
+`geminidataanalytics.{location}.rep.googleapis.com`. Discovery queries all of
 `PRISM_GDA_LOCATIONS` concurrently, which is why there is no region picker in
-the UI. Chat, context snapshots, agent updates and the spawned evaluation
-workers all read the location back off the row, so a worker subprocess reaches
-the same endpoint the UI did.
+the UI.
 
 ### BigQuery Evaluation Export Configuration
 Prism supports streaming completed evaluation results to BigQuery

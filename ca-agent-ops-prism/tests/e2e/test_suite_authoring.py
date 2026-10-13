@@ -114,3 +114,61 @@ def test_create_a_suite_with_a_question_and_an_assertion(
   page.wait_for_load_state("networkidle")
   card_list = page.locator(f"#{TestSuiteIds.TEST_CASE_LIST}")
   expect(card_list.get_by_text(_QUESTION, exact=True)).to_be_visible()
+
+  # Duplicate the suite from the view page modal.
+  page.locator(f"#{TestSuiteIds.BTN_DUPLICATE}").click()
+  dup_modal = page.get_by_role("dialog", name="Duplicate Test Suite")
+  expect(dup_modal).to_be_visible()
+  dup_input = page.locator(f"#{TestSuiteIds.INPUT_DUPLICATE_NAME}")
+  expect(dup_input).to_have_value(f"Copy of {_SUITE_NAME}")
+
+  duplicated_name = f"{_SUITE_NAME} (Copy)"
+  dup_input.fill(duplicated_name)
+  page.locator(f"#{TestSuiteIds.BTN_DUPLICATE_SUBMIT}").click()
+
+  page.wait_for_url(
+      lambda url: (
+          "/test_suites/view/" in url
+          and not url.rstrip("/").endswith(f"/{suite.id}")
+      ),
+      timeout=30_000,
+  )
+  page.wait_for_load_state("networkidle")
+
+  db.expire_all()
+  copied_suite = (
+      db.execute(
+          sqlalchemy.select(SuiteModel).where(
+              SuiteModel.name == duplicated_name
+          )
+      )
+      .scalars()
+      .one()
+  )
+  assert copied_suite.id != suite.id
+  assert copied_suite.description == _SUITE_DESCRIPTION
+
+  copied_example = (
+      db.execute(
+          sqlalchemy.select(Example).where(
+              Example.test_suite_id == copied_suite.id
+          )
+      )
+      .scalars()
+      .one()
+  )
+  assert copied_example.question == _QUESTION
+  copied_assertion = (
+      db.execute(
+          sqlalchemy.select(Assertion).where(
+              Assertion.example_id == copied_example.id
+          )
+      )
+      .scalars()
+      .one()
+  )
+  assert copied_assertion.type == AssertionType.TEXT_CONTAINS
+  assert copied_assertion.params.get("value") == _ASSERT_VALUE
+
+  copied_card_list = page.locator(f"#{TestSuiteIds.TEST_CASE_LIST}")
+  expect(copied_card_list.get_by_text(_QUESTION, exact=True)).to_be_visible()
