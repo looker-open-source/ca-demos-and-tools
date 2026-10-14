@@ -14,7 +14,7 @@
 
 [project]
 name = "prism"
-version = "0.1.0"
+version = "0.1.1"
 description = "An evaluation platform for Conversational Analytics agents"
 readme = "README.md"
 requires-python = ">=3.13"

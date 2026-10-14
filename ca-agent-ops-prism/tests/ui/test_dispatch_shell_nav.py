@@ -346,10 +346,11 @@ def test_one_readers_failure_does_not_silence_anothers_toast(
 
 
 def test_shell_header_renders_version_badge():
-  """Every page header renders the package version in a badge for screenshots."""
+  """Every page header renders the package version and code hash in a badge."""
   import prism  # pylint: disable=g-import-not-at-top
+  import re  # pylint: disable=g-import-not-at-top
 
-  assert prism.__version__
+  assert re.fullmatch(r"\d+\.\d+\.\d+\+[0-9a-f]{7}", prism.__version__)
   header = shell.render_header()
   serialized = str(header)
   assert ShellIds.VERSION in serialized

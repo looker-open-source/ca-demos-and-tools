@@ -14,6 +14,28 @@
 
 """Prism Core Backend Package."""
 
+import ast
+import hashlib
 from importlib import metadata
+import pathlib
 
-__version__ = metadata.version("prism")
+
+def _compute_code_hash() -> str:
+  """Returns a short SHA-256 digest of the package AST and prompt templates."""
+  pkg_dir = pathlib.Path(__file__).resolve().parent
+  digest = hashlib.sha256()
+  for path in sorted(pkg_dir.rglob("*")):
+    if not path.is_file() or "__pycache__" in path.parts:
+      continue
+    rel = path.relative_to(pkg_dir).as_posix()
+    if path.suffix == ".py":
+      tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+      digest.update(f"{rel}\0{ast.dump(tree)}\n".encode("utf-8"))
+    elif path.suffix == ".txt":
+      text = path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
+      digest.update(f"{rel}\0{text}\n".encode("utf-8"))
+  return digest.hexdigest()[:7]
+
+
+__code_hash__ = _compute_code_hash()
+__version__ = f"{metadata.version('prism')}+{__code_hash__}"
