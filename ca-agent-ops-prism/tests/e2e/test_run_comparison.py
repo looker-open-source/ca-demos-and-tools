@@ -41,7 +41,9 @@ from playwright.sync_api import Page
 from prism.common.schemas.assertion import AssertionType
 from prism.common.schemas.execution import RunStatus
 from prism.ui.ids import ComparisonIds
+from prism.ui.utils import format_timestamp
 import pytest
+from tests.e2e.conftest import select_option
 
 pytestmark = pytest.mark.e2e
 
@@ -139,3 +141,35 @@ def test_the_select_runs_modal_links_to_both_run_pages(
   expect(
       challenger_nav.get_by_role("link", name="View Run Page")
   ).to_have_attribute("href", f"/evaluations/runs/{challenger_run.id}")
+
+
+def test_select_runs_from_empty_compare_page_loads_comparison(
+    page: Page, base_url: str, compared_runs
+):
+  """Selecting a suite and two runs in the modal from /compare loads the view."""
+  suite, base_run, challenger_run = compared_runs
+
+  page.goto(f"{base_url}/compare")
+  page.wait_for_load_state("networkidle")
+
+  page.locator(f"#{ComparisonIds.BTN_OPEN_SELECT_RUNS}").click()
+  modal = page.get_by_role("dialog", name="Select Runs to Compare")
+  expect(modal).to_be_visible()
+
+  select_option(page, ComparisonIds.SUITE_SELECT, suite.name)
+
+  base_label = f"Run #{base_run.id} ({format_timestamp(base_run.created_at)})"
+  chal_label = (
+      f"Run #{challenger_run.id}"
+      f" ({format_timestamp(challenger_run.created_at)})"
+  )
+  select_option(page, ComparisonIds.BASE_RUN_SELECT, base_label)
+  select_option(page, ComparisonIds.CHALLENGE_RUN_SELECT, chal_label)
+
+  page.locator(f"#{ComparisonIds.BTN_APPLY_SELECT_RUNS}").click()
+  expect(modal).to_be_hidden(timeout=30_000)
+
+  comparison_list = page.locator(f"#{ComparisonIds.COMPARISON_LIST}")
+  expect(comparison_list).to_contain_text(_REGRESSED_QUESTION, timeout=30_000)
+  expect(comparison_list).to_contain_text(_STABLE_QUESTION)
+

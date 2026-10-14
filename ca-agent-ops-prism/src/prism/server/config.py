@@ -40,9 +40,7 @@ class Settings(pydantic.BaseModel):
   db_pass: str = os.getenv("DB_PASS", "")
   db_name: str = os.getenv("DB_NAME", "prism")
   db_ip_type: str = os.getenv("DB_IP_TYPE", "PUBLIC")
-  gcp_genai_location: str = os.getenv(
-      "PRISM_GENAI_CLIENT_LOCATION", "us-central1"
-  )
+  gcp_genai_location: str = os.getenv("PRISM_GENAI_CLIENT_LOCATION", "global")
 
   # GCP Projects
   # Comma-separated list for GDA API (e.g., "proj-1,proj-2")

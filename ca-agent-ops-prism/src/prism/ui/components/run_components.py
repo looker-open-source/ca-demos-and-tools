@@ -152,11 +152,7 @@ def render_modern_context_diff(
   s_json = json.dumps(snapshot_context, indent=2).splitlines()
   l_json = json.dumps(live_context, indent=2).splitlines()
 
-  diff = list(difflib.ndiff(s_json, l_json))
-
   rows = []
-  s_num = 1
-  l_num = 1
 
   def add_row(s_num, l_num, op, line, bg=None, color=None):
     return html.Tr(
@@ -202,27 +198,69 @@ def render_modern_context_diff(
         style={"backgroundColor": bg} if bg else {},
     )
 
-  has_changes = False
-  for line in diff:
-    op = line[0]
-    content = line[2:]
-
-    if op == " ":
-      rows.append(add_row(s_num, l_num, "", content))
-      s_num += 1
-      l_num += 1
-    elif op == "-":
-      rows.append(
-          add_row(s_num, None, "-", content, bg="#fff5f5", color="#e03131")
-      )
-      s_num += 1
-      has_changes = True
-    elif op == "+":
-      rows.append(
-          add_row(None, l_num, "+", content, bg="#f0fff4", color="#2f855a")
-      )
-      l_num += 1
-      has_changes = True
+  if s_json == l_json:
+    rows.append(
+        html.Tr(
+            html.Td(
+                "No configuration changes detected.",
+                colSpan=4,
+                style={
+                    "padding": "12px 16px",
+                    "color": "var(--mantine-color-dimmed)",
+                    "fontSize": "13px",
+                    "textAlign": "center",
+                },
+            )
+        )
+    )
+    has_changes = False
+  else:
+    has_changes = True
+    matcher = difflib.SequenceMatcher(None, s_json, l_json)
+    for group_idx, group in enumerate(matcher.get_grouped_opcodes(n=3)):
+      if group_idx > 0:
+        rows.append(
+            add_row(
+                None,
+                None,
+                "...",
+                "",
+                bg="var(--mantine-color-gray-0)",
+                color="var(--mantine-color-gray-5)",
+            )
+        )
+      for tag, i1, i2, j1, j2 in group:
+        if tag == "equal":
+          for offset in range(i2 - i1):
+            rows.append(
+                add_row(
+                    i1 + offset + 1, j1 + offset + 1, "", s_json[i1 + offset]
+                )
+            )
+        if tag in ("replace", "delete"):
+          for s_idx in range(i1, i2):
+            rows.append(
+                add_row(
+                    s_idx + 1,
+                    None,
+                    "-",
+                    s_json[s_idx],
+                    bg="#fff5f5",
+                    color="#e03131",
+                )
+            )
+        if tag in ("replace", "insert"):
+          for l_idx in range(j1, j2):
+            rows.append(
+                add_row(
+                    None,
+                    l_idx + 1,
+                    "+",
+                    l_json[l_idx],
+                    bg="#f0fff4",
+                    color="#2f855a",
+                )
+            )
 
   return (
       html.Table(

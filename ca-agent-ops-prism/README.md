@@ -268,7 +268,7 @@ Prism interacts with GCP services for agent execution and LLM-based evaluation:
 -   `PRISM_GENAI_CLIENT_PROJECT`: the GCP project the Gen AI evaluation calls
     bill to, for example `my-genai-project`.
 -   `PRISM_GENAI_CLIENT_LOCATION`: the GCP location for those calls. Defaults to
-    `us-central1`.
+    `global`.
 
 `PRISM_GDA_PROJECTS` is the one with no default and no error. See the warning
 under Quick Start.

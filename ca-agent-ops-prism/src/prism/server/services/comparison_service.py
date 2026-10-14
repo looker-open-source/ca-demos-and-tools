@@ -351,10 +351,10 @@ class ComparisonService:
     """Converts a Trial ORM object to TrialSchema, assertions included.
 
     Only the fields the compare page reads. agent_name, question, duration_ms,
-    ttfr_ms, error_traceback, failed_stage, tool_timings and started_at are
-    left at their defaults: the page takes the question and both deltas off
-    the case, and the trial only for its id, status, score and assertions.
-    Anything that wants the whole row wants run_client._map_trial.
+    ttfr_ms, error_traceback, failed_stage, trace_results, tool_timings and
+    started_at are left at their defaults: the page takes the question and both
+    deltas off the case, and the trial only for its id, status, score and
+    assertions. Anything that wants the whole row wants run_client._map_trial.
     """
     # Manual conversion to handle nested assertion params
     data = {
@@ -364,7 +364,6 @@ class ComparisonService:
         "status": trial.status,
         "output_text": trial.output_text,
         "error_message": trial.error_message,
-        "trace_results": trial.trace_results,
         "score": trial.score,
         "created_at": trial.created_at,
         "completed_at": trial.completed_at,
