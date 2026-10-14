@@ -38,4 +38,8 @@ def _compute_code_hash() -> str:
 
 
 __code_hash__ = _compute_code_hash()
-__version__ = f"{metadata.version('prism')}+{__code_hash__}"
+try:
+  _pkg_version = metadata.version("prism")
+except metadata.PackageNotFoundError:
+  _pkg_version = "0.1.1"
+__version__ = f"{_pkg_version}+{__code_hash__}"
