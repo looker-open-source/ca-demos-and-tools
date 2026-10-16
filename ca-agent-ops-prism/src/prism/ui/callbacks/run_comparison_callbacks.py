@@ -32,6 +32,7 @@ from prism.ui.components.cards import error_summary_line
 from prism.ui.components.run_components import render_modern_context_diff
 from prism.ui.ids import ComparisonIds
 from prism.ui.models.comparison_state import RunComparisonUIState
+from prism.ui.pages.run_comparison import render_filter_bar_placeholders
 from prism.ui.utils import format_timestamp
 from prism.ui.utils import handle_errors
 from prism.ui.utils import typed_callback
@@ -320,7 +321,10 @@ def synchronize_filters(
 ) -> tuple[str] | Any:
   """Synchronizes filters in URL."""
   ctx = dash.callback_context
-  trigger = ctx.triggered[0]["prop_id"] if ctx.triggered else ""
+  if not ctx.triggered or not ctx.triggered[0].get("value"):
+    return dash.no_update
+
+  trigger = ctx.triggered[0]["prop_id"]
   clicked = trigger.split(".")[0]
 
   if clicked not in _FILTER_STATUS:
@@ -459,7 +463,7 @@ def update_page_content(
         None,
         [],
         [],
-        [],
+        render_filter_bar_placeholders(),
     )
 
   client = get_client()
@@ -497,11 +501,11 @@ def update_page_content(
         dash.no_update,
         [],
         [],
-        [],
+        render_filter_bar_placeholders(),
     )
 
-  base_run = client.runs.get_run(state.base_run_id)
-  chal_run = client.runs.get_run(state.challenger_run_id)
+  base_run = comparison.base_run
+  chal_run = comparison.challenger_run
   context_diff = []
   badge_text = "CONTEXT DIFF"
   badge_color = "gray"
@@ -625,9 +629,13 @@ def update_page_content(
     # the pairing by type alone collapsed a case that has two assertions of
     # the same type down to the last one, and the other delta disappeared.
     base_scores = {
-        _assertion_key(ar): ar.score for ar in case.base_trial.assertion_results
+        _assertion_key(ar): ar.score
+        for ar in case.base_trial.assertion_results
+        if not ar.error_message
     }
     for ar in case.challenger_trial.assertion_results:
+      if ar.error_message:
+        continue
       key = _assertion_key(ar)
       if key in base_scores:
         assertion_deltas.setdefault(ar.assertion.type, []).append(

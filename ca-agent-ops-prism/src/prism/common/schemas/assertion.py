@@ -148,6 +148,20 @@ class DataCheckRowSchema(AssertionSchema):
 
   type: Literal[AssertionType.DATA_CHECK_ROW] = AssertionType.DATA_CHECK_ROW
   columns: dict[str, Any] = pydantic.Field(min_length=1)
+  mode: MatchMode = MatchMode.CONTAINS
+
+  @pydantic.model_validator(mode="after")
+  def check_patterns_compile(self) -> "DataCheckRowSchema":
+    """Rejects broken regex patterns on column names or string values."""
+    if self.mode == MatchMode.REGEX:
+      for col, val in self.columns.items():
+        try:
+          re.compile(col)
+          if isinstance(val, str):
+            re.compile(val)
+        except re.error as e:
+          raise ValueError(f"Invalid regular expression: {e}") from e
+    return self
 
 
 class LookerFilterSchema(pydantic.BaseModel):

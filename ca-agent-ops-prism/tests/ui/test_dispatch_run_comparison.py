@@ -734,6 +734,19 @@ def test_the_first_visit_shows_the_call_to_action(dash_client, callback_errors):
   assert _labels(
       body[ComparisonIds.CONTEXT_DIFF_CONTENT]["children"], "Text"
   ) == ["Select two runs to compare their configurations."]
+  # Hidden filter placeholders must survive the empty-state render so
+  # synchronize_filters still finds its Inputs when a comparison is later
+  # chosen from the modal.
+  assert {
+      b["props"]["id"]
+      for b in _of_type(body[ComparisonIds.FILTER_BAR]["children"], "Button")
+  } == {
+      ComparisonIds.FILTER_ALL,
+      ComparisonIds.FILTER_REGRESSIONS,
+      ComparisonIds.FILTER_IMPROVEMENTS,
+      ComparisonIds.FILTER_UNCHANGED,
+      ComparisonIds.FILTER_OTHER,
+  }
 
 
 def test_the_empty_state_icon_asks_for_a_color_the_browser_knows():
@@ -1019,6 +1032,38 @@ def test_each_filter_button_writes_its_own_status(
   if expected:
     wanted[ComparisonIds.URL_FILTER] = [expected]
   assert urllib.parse.parse_qs(written.lstrip("?")) == wanted
+
+
+def test_filter_buttons_ignore_unclicked_mount_triggers(
+    dash_client, callback_errors
+):
+  """Mounting the filter bar with n_clicks=None must not rewrite the URL."""
+  deps = dash_http.dependencies(dash_client)
+  synchronize = [
+      dep
+      for dep in deps
+      if any(i["id"] == ComparisonIds.FILTER_UNCHANGED for i in dep["inputs"])
+  ]
+  assert len(synchronize) == 1
+
+  current = (
+      f"?{ComparisonIds.URL_SUITE_ID}=7"
+      f"&{ComparisonIds.URL_BASE_RUN_ID}=11"
+      f"&{ComparisonIds.URL_CHALLENGER_RUN_ID}=12"
+  )
+  response = dash_http.fire(
+      dash_client,
+      synchronize[0],
+      {
+          f"{ComparisonIds.LOC_URL}.search": current,
+          f"{ComparisonIds.FILTER_ALL}.n_clicks": None,
+      },
+      changed=[f"{ComparisonIds.FILTER_ALL}.n_clicks"],
+  )
+
+  assert response.status_code == 200, response.data[:2000]
+  callback_errors.assert_none()
+  assert dash_http.body(response)["response"] == {}
 
 
 @pytest.mark.parametrize("changed", [True, False])

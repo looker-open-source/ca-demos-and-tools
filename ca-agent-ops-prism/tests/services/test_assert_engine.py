@@ -139,6 +139,61 @@ def test_check_query_contains_pass():
   assert result.score == 1.0
 
 
+def test_check_query_contains_matches_verified_query_sql():
+  """A verified query emits matched_query instead of generated_sql."""
+  trace = [{
+      "system_message": {
+          "data": {
+              "matched_query": {
+                  "example_query": {
+                      "sql_query": (
+                          "SELECT dept_num, SUM(sales_amt) FROM sales"
+                          " WHERE calendar_date = '2026-07-01'"
+                      )
+                  }
+              }
+          }
+      }
+  }]
+  response = make_response(trace)
+
+  assert assert_engine.check_query_contains(
+      response, QueryContains(value="2026-07-01")
+  ).passed
+  assert not assert_engine.check_query_contains(
+      response, QueryContains(value="2025-09-01")
+  ).passed
+
+
+def test_check_query_contains_matches_verified_query_parameter_values():
+  """Parameterized verified queries pass bound arguments in query_parameter_values."""
+  trace = [{
+      "system_message": {
+          "data": {
+              "matched_query": {
+                  "example_query": {
+                      "sql_query": (
+                          "SELECT SUM(sales_amt) FROM sales"
+                          " WHERE calendar_date = @sales_date"
+                      )
+                  },
+                  "query_parameter_values": [
+                      {"name": "sales_date", "value": "2026-07-01"}
+                  ],
+              }
+          }
+      }
+  }]
+  response = make_response(trace)
+
+  assert assert_engine.check_query_contains(
+      response, QueryContains(value="@sales_date")
+  ).passed
+  assert assert_engine.check_query_contains(
+      response, QueryContains(value="2026-07-01")
+  ).passed
+
+
 def test_check_text_contains_ignores_case():
   """The agent writes its own prose, so its casing is not the assertion's.
 
@@ -624,3 +679,68 @@ def test_check_ai_judge_pass():
   assert result.score == 1.0
   assert result.reasoning == "It said hello"
   mock_llm.generate_structured.assert_called_once()
+
+
+def test_check_data_row_separator_normalized_column_lookup():
+  """Column lookup ignores spaces, underscores, and square brackets."""
+  trace = [{
+      "system_message": {
+          "data": {
+              "result": {
+                  "data": [
+                      {"[TY Sales Amt]": 1500, "Store Region": "West"},
+                  ]
+              }
+          }
+      }
+  }]
+  response = make_response(trace)
+  assertion = DataCheckRow(
+      columns={"ty_sales_amt": 1500, "store_region": "West"}
+  )
+  result = assert_engine.check_data_row(response, assertion)
+  assert result.passed
+  assert result.score == 1.0
+
+
+def test_check_data_row_regex_mode_matches_columns_and_values():
+  """Regex mode matches both column names and string cell values."""
+  trace = [{
+      "system_message": {
+          "data": {
+              "result": {
+                  "data": [
+                      {"TY Sales Amount": "$1,234.56", "period": "Q3 2026"},
+                  ]
+              }
+          }
+      }
+  }]
+  response = make_response(trace)
+  assertion = DataCheckRow(
+      columns={
+          r"ty[\s_]*sales[\s_]*am(t|ount)": r"^\$?1,234(\.56)?$",
+          "period": r"Q[1-4]\s+2026",
+      },
+      mode=MatchMode.REGEX,
+  )
+  result = assert_engine.check_data_row(response, assertion)
+  assert result.passed
+  assert result.score == 1.0
+
+
+def test_data_check_row_schema_rejects_invalid_regex():
+  with pytest.raises(
+      pydantic.ValidationError, match="Invalid regular expression"
+  ):
+    DataCheckRow(
+        columns={"sales_[unterminated": "100"},
+        mode=MatchMode.REGEX,
+    )
+  with pytest.raises(
+      pydantic.ValidationError, match="Invalid regular expression"
+  ):
+    DataCheckRow(
+        columns={"sales": "[unterminated"},
+        mode=MatchMode.REGEX,
+    )

@@ -1002,6 +1002,7 @@ class Seeder:
       trace: list[dict[str, Any]] | None = None,
       passed: bool = True,
       error_message: str | None = None,
+      assertion_error_message: str | None = None,
       duration_ms: int = 1500,
   ) -> Trial:
     """Fills in a trial as though the worker had run it.
@@ -1018,6 +1019,8 @@ class Seeder:
         successful trace.
       passed: Whether the assertion results say the trial passed.
       error_message: Set on a FAILED trial.
+      assertion_error_message: Set on each AssertionResult when testing
+        un-evaluated assertion error handling.
       duration_ms: How long the trial claims to have taken.
 
     Returns:
@@ -1046,7 +1049,12 @@ class Seeder:
               assertion_snapshot_id=assertion_snapshot.id,
               passed=passed,
               score=1.0 if passed else 0.0,
-              reasoning="Seeded by the E2E suite.",
+              reasoning=(
+                  None
+                  if assertion_error_message
+                  else "Seeded by the E2E suite."
+              ),
+              error_message=assertion_error_message,
           )
       )
     self.session.commit()

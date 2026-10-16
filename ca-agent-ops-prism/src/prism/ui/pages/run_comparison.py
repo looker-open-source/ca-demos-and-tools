@@ -61,16 +61,7 @@ def layout(**_kwargs):
           # /compare.
           dmc.Box(
               id=ComparisonIds.FILTER_BAR,
-              children=html.Div(
-                  style={"display": "none"},
-                  children=[
-                      dmc.Button(id=ComparisonIds.FILTER_ALL),
-                      dmc.Button(id=ComparisonIds.FILTER_REGRESSIONS),
-                      dmc.Button(id=ComparisonIds.FILTER_IMPROVEMENTS),
-                      dmc.Button(id=ComparisonIds.FILTER_UNCHANGED),
-                      dmc.Button(id=ComparisonIds.FILTER_OTHER),
-                  ],
-              ),
+              children=render_filter_bar_placeholders(),
           ),
           dmc.Stack(
               id=ComparisonIds.COMPARISON_LIST,
@@ -80,6 +71,20 @@ def layout(**_kwargs):
                   dmc.Loader(color="blue", variant="dots")
               ],
           ),
+      ],
+  )
+
+
+def render_filter_bar_placeholders():
+  """Hidden filter buttons so synchronize_filters always finds its Inputs."""
+  return html.Div(
+      style={"display": "none"},
+      children=[
+          dmc.Button(id=ComparisonIds.FILTER_ALL),
+          dmc.Button(id=ComparisonIds.FILTER_REGRESSIONS),
+          dmc.Button(id=ComparisonIds.FILTER_IMPROVEMENTS),
+          dmc.Button(id=ComparisonIds.FILTER_UNCHANGED),
+          dmc.Button(id=ComparisonIds.FILTER_OTHER),
       ],
   )
 
@@ -318,7 +323,7 @@ def _context_diff_section():
       radius="md",
       mt="xl",
       id=ComparisonIds.CONTEXT_DIFF_ACCORDION,
-      value="context-diff",
+      value=None,
       styles={
           "content": {"padding": 0},
           "item": {"border": "1px solid var(--mantine-color-gray-2)"},

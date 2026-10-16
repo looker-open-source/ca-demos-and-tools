@@ -256,6 +256,7 @@ class GeminiDataAnalyticsClient:
   def _get_agent_client_for_resource(
       self, resource_name: str | None
   ) -> geminidataanalytics.DataAgentServiceClient:
+    """Returns the DataAgentServiceClient transport for resource_name."""
     loc = (
         self._extract_location(resource_name)
         if resource_name

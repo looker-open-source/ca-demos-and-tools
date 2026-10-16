@@ -43,6 +43,7 @@ from prism.common.schemas.trace import DurationMetrics
 from prism.server.clients.gemini_data_analytics_client import GeminiDataAnalyticsClient
 from prism.server.models.agent import Agent
 from prism.server.models.run import RunStatus
+from prism.server.models.run import Trial
 from prism.server.repositories.agent_repository import AgentRepository
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
@@ -51,6 +52,7 @@ from prism.server.services.assert_engine import AIJudgeResult
 from prism.server.services.execution_service import ExecutionService
 from prism.server.services.snapshot_service import SnapshotService
 import pytest
+import sqlalchemy
 from sqlalchemy.orm import Session
 
 _QUESTION = "How many orders shipped?"
@@ -176,13 +178,10 @@ def test_every_way_the_judge_fails_to_run_is_marked_as_such(llm, question):
   assert result.reasoning
 
 
-def test_a_judge_that_never_ran_is_left_off_the_trial(db_session: Session):
-  """One passing text assertion and one judge that hit a quota error.
-
-  Scored as a failure the trial is 0.5 and the run reads as a regression.
-  What is being measured there is Vertex, not the agent, so the row is not
-  written at all and the trial scores on the check that did run.
-  """
+def test_a_judge_that_never_ran_is_recorded_with_error_and_unscored(
+    db_session: Session,
+):
+  """Un-evaluated judge rows persist error_message and do not lower score."""
   agent = _agent(db_session)
   suite_repo = SuiteRepository(db_session)
   example_repo = ExampleRepository(db_session)
@@ -197,10 +196,16 @@ def test_a_judge_that_never_ran_is_left_off_the_trial(db_session: Session):
   trial = service.execute_trial(run.trials[0].id)
 
   assert trial.status == RunStatus.COMPLETED
-  assert (
-      len(trial.assertion_results) == 1
-  ), "The judge never answered, so there is nothing to record about it"
+  assert len(trial.assertion_results) == 2
+  assert trial.assertion_results[0].error_message is None
+  assert trial.assertion_results[1].error_message == (
+      "The AI judge raised RuntimeError."
+  )
   assert trial.score == pytest.approx(1.0)
+  sql_score = db_session.scalar(
+      sqlalchemy.select(Trial.score).where(Trial.id == trial.id)
+  )
+  assert sql_score == pytest.approx(1.0)
 
 
 def test_the_playground_scores_the_same_way_over_the_same_results(

@@ -195,9 +195,9 @@ class ExecutionService:
     return self.session.get(Trial, trial_id)
 
   @property
-  def gen_ai_client(self) -> GenAIClient:
-    """Returns the GenAIClient, initializing it if necessary."""
-    if self._gen_ai_client is None:
+  def gen_ai_client(self) -> GenAIClient | None:
+    """Returns the GenAIClient, initializing it when a project is configured."""
+    if self._gen_ai_client is None and settings.gcp_genai_project:
       self._gen_ai_client = GenAIClient(
           project=settings.gcp_genai_project,
           location=settings.gcp_genai_location,
@@ -328,25 +328,22 @@ class ExecutionService:
 
       for snap, res in zip(trial.example_snapshot.asserts, results):
         if res.error_message:
-          # The check could not be run at all, which is not the agent getting
-          # it wrong. Trial.score is a weighted mean over the rows that exist,
-          # so the row is left out rather than written with score 0: a Vertex
-          # 400 or a quota blip on the AI judge used to land as a regression
-          # and the run's accuracy tracked Vertex, not the agent.
+          # Record un-evaluated assertions on the trial with error_message set
+          # so the UI surfaces why the check did not run while Trial.score
+          # excludes errored rows from accuracy calculations.
           logger.warning(
               "Assertion %s on trial %s was not evaluated: %s",
               snap.id,
               trial.id,
               res.error_message,
           )
-          continue
         trial.assertion_results.append(
             AssertionResult(
                 assertion_snapshot_id=snap.id,
                 passed=res.passed,
                 score=res.score,
                 reasoning=res.reasoning,
-                error_message=None,
+                error_message=res.error_message,
             )
         )
 
@@ -466,10 +463,17 @@ class ExecutionService:
           if text_type in (1, "FINAL_RESPONSE"):
             if "parts" in sys_msg.text:
               response_text_parts.append(" ".join(sys_msg.text.parts))
-        # generated_sql, result and query share a oneof, so the data message
-        # carrying the rows is a set ``data`` with no SQL in it.
-        if "data" in sys_msg and "generated_sql" in sys_msg.data:
-          generated_sql = sys_msg.data.generated_sql
+        # generated_sql, matched_query, result and query share a oneof, so the
+        # data message carrying the rows is a set ``data`` with no SQL in it.
+        if "data" in sys_msg:
+          if "generated_sql" in sys_msg.data:
+            generated_sql = sys_msg.data.generated_sql
+          elif (
+              "matched_query" in sys_msg.data
+              and "example_query" in sys_msg.data.matched_query
+              and sys_msg.data.matched_query.example_query.sql_query
+          ):
+            generated_sql = sys_msg.data.matched_query.example_query.sql_query
 
     response_text = "\n\n".join(response_text_parts).strip()
 

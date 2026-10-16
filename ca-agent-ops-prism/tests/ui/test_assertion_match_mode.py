@@ -30,7 +30,9 @@ from unittest import mock
 import dash
 import dash_mantine_components as dmc
 from prism.common.schemas.assertion import MatchMode
+from prism.ui.callbacks import evaluation_callbacks
 from prism.ui.callbacks import test_suite_questions_callbacks
+from prism.ui.components import assertion_components
 from prism.ui.ids import TestSuiteIds
 import pytest
 
@@ -38,12 +40,11 @@ import pytest
 from prism.ui.app import app  # pylint: disable=unused-import
 from tests.ui import dash_http
 
-# The two types that take a match mode, and one of each kind that does not.
-_CONTAINS_TYPES = ["text-contains", "query-contains"]
+# Types that support contains/regex matching and those that do not.
+_CONTAINS_TYPES = ["text-contains", "query-contains", "data-check-row"]
 _OTHER_TYPES = [
     "ai-judge",
     "chart-check-type",
-    "data-check-row",
     "duration-max-ms",
     "looker-query-match",
 ]
@@ -176,14 +177,18 @@ def _save(assert_type: str, value: str, mode: str, suite_client):
   suite_client.sync_suite.side_effect = (
       lambda suite_id, test_cases: copy.deepcopy(test_cases)
   )
+  yaml_str = ""
+  if assert_type == "data-check-row":
+    suite_client.parse_yaml_safely.return_value = ({"col": value}, None)
+    yaml_str = f"col: {value}"
 
   returned = test_suite_questions_callbacks.save_assertion_from_modal(
       1,  # n_clicks
       [{"id": 7, "question": "q", "asserts": []}],
       0,  # selected_index
       assert_type,
-      value,
-      "",  # yaml
+      value if assert_type != "data-check-row" else "",
+      yaml_str,
       mode,
       None,  # chart type
       True,  # accuracy
@@ -281,8 +286,31 @@ def test_saving_invalid_regex_returns_clean_validation_error():
   )
   assert returned[0] == dash.no_update
   assert returned[1] is True
-  assert (
-      returned[2]
-      == "Invalid regular expression: unterminated character set at position 6"
+  assert returned[2] == (
+      "Invalid regular expression: unterminated character set at position 6"
   )
   assert returned[3] == {"display": "block"}
+
+
+def test_errored_assertion_renders_error_badge_and_is_excluded_from_kpis():
+  """Assertions with error_message render an ERROR badge and skip KPI counts."""
+  badge = assertion_components.render_assertion_status_badge(
+      passed=False, is_accuracy=True, has_error=True
+  )
+  assert badge.children == "ERROR"
+  assert badge.color == "yellow"
+  assert badge.variant == "light"
+
+  summary = evaluation_callbacks._calculate_assertion_summary([  # pylint: disable=protected-access
+      {"type": "text-contains", "weight": 1.0, "passed": True},
+      {
+          "type": "ai-judge",
+          "weight": 1.0,
+          "passed": False,
+          "error_message": "No LLM client, so the AI judge did not run.",
+      },
+  ])
+  assert summary.overall.total == 1
+  assert summary.overall.passed == 1
+  assert summary.accuracy.total == 1
+  assert summary.accuracy.pass_rate == pytest.approx(100.0)

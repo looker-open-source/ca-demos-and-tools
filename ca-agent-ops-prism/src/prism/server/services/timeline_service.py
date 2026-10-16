@@ -47,6 +47,7 @@ class TimelineService:
               "Data Query",
               "Generated SQL",
               "Generated Looker Query",
+              "Matched Verified Query",
               "BigQuery Execution",
           ],
           "action_titles": ["Query Result"],
@@ -186,6 +187,24 @@ class TimelineService:
             "sql",
         )
 
+      matched_query = data_content.get("matched_query") or data_content.get(
+          "matchedQuery"
+      )
+      if matched_query:
+        example = (
+            matched_query.get("example_query")
+            or matched_query.get("exampleQuery")
+            or {}
+        )
+        sql = example.get("sql_query") or example.get("sqlQuery")
+        if sql:
+          return (
+              "bi:patch-check",
+              "Matched Verified Query",
+              sql,
+              "sql",
+          )
+
       looker_query = data_content.get(
           "generated_looker_query"
       ) or data_content.get("generatedLookerQuery")
@@ -292,6 +311,15 @@ class TimelineService:
           "bi:question-circle-fill",
           "Clarification Question",
           json.dumps(message["clarification"], indent=2),
+          "json",
+      )
+
+    # Citation
+    if "citation" in message:
+      return (
+          "bi:quote",
+          "Citation",
+          json.dumps(message["citation"], indent=2),
           "json",
       )
 

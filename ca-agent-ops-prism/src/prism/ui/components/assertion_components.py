@@ -110,9 +110,8 @@ def _render_code_editor():
                                       dmc.Text(
                                           "Assertion Logic", fw=500, size="sm"
                                       ),
-                                      # Only the two contains types read this,
-                                      # so the type callback hides it for the
-                                      # rest.
+                                      # Text Contains, Query Contains, and
+                                      # Data Check Row use this mode selector.
                                       dmc.SegmentedControl(
                                           id=Ids.TC_ASSERT_MODE,
                                           value=MatchMode.CONTAINS.value,
@@ -363,12 +362,21 @@ def is_accuracy_assertion(weight: Any) -> bool:
     return False
 
 
-def assertion_status_color(passed: bool, is_accuracy: bool) -> str:
-  """The color for one assertion result.
+def assertion_status_color(
+    passed: bool, is_accuracy: bool, has_error: bool = False
+) -> str:
+  """Returns the semantic badge color for one assertion result.
 
-  A diagnostic failure is not a failed run, so it does not get the red an
-  accuracy failure gets.
+  Args:
+    passed: Whether the assertion passed.
+    is_accuracy: Whether the assertion weight contributes to accuracy score.
+    has_error: Whether evaluation failed due to an infrastructure error.
+
+  Returns:
+    A Mantine color name string (`yellow`, `teal`, `gray`, `red`, or `orange`).
   """
+  if has_error:
+    return "yellow"
   if passed:
     return "teal" if is_accuracy else "gray"
   return "red" if is_accuracy else "orange"
@@ -379,19 +387,30 @@ def render_assertion_status_badge(
     is_accuracy: bool,
     size: str = "xs",
     with_icon: bool = False,
+    has_error: bool = False,
     **kwargs,
 ) -> dmc.Badge:
-  """Renders the PASS/FAIL badge for one assertion result.
+  """Renders the PASS/FAIL/ERROR badge for one assertion result.
 
-  Color carries the outcome, variant carries the category. Filled means the
-  result moved the score, outline means it did not. Color alone was not enough:
-  a list of results made a diagnostic failure look like a broken agent.
+  Args:
+    passed: Whether the assertion passed.
+    is_accuracy: Whether the assertion weight contributes to accuracy score.
+    size: Mantine badge size identifier.
+    with_icon: Whether to include a left section icon.
+    has_error: Whether evaluation failed due to an infrastructure error.
+    **kwargs: Additional props forwarded to ``dmc.Badge``.
+
+  Returns:
+    A configured ``dmc.Badge`` component.
   """
-  label = "PASS" if passed else "FAIL"
+  label = "ERROR" if has_error else ("PASS" if passed else "FAIL")
   if with_icon:
+    icon_name = (
+        "mi:warning" if has_error else ("mi:check" if passed else "mi:close")
+    )
     label = [
         DashIconify(
-            icon="mi:check" if passed else "mi:close",
+            icon=icon_name,
             width=14,
             style={"marginRight": "4px"},
         ),
@@ -409,8 +428,10 @@ def render_assertion_status_badge(
     )
   return dmc.Badge(
       label,
-      color=assertion_status_color(passed, is_accuracy),
-      variant="filled" if is_accuracy else "outline",
+      color=assertion_status_color(passed, is_accuracy, has_error=has_error),
+      variant="light"
+      if has_error
+      else ("filled" if is_accuracy else "outline"),
       size=size,
       radius="xs",
       fw=700,
@@ -722,8 +743,11 @@ def render_assertion_card(
     passed = result.get("passed", False)
     reason = result.get("reasoning", "No reason provided.")
     error = result.get("error_message")
+    has_error = bool(error)
 
-    status_color = assertion_status_color(passed, is_accuracy)
+    status_color = assertion_status_color(
+        passed, is_accuracy, has_error=has_error
+    )
     icon = None if passed else "material-symbols:warning-amber-rounded"
 
     footer_children = []
@@ -775,7 +799,11 @@ def render_assertion_card(
 
   paper_style = {}
   if result:
-    p_color = assertion_status_color(result.get("passed", False), is_accuracy)
+    p_color = assertion_status_color(
+        result.get("passed", False),
+        is_accuracy,
+        has_error=bool(result.get("error_message")),
+    )
     paper_style = {
         "borderColor": f"var(--mantine-color-{p_color}-4)",
         "borderWidth": "1.5px",
@@ -1769,13 +1797,16 @@ def render_assertion_results_table(
     style = get_assertion_style(a_type)
     passed = item.get("passed", False)
     is_accuracy = is_accuracy_assertion(item.get("weight", 0))
+    has_error = bool(item.get("error_message"))
 
     rows.append(
         html.Tr(
             children=[
                 # Status
                 html.Td(
-                    render_assertion_status_badge(passed, is_accuracy),
+                    render_assertion_status_badge(
+                        passed, is_accuracy, has_error=has_error
+                    ),
                     style={
                         "padding": "16px 24px",
                         "minWidth": "120px",

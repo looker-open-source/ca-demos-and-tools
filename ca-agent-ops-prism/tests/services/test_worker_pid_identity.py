@@ -254,3 +254,23 @@ def test_the_manager_records_the_start_time_when_it_spawns_a_worker(
       "Without the start time the PID is the only identity again, which is"
       " what a restart breaks."
   )
+
+
+def test_missing_pid_logs_host_and_multi_instance_hint(
+    db_session, gda_client, manager, caplog
+):
+  """When a running PID disappears, log host/pid and --max-instances=1 hint."""
+  _claimed_trial(db_session, gda_client, started_minutes_ago=1)
+
+  with (
+      caplog.at_level("WARNING"),
+      mock.patch.object(
+          worker.psutil, "Process", side_effect=psutil.NoSuchProcess(_PID)
+      ),
+  ):
+    manager._check_active_trials()
+
+  assert any(
+      "host=" in rec.message and "--max-instances=1" in rec.message
+      for rec in caplog.records
+  )
