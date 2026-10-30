@@ -116,6 +116,17 @@ def test_init(client, mock_gemini_lib):
 
   mock_gemini_lib.DataChatServiceClient.assert_called_once()
   mock_gemini_lib.DataAgentServiceClient.assert_called_once()
+  chat_client_info = mock_gemini_lib.DataChatServiceClient.call_args.kwargs[
+      "client_info"
+  ]
+  agent_client_info = mock_gemini_lib.DataAgentServiceClient.call_args.kwargs[
+      "client_info"
+  ]
+  assert chat_client_info.user_agent == "PRISM"
+  assert agent_client_info.user_agent == "PRISM"
+  header_key, header_val = chat_client_info.to_grpc_metadata()
+  assert header_key == "x-goog-api-client"
+  assert header_val.startswith("PRISM ")
 
 
 def test_list_agents(client):
@@ -494,7 +505,9 @@ def test_regional_resource_calls_route_reads_and_chat_to_global_and_writes_to_re
   mock_op.result.return_value = mock_agent
   us_agent_client.update_data_agent.return_value = mock_op
 
-  def _make_agent_client(client_options=None):
+  def _make_agent_client(client_options=None, client_info=None):
+    assert client_info is not None
+    assert client_info.user_agent == "PRISM"
     if client_options is None:
       return global_agent_client
     return us_agent_client
@@ -507,9 +520,9 @@ def test_regional_resource_calls_route_reads_and_chat_to_global_and_writes_to_re
   client.get_agent(regional_name)
   client.get_agent_context(regional_name, context_target="published")
   assert mock_gemini_lib.DataAgentServiceClient.call_count == 1
-  assert mock_gemini_lib.DataAgentServiceClient.call_args.kwargs == {
-      "client_options": None
-  }
+  first_agent_kwargs = mock_gemini_lib.DataAgentServiceClient.call_args.kwargs
+  assert first_agent_kwargs["client_options"] is None
+  assert first_agent_kwargs["client_info"].user_agent == "PRISM"
   us_agent_client.get_data_agent.assert_not_called()
 
   client.update_agent(regional_name, system_instruction="regional instruction")
@@ -521,7 +534,14 @@ def test_regional_resource_calls_route_reads_and_chat_to_global_and_writes_to_re
       agent_kwargs["client_options"].api_endpoint
       == "geminidataanalytics.us.rep.googleapis.com"
   )
-  mock_gemini_lib.DataChatServiceClient.assert_called_once_with()
+  assert agent_kwargs["client_info"].user_agent == "PRISM"
+  mock_gemini_lib.DataChatServiceClient.assert_called_once()
+  assert (
+      mock_gemini_lib.DataChatServiceClient.call_args.kwargs[
+          "client_info"
+      ].user_agent
+      == "PRISM"
+  )
 
   # ChatRequest preserves the regional parent and full regional data_agent path.
   _, chat_kwargs = mock_gemini_lib.ChatRequest.call_args
