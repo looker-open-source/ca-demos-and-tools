@@ -205,8 +205,12 @@ def test_chat_uses_global_endpoint_while_agent_uses_regional_endpoint():
       us_call_kwargs["client_options"].api_endpoint
       == "geminidataanalytics.us.rep.googleapis.com"
   )
-  assert agent_cls.call_args_list[1].kwargs == {"client_options": None}
-  chat_cls.assert_called_once_with()
+  assert us_call_kwargs["client_info"].user_agent == "PRISM"
+  wildcard_call_kwargs = agent_cls.call_args_list[1].kwargs
+  assert wildcard_call_kwargs["client_options"] is None
+  assert wildcard_call_kwargs["client_info"].user_agent == "PRISM"
+  chat_cls.assert_called_once()
+  assert chat_cls.call_args.kwargs["client_info"].user_agent == "PRISM"
 
 
 def test_regional_reads_use_global_wildcard_first_without_opening_regional(

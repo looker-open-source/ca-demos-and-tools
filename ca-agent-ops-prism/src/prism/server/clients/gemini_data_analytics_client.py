@@ -22,6 +22,7 @@ from typing import Any
 
 from google.api_core import client_options
 from google.api_core import exceptions as api_exceptions
+from google.api_core.gapic_v1 import client_info as gapic_client_info
 import google.auth
 from google.auth import exceptions as auth_exceptions
 from google.cloud import geminidataanalytics_v1beta as geminidataanalytics
@@ -73,6 +74,9 @@ _UPDATE_AGENT_TIMEOUT_S = 300
 # How long one chat stream may take. A run gives each trial this long before
 # the request thread is released.
 _ASK_QUESTION_TIMEOUT_S = 300
+
+# Identifies requests originating from Prism in API telemetry headers.
+_PRISM_CLIENT_INFO = gapic_client_info.ClientInfo(user_agent="PRISM")
 
 
 def _readable_api_error(e: Exception) -> str:
@@ -239,7 +243,9 @@ class GeminiDataAnalyticsClient:
       cls, location: str | None = None
   ) -> geminidataanalytics.DataChatServiceClient:
     del location
-    return geminidataanalytics.DataChatServiceClient()
+    return geminidataanalytics.DataChatServiceClient(
+        client_info=_PRISM_CLIENT_INFO
+    )
 
   @classmethod
   def _create_agent_client(
@@ -251,7 +257,10 @@ class GeminiDataAnalyticsClient:
         if endpoint
         else None
     )
-    return geminidataanalytics.DataAgentServiceClient(client_options=options)
+    return geminidataanalytics.DataAgentServiceClient(
+        client_options=options,
+        client_info=_PRISM_CLIENT_INFO,
+    )
 
   def _get_agent_client_for_resource(
       self, resource_name: str | None
