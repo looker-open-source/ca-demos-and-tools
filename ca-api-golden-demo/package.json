@@ -19,7 +19,7 @@
     "@google-cloud/vertexai": "^1.10.3",
     "@grpc/grpc-js": "^1.14.6",
     "dotenv": "^16.6.1",
-    "express": "^4.22.2",
+    "express": "^4.22.3",
     "express-ws": "^5.0.2",
     "google-auth-library": "^9.15.1",
     "winston": "^3.19.0",
