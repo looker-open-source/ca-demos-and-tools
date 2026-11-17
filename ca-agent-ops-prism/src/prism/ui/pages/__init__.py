@@ -24,6 +24,8 @@ from prism.ui.pages import evaluations
 from prism.ui.pages import getting_started
 from prism.ui.pages import home
 from prism.ui.pages import run_comparison
+from prism.ui.pages import schedule_detail
+from prism.ui.pages import schedules
 from prism.ui.pages import test_suite_home
 from prism.ui.pages import test_suite_new
 from prism.ui.pages import test_suite_questions
@@ -47,4 +49,6 @@ def register_all_pages():
   getting_started.register_page()
   home.register_page()
   run_comparison.register_page()
+  schedule_detail.register_page()
+  schedules.register_page()
   trial_detail.register_page()

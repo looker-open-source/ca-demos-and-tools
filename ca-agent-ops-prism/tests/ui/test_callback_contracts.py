@@ -739,7 +739,8 @@ def _link_targets() -> tuple[dict[str, set[str]], dict[str, set[str]]]:
       elif isinstance(value, ast.JoinedStr) and value.values:
         head = value.values[0]
         if isinstance(head, ast.Constant) and isinstance(head.value, str):
-          prefixes[head.value].add(path.name)
+          # The query string is not part of the route Dash matches.
+          prefixes[head.value.split("?")[0]].add(path.name)
 
   # A link written any other way contributes nothing, and on an empty result
   # the checks below iterate zero times and pass.

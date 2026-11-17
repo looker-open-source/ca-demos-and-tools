@@ -28,12 +28,14 @@ def render_status_badge(label: str, color: str, size: str = "sm") -> dmc.Badge:
       tt="uppercase",
       fw=700,
       # Drops Mantine's default border and trims the padding so badges stay
-      # short enough to sit inline in dense table rows.
+      # short enough to sit inline in dense table rows without truncating.
       style={
           "border": "none",
           "padding": "0 10px",
           "height": "24px" if size == "sm" else "32px",
+          "flexShrink": 0,
       },
+      styles={"label": {"overflow": "visible"}},
   )
 
 

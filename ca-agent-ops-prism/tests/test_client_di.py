@@ -21,11 +21,15 @@ import fast_depends
 from prism.client import agent_client
 from prism.client import dependencies
 from prism.client import prism_client
+from prism.client import schedule_client
 from prism.client import suite_client
 from prism.client.run_client import RunsClient
 from prism.common.schemas import agent as agent_schemas
+from prism.common.schemas import schedule as schedule_schemas
+from prism.server.models.schedule import EvalSchedule as ScheduleModel
 from prism.server.models.suite import TestSuite as SuiteModel
 from prism.server.services.agent_service import AgentService
+from prism.server.services.schedule_service import ScheduleService
 from prism.server.services.suite_service import SuiteService
 import pydantic
 
@@ -44,7 +48,44 @@ class TestClientDI(unittest.TestCase):
     self.assertIsInstance(client.agents, agent_client.AgentsClient)
     self.assertIsInstance(client.suites, suite_client.SuitesClient)
     self.assertIsInstance(client.runs, RunsClient)
+    self.assertIsInstance(client.schedules, schedule_client.SchedulesClient)
     self.assertIs(client.trials, client.runs)
+
+  def test_schedule_client_list_schedules_injection(self):
+    """list_schedules resolves ScheduleService via FastDepends and maps rows."""
+    mock_service = mock.Mock(spec=ScheduleService)
+    row = ScheduleModel(
+        id=9,
+        name="Nightly Ops",
+        agent_id=1,
+        test_suite_id=2,
+        cadence="DAILY",
+        cron_expression="0 9 * * *",
+        timezone="UTC",
+        generate_suggestions=False,
+        concurrency=2,
+        is_enabled=True,
+    )
+    row.created_at = "2026-10-30T00:00:00Z"
+    row.modified_at = "2026-10-30T00:00:00Z"
+    row.is_archived = False
+    mock_service.list_schedules.return_value = [row]
+
+    client = schedule_client.SchedulesClient()
+    with fast_depends.dependency_provider.scope(
+        dependencies.get_schedule_service, lambda: mock_service
+    ):
+      schedules = client.list_schedules(is_enabled=True)
+
+    self.assertEqual(len(schedules), 1)
+    self.assertIsInstance(schedules[0], schedule_schemas.ScheduleSchema)
+    self.assertEqual(schedules[0].name, "Nightly Ops")
+    mock_service.list_schedules.assert_called_once_with(
+        agent_id=None,
+        test_suite_id=None,
+        is_enabled=True,
+        include_archived=False,
+    )
 
   def test_agent_client_list_agents_injection(self):
     """list_agents reaches its service through the provider, not a kwarg.

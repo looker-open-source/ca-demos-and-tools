@@ -24,7 +24,7 @@ from prism.ui.components.run_modals import render_compare_run_modal
 from prism.ui.ids import EvaluationIds as Ids
 
 
-def layout(run_id: str = ""):
+def layout(run_id: str = "", **_kwargs):
   """Renders the Evaluation Detail layout.
 
   Args:

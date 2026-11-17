@@ -369,7 +369,7 @@ def test_a_remote_fetch_that_fails_leaves_edit_disabled(
   # above: the two go together.
   assert _DETAIL.STORE_GCP_CONFIG not in body
   if case == "raised":
-    assert body[_DETAIL.BTN_RUN_EVAL][CP.DISABLED] is False
+    assert not body[_DETAIL.BTN_RUN_EVAL][CP.DISABLED]
   else:
     assert _DETAIL.BTN_RUN_EVAL not in body
 
@@ -416,9 +416,7 @@ def test_the_eval_modal_lists_the_suites_and_describes_the_one_picked(
   assert {
       CP.LABEL: seeded.suite_name,
       CP.VALUE: str(seeded.suite_id),
-  } in body[
-      _EVAL_MODAL.SELECT_SUITE
-  ][CP.DATA]
+  } in body[_EVAL_MODAL.SELECT_SUITE][CP.DATA]
   # Cleared, so a second open does not inherit the last selection.
   assert body[_EVAL_MODAL.SELECT_SUITE][CP.VALUE] is None
 

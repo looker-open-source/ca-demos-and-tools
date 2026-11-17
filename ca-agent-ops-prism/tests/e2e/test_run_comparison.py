@@ -172,4 +172,3 @@ def test_select_runs_from_empty_compare_page_loads_comparison(
   comparison_list = page.locator(f"#{ComparisonIds.COMPARISON_LIST}")
   expect(comparison_list).to_contain_text(_REGRESSED_QUESTION, timeout=30_000)
   expect(comparison_list).to_contain_text(_STABLE_QUESTION)
-

@@ -180,7 +180,7 @@ def _choice_modal():
   )
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Monitored Agents",
       description=(

@@ -20,12 +20,14 @@ class EvaluationIds:
 
   # List Page
   RUN_LIST_CONTAINER = "evaluations-run-list-container"
+  SCHEDULE_FILTER_BANNER = "evaluations-schedule-filter-banner"
   FILTER_AGENT = "evaluations-filter-agent"
   FILTER_SUITE = "evaluations-filter-suite"
   FILTER_STATUS = "evaluations-filter-status"
 
   # Detail Page
   RUN_DETAIL_STATS = "evaluations-run-detail-stats"
+  RUN_SCHEDULE_BADGE = "run-schedule-badge"
   RUN_CONTEXT_TRIGGER = "evaluations-run-context-trigger"
   RUN_CONTEXT_DIFF_BTN = "run-context-diff-btn"
   RUN_CONTEXT_DIFF_MODAL = "run-context-diff-modal"
@@ -311,3 +313,70 @@ class ShellIds:
   NAV_EVALUATIONS = "nav-evaluations"
   NAV_TEST_SUITES = "nav-test-suites"
   NAV_COMPARISON = "nav-comparison"
+  NAV_SCHEDULES = "nav-schedules"
+
+
+class ScheduleIds:
+  """IDs for the Scheduled Evaluations page and modal."""
+
+  # Page containers and polling
+  KPI_CONTAINER = "schedules-kpi-container"
+  LIST_CONTAINER = "schedules-list-container"
+  POLL_INTERVAL = "schedules-poll-interval"
+  UPDATE_SIGNAL = "schedules-update-signal"
+
+  # Filters
+  FILTER_AGENT = "schedules-filter-agent"
+  FILTER_SUITE = "schedules-filter-suite"
+  FILTER_STATUS = "schedules-filter-status"
+  SWITCH_ARCHIVED = "schedules-switch-archived"
+
+  # Header and empty-state actions
+  BTN_OPEN_CREATE = "schedules-btn-open-create"
+  BTN_EMPTY_CREATE = "schedules-btn-empty-create"
+
+  # Create / Edit modal
+  MODAL = "schedules-modal"
+  MODAL_TITLE = "schedules-modal-heading-text"
+  STORE_EDIT_ID = "schedules-store-edit-id"
+  INPUT_NAME = "schedules-input-name"
+  SELECT_AGENT = "schedules-select-agent"
+  SELECT_SUITE = "schedules-select-suite"
+  SEGMENT_CADENCE = "schedules-segment-cadence"
+  PRESET_CONTROLS = "schedules-preset-controls"
+  PRESET_DOW_WRAPPER = "schedules-preset-dow-wrapper"
+  PRESET_HOUR_WRAPPER = "schedules-preset-hour-wrapper"
+  SELECT_DOW = "schedules-select-dow"
+  INPUT_HOUR = "schedules-input-hour"
+  INPUT_MINUTE = "schedules-input-minute"
+  INPUT_CRON = "schedules-input-cron"
+  SELECT_TIMEZONE = "schedules-select-timezone"
+  INPUT_CONCURRENCY = "schedules-input-concurrency"
+  SWITCH_SUGGESTIONS = "schedules-switch-suggestions"
+  SWITCH_ENABLED = "schedules-switch-enabled"
+  PREVIEW_CONTAINER = "schedules-preview-container"
+  MODAL_ERROR = "schedules-modal-error"
+  BTN_CANCEL = "schedules-btn-cancel"
+  BTN_SAVE = "schedules-btn-save"
+
+  # Pattern-matched schedule action buttons, rendered on the detail page
+  BTN_RUN_NOW = "schedules-btn-run-now"
+  BTN_TOGGLE_PAUSE = "schedules-btn-toggle-pause"
+  BTN_EDIT = "schedules-btn-edit"
+  BTN_ARCHIVE_ROW = "schedules-btn-archive-row"
+  BTN_RESTORE_ROW = "schedules-btn-restore-row"
+
+
+class ScheduleDetailIds:
+  """IDs for the Schedule Detail page."""
+
+  TITLE = "schedule-detail-title"
+  BREADCRUMBS = "schedule-detail-breadcrumbs"
+  STATUS_CONTAINER = "schedule-detail-status"
+  ACTIONS = "schedule-detail-actions"
+  STATS = "schedule-detail-stats"
+  CONFIG_CONTAINER = "schedule-detail-config"
+  UPCOMING_CONTAINER = "schedule-detail-upcoming"
+  RUNS_CONTAINER = "schedule-detail-runs"
+  POLL_INTERVAL = "schedule-detail-poll-interval"
+  HEADER_REPAINT = "schedule-detail-header-repaint"

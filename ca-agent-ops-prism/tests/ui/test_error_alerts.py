@@ -190,7 +190,7 @@ def test_a_failed_fetch_leaves_edit_disabled_and_duplicate_usable():
   # Indices 4, 5 and 6 are the edit, duplicate and run-eval disabled flags.
   assert result[4] is True
   assert result[5] is False
-  assert result[6] is False
+  assert not result[6]
 
 
 @pytest.mark.parametrize(

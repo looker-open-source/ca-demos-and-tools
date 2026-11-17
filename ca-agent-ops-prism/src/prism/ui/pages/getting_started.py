@@ -197,7 +197,7 @@ def _render_assertion_list():
   )
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Welcome to Prism",
       description=(

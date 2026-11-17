@@ -49,13 +49,14 @@ def fetch_current_project_id(unused_pathname, current_data):
         Output(ShellIds.NAV_EVALUATIONS, "c"),
         Output(ShellIds.NAV_TEST_SUITES, "c"),
         Output(ShellIds.NAV_COMPARISON, "c"),
+        Output(ShellIds.NAV_SCHEDULES, "c"),
     ],
     inputs=[Input("url", CP.PATHNAME)],
 )
 def update_active_nav_link(pathname: str):
   """Updates the active state of navigation links based on current pathname."""
   if not pathname:
-    return [dash.no_update] * 5
+    return [dash.no_update] * 6
 
   def _get_color(is_active: bool) -> str:
     return "blue" if is_active else "black"
@@ -66,4 +67,5 @@ def update_active_nav_link(pathname: str):
       _get_color(pathname.startswith("/evaluations")),
       _get_color(pathname.startswith("/test_suites")),
       _get_color(pathname.startswith("/compare")),
+      _get_color(pathname.startswith("/schedules")),
   ]

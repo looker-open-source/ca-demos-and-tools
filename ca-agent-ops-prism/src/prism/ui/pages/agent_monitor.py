@@ -80,7 +80,7 @@ def _discovery_form():
   )
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Discover Existing Agents",
       description=(

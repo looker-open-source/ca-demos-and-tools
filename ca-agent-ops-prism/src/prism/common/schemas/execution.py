@@ -64,6 +64,8 @@ class RunSchema(pydantic.BaseModel):
   agent_name: str | None = None
   suite_name: str | None = None
   original_suite_id: int | None = None
+  schedule_id: int | None = None
+  schedule_name: str | None = None
   # What the agent's config was when the run started, so a later edit does
   # not change what an old run reads as.
   agent_context_snapshot: dict[str, Any] | None = None

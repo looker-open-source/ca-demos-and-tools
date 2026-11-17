@@ -21,7 +21,7 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.ids import TestSuiteIds as Ids
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Create New Test Suite",
       description="Configure the initial details for your new test suite.",

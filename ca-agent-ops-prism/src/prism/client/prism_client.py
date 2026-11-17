@@ -19,6 +19,7 @@ from prism.client.comparison_client import ComparisonClient
 from prism.client.dashboard_client import DashboardClient
 from prism.client.playground_client import PlaygroundClient
 from prism.client.run_client import RunsClient
+from prism.client.schedule_client import SchedulesClient
 from prism.client.suite_client import SuitesClient
 from prism.client.system_client import SystemClient
 
@@ -34,6 +35,7 @@ class PrismClient:
     self._agents = AgentsClient()
     self._suites = SuitesClient()
     self._runs = RunsClient()
+    self._schedules = SchedulesClient()
     self._playground = PlaygroundClient()
     self._comparison = ComparisonClient()
     self._dashboard = DashboardClient()
@@ -52,6 +54,10 @@ class PrismClient:
   @property
   def runs(self) -> RunsClient:
     return self._runs
+
+  @property
+  def schedules(self) -> SchedulesClient:
+    return self._schedules
 
   @property
   def trials(self) -> RunsClient:

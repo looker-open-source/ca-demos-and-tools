@@ -24,6 +24,7 @@ from prism.server.config import settings
 from prism.server.repositories import agent_repository
 from prism.server.repositories import example_repository
 from prism.server.repositories import run_repository
+from prism.server.repositories import schedule_repository
 from prism.server.repositories import suite_repository
 from prism.server.repositories import trial_repository
 from prism.server.services import agent_service
@@ -33,6 +34,7 @@ from prism.server.services import comparison_service
 from prism.server.services import dashboard_service
 from prism.server.services import execution_service
 from prism.server.services import playground_service
+from prism.server.services import schedule_service
 from prism.server.services import snapshot_service
 from prism.server.services import suggestion_service
 from prism.server.services import suite_service
@@ -81,6 +83,12 @@ def get_run_repository(
     session: orm.Session = Depends(get_session),
 ) -> run_repository.RunRepository:
   return run_repository.RunRepository(session)
+
+
+def get_schedule_repository(
+    session: orm.Session = Depends(get_session),
+) -> schedule_repository.ScheduleRepository:
+  return schedule_repository.ScheduleRepository(session)
 
 
 def get_trial_repository(
@@ -173,6 +181,22 @@ def get_execution_service(
 ) -> execution_service.ExecutionService:
   return execution_service.ExecutionService(
       session, snap_service, gda_client, suggestion_service=sug_service
+  )
+
+
+def get_schedule_service(
+    session: orm.Session = Depends(get_session),
+    sched_repo: schedule_repository.ScheduleRepository = Depends(
+        get_schedule_repository
+    ),
+    exec_service: execution_service.ExecutionService = Depends(
+        get_execution_service
+    ),
+) -> schedule_service.ScheduleService:
+  return schedule_service.ScheduleService(
+      session=session,
+      schedule_repository=sched_repo,
+      execution_service=exec_service,
   )
 
 

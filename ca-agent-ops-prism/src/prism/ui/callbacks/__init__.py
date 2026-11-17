@@ -27,6 +27,8 @@ from prism.ui.callbacks import agent_trace_callbacks  # noqa: F401
 from prism.ui.callbacks import evaluation_callbacks  # noqa: F401
 from prism.ui.callbacks import home_callbacks  # noqa: F401
 from prism.ui.callbacks import run_comparison_callbacks  # noqa: F401
+from prism.ui.callbacks import schedule_detail_callbacks  # noqa: F401
+from prism.ui.callbacks import schedules_callbacks  # noqa: F401
 from prism.ui.callbacks import shell_callbacks  # noqa: F401
 from prism.ui.callbacks import test_suite_callbacks  # noqa: F401
 from prism.ui.callbacks import test_suite_questions_callbacks  # noqa: F401

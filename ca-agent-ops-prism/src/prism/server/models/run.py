@@ -40,6 +40,7 @@ class Run(Base, BaseMixin):
       sqlalchemy.Index("ix_runs_status", "status"),
       sqlalchemy.Index("ix_runs_created_at", "created_at"),
       sqlalchemy.Index("ix_runs_is_archived", "is_archived"),
+      sqlalchemy.Index("ix_runs_schedule_id", "schedule_id"),
   )
 
   id: orm.Mapped[int] = orm.mapped_column(primary_key=True)
@@ -50,6 +51,14 @@ class Run(Base, BaseMixin):
   )
   agent_id: orm.Mapped[int] = orm.mapped_column(
       sqlalchemy.ForeignKey("agents.id"), nullable=False
+  )
+  schedule_id: orm.Mapped[int | None] = orm.mapped_column(
+      sqlalchemy.ForeignKey(
+          "eval_schedules.id",
+          name="fk_runs_schedule_id_eval_schedules",
+          ondelete="SET NULL",
+      ),
+      nullable=True,
   )
   # JSON snapshot of the full agent context (published context)
   # to allow reproducing the run even if the agent is updated.
@@ -105,6 +114,11 @@ class Run(Base, BaseMixin):
     )
 
   @property
+  def schedule_name(self) -> str | None:
+    """The schedule's name if this run was triggered by a schedule."""
+    return self.schedule.name if self.schedule else None
+
+  @property
   def accuracy(self) -> float | None:
     """Returns average accuracy for completed/failed trials."""
     # Mean over every trial that finished, whether it succeeded or errored.
@@ -150,6 +164,7 @@ class Run(Base, BaseMixin):
   # Relationships
   snapshot_suite = orm.relationship("TestSuiteSnapshot")
   agent = orm.relationship("Agent")
+  schedule = orm.relationship("EvalSchedule", foreign_keys=[schedule_id])
   trials = orm.relationship(
       "Trial", backref="run", cascade="all, delete-orphan", order_by="Trial.id"
   )

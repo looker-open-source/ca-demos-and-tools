@@ -431,7 +431,10 @@ def _duplicate_modal():
   )
 
 
-def layout(agent_id: str | None = None):  # pylint: disable=unused-argument
+def layout(
+    agent_id: str | None = None,  # pylint: disable=unused-argument
+    **_kwargs,
+):
   return render_page(
       title="Agent Details",
       title_id=AgentIds.Detail.TITLE,

@@ -44,6 +44,7 @@ _NAV_LINKS = (
     ShellIds.NAV_EVALUATIONS,
     ShellIds.NAV_TEST_SUITES,
     ShellIds.NAV_COMPARISON,
+    ShellIds.NAV_SCHEDULES,
 )
 
 # The registrations that reach Dash without ``prism.ui.utils.handle_errors``,
@@ -147,6 +148,7 @@ def test_the_home_dashboard_renders_the_runs_that_exist(
         ("/evaluations/runs/1", ShellIds.NAV_EVALUATIONS),
         ("/test_suites", ShellIds.NAV_TEST_SUITES),
         ("/compare", ShellIds.NAV_COMPARISON),
+        ("/schedules", ShellIds.NAV_SCHEDULES),
     ],
 )
 def test_the_header_highlights_the_section_you_are_on(

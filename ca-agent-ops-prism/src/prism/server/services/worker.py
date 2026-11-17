@@ -32,10 +32,12 @@ from prism.server.config import settings
 from prism.server.models import run as run_models
 from prism.server.repositories import example_repository
 from prism.server.repositories import run_repository
+from prism.server.repositories import schedule_repository
 from prism.server.repositories import suite_repository
 from prism.server.repositories import trial_repository
 from prism.server.services import bigquery_exporter
 from prism.server.services import execution_service
+from prism.server.services import schedule_service
 from prism.server.services import snapshot_service
 from prism.server.services import suggestion_service
 import psutil
@@ -219,6 +221,10 @@ def _in_pid_grace_period(trial) -> bool:
   return trial.started_at > cutoff
 
 
+# Cron resolves to the minute, so a quarter-minute tick fires a due schedule
+# well inside its minute without polling the table every pass.
+_SCHEDULE_TICK_SECONDS = 15.0
+
 # How long a trial can hold its row without finishing before the sweep treats
 # it as wedged, and how long the sweep keeps trying before it gives up on the
 # process and frees the row anyway.
@@ -287,6 +293,7 @@ class WorkerProcessManager:
     self.session_factory = session_factory
     self.stop_event = threading.Event()
     self._thread = None
+    self._schedule_thread = None
     self._running = False
     self._initialized = True
     logger.info("Initialized WorkerProcessManager")
@@ -303,23 +310,30 @@ class WorkerProcessManager:
         target=self._management_loop, name="WorkerManager", daemon=True
     )
     self._thread.start()
-    logger.info("Started WorkerProcessManager management thread")
+    self._schedule_thread = threading.Thread(
+        target=self._schedule_loop, name="ScheduleDispatcher", daemon=True
+    )
+    self._schedule_thread.start()
+    logger.info("Started WorkerProcessManager management and dispatch threads")
 
   def stop(self, timeout: float = 10.0):
-    """Stops the management thread and waits for it to finish its pass.
+    """Stops the management and dispatch threads and waits for both.
 
-    The wait matters to the tests. The loop sleeps two seconds a pass, so
+    Each join gets `timeout`, so the worst case is twice that. The wait
+    matters to the tests. The loop sleeps two seconds a pass, so
     returning straight after setting the event left a thread that would wake
     up and query a schema the test had already dropped.
     """
     self.stop_event.set()
     self._running = False
 
-    if self._thread and self._thread.is_alive():
-      self._thread.join(timeout=timeout)
-      if self._thread.is_alive():
-        logger.error("WorkerProcessManager thread did not stop in %ss", timeout)
+    for thread in (self._thread, self._schedule_thread):
+      if thread and thread.is_alive():
+        thread.join(timeout=timeout)
+        if thread.is_alive():
+          logger.error("%s thread did not stop in %ss", thread.name, timeout)
     self._thread = None
+    self._schedule_thread = None
 
     logger.info("Stopped WorkerProcessManager")
 
@@ -348,6 +362,44 @@ class WorkerProcessManager:
       except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Error in WorkerProcessManager loop")
         self.stop_event.wait(5)
+
+  def _schedule_loop(self):
+    """Dispatches due schedules on a thread of its own.
+
+    Each dispatch is a snapshot plus a get_agent_context call. Run inside the
+    management loop, a few due schedules held up the liveness checks and new
+    trial starts for as long as those calls took.
+    """
+    while not self.stop_event.is_set():
+      self._process_due_schedules()
+      self.stop_event.wait(_SCHEDULE_TICK_SECONDS)
+
+  def _process_due_schedules(self):
+    """Claims due evaluation schedules and queues PENDING runs for execution."""
+    try:
+      with self.session_factory() as session:
+        with gemini_data_analytics_client.GeminiDataAnalyticsClient(
+            project=""
+        ) as gda_client:
+          suite_repo = suite_repository.SuiteRepository(session)
+          example_repo = example_repository.ExampleRepository(session)
+          snap_service = snapshot_service.SnapshotService(
+              session, suite_repo, example_repo
+          )
+          exec_service = execution_service.ExecutionService(
+              session=session,
+              snapshot_service=snap_service,
+              client=gda_client,
+          )
+          sched_repo = schedule_repository.ScheduleRepository(session)
+          sched_service = schedule_service.ScheduleService(
+              session=session,
+              schedule_repository=sched_repo,
+              execution_service=exec_service,
+          )
+          sched_service.process_due_schedules()
+    except Exception:  # pylint: disable=broad-exception-caught
+      logger.exception("Error during due schedule check")
 
   def _check_active_trials(self):
     """Checks RUNNING, EXECUTING and EVALUATING trials for process liveness.
