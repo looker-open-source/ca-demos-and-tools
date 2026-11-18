@@ -17,7 +17,10 @@
 import datetime
 
 from prism.common.schemas.agent import AgentConfig
+from prism.common.schemas.assertion import AssertionType
 from prism.common.schemas.execution import RunStatus
+from prism.server.models.assertion import AssertionResult
+from prism.server.models.assertion import AssertionSnapshot
 from prism.server.models.run import Run
 from prism.server.models.run import Trial
 from prism.server.models.snapshot import ExampleSnapshot
@@ -26,6 +29,7 @@ from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.run_repository import RunRepository
 from prism.server.repositories.suite_repository import SuiteRepository
 from prism.server.services.snapshot_service import SnapshotService
+import pytest
 import sqlalchemy
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import sessionmaker
@@ -322,3 +326,245 @@ def test_a_cancel_that_lands_mid_promotion_is_not_overwritten(
   db_session.refresh(run)
   assert run.status == RunStatus.CANCELLED
   assert run.started_at is None
+
+
+def test_count_all_and_sort_across_columns(db_session: Session):
+  """count_all and list_all support filters, pagination, and column sorts."""
+  agent_repo = AgentRepository(db_session)
+  suite_repo = SuiteRepository(db_session)
+  example_repo = ExampleRepository(db_session)
+  snapshot_service = SnapshotService(db_session, suite_repo, example_repo)
+  repo = RunRepository(db_session)
+
+  cfg = AgentConfig(project_id="p", location="l", agent_resource_id="r")
+  agent_alpha = agent_repo.create(name="alpha bot", config=cfg)
+  agent_zeta = agent_repo.create(name="Zeta Bot", config=cfg)
+  suite_a = suite_repo.create(name="alpha suite")
+  suite_b = suite_repo.create(name="Beta Suite")
+  snap_a = snapshot_service.create_snapshot(suite_a.id)
+  snap_b = snapshot_service.create_snapshot(suite_b.id)
+
+  t0 = datetime.datetime(2026, 1, 1, 12, 0, tzinfo=datetime.timezone.utc)
+  r1 = repo.create(snap_b.id, agent_zeta.id)
+  r1.created_at = t0
+  r1.started_at = t0 + datetime.timedelta(minutes=2)
+  r1.completed_at = r1.started_at + datetime.timedelta(seconds=30)
+  r1.status = RunStatus.COMPLETED
+
+  r2 = repo.create(snap_a.id, agent_alpha.id)
+  r2.created_at = t0 + datetime.timedelta(minutes=5)
+  r2.started_at = t0 + datetime.timedelta(minutes=1)
+  r2.completed_at = r2.started_at + datetime.timedelta(seconds=10)
+  r2.status = RunStatus.RUNNING  # "In Progress"
+
+  r3 = repo.create(snap_a.id, agent_alpha.id)
+  r3.created_at = t0 + datetime.timedelta(minutes=10)
+  r3.started_at = None
+  r3.completed_at = None
+  r3.status = RunStatus.PENDING  # "Pending", NULL duration & started
+
+  r4 = repo.create(snap_a.id, agent_zeta.id)
+  r4.created_at = t0 + datetime.timedelta(minutes=15)
+  r4.status = RunStatus.FAILED
+  r4.is_archived = True
+  db_session.commit()
+
+  assert repo.count_all() == 3
+  assert repo.count_all(include_archived=True) == 4
+  assert repo.count_all(agent_id=agent_alpha.id) == 2
+  assert repo.count_all(original_suite_id=suite_a.id) == 2
+  assert repo.count_all(status=RunStatus.PENDING) == 1
+
+  # Default order remains created_at desc.
+  assert [r.id for r in repo.list_all()] == [r3.id, r2.id, r1.id]
+
+  # ID asc/desc.
+  assert [r.id for r in repo.list_all(sort_by="id", sort_dir="asc")] == [
+      r1.id,
+      r2.id,
+      r3.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="id", sort_dir="desc")] == [
+      r3.id,
+      r2.id,
+      r1.id,
+  ]
+
+  # Case-insensitive agent name ("alpha bot" < "Zeta Bot"), id desc tie-break.
+  assert [r.id for r in repo.list_all(sort_by="agent", sort_dir="asc")] == [
+      r3.id,
+      r2.id,
+      r1.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="agent", sort_dir="desc")] == [
+      r1.id,
+      r3.id,
+      r2.id,
+  ]
+
+  # Suite sort combined with original_suite_id filter (single join).
+  filtered_suite = repo.list_all(
+      original_suite_id=suite_a.id, sort_by="suite", sort_dir="asc"
+  )
+  assert [r.id for r in filtered_suite] == [r3.id, r2.id]
+  suite_desc = repo.list_all(sort_by="suite", sort_dir="desc")
+  assert [r.id for r in suite_desc] == [
+      r1.id,
+      r3.id,
+      r2.id,
+  ]
+
+  # Status sorts by display label: Completed < In Progress < Pending.
+  assert [r.id for r in repo.list_all(sort_by="status", sort_dir="asc")] == [
+      r1.id,
+      r2.id,
+      r3.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="status", sort_dir="desc")] == [
+      r3.id,
+      r2.id,
+      r1.id,
+  ]
+
+  # Duration & started put NULLs last in both asc and desc.
+  assert [r.id for r in repo.list_all(sort_by="duration", sort_dir="asc")] == [
+      r2.id,
+      r1.id,
+      r3.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="duration", sort_dir="desc")] == [
+      r1.id,
+      r2.id,
+      r3.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="started", sort_dir="asc")] == [
+      r2.id,
+      r1.id,
+      r3.id,
+  ]
+  assert [r.id for r in repo.list_all(sort_by="started", sort_dir="desc")] == [
+      r1.id,
+      r2.id,
+      r3.id,
+  ]
+
+  # Invalid sort column or direction raises ValueError.
+  with pytest.raises(ValueError, match="Unsupported sort column"):
+    repo.list_all(sort_by="bogus")
+  with pytest.raises(ValueError, match="Unsupported sort direction"):
+    repo.list_all(sort_by="id", sort_dir="sideways")
+
+
+def test_list_all_accuracy_sort_matches_python_property(db_session: Session):
+  """SQL accuracy sort matches Run.accuracy and puts non-COMPLETED runs last."""
+  agent_repo = AgentRepository(db_session)
+  suite_repo = SuiteRepository(db_session)
+  example_repo = ExampleRepository(db_session)
+  snapshot_service = SnapshotService(db_session, suite_repo, example_repo)
+  repo = RunRepository(db_session)
+
+  agent = agent_repo.create(
+      name="Bot",
+      config=AgentConfig(project_id="p", location="l", agent_resource_id="r"),
+  )
+  suite = suite_repo.create(name="Accuracy Suite")
+  snapshot = snapshot_service.create_snapshot(suite.id)
+
+  def _add_example_and_assertions(weights_and_scores):
+    ex = ExampleSnapshot(
+        snapshot_suite_id=snapshot.id,
+        question="Q?",
+        original_example_id=1,
+        logical_id=f"L-{len(weights_and_scores)}-{id(weights_and_scores)}",
+    )
+    db_session.add(ex)
+    db_session.flush()
+    snaps = []
+    for weight, score, err in weights_and_scores:
+      a = AssertionSnapshot(
+          example_snapshot_id=ex.id,
+          type=AssertionType.TEXT_CONTAINS,
+          weight=weight,
+          params={"value": "x"},
+      )
+      db_session.add(a)
+      db_session.flush()
+      snaps.append((a, score, err))
+    return ex, snaps
+
+  def _make_run(run_status, trial_specs):
+    run = repo.create(snapshot.id, agent.id)
+    run.status = run_status
+    db_session.flush()
+    for t_status, specs in trial_specs:
+      ex, snaps = _add_example_and_assertions(specs)
+      trial = Trial(
+          run_id=run.id,
+          example_snapshot_id=ex.id,
+          status=t_status,
+      )
+      db_session.add(trial)
+      db_session.flush()
+      if t_status == RunStatus.COMPLETED:
+        for a_snap, score, err in snaps:
+          db_session.add(
+              AssertionResult(
+                  trial_id=trial.id,
+                  assertion_snapshot_id=a_snap.id,
+                  passed=(score >= 0.5),
+                  score=score,
+                  error_message=err,
+              )
+          )
+    return run
+
+  # Run A (COMPLETED): 1 FAILED trial (0.0) + 1 COMPLETED trial with score 1.0
+  # + 1 COMPLETED trial with only weight=0/errored assertions (excluded) => 0.5
+  run_half = _make_run(
+      RunStatus.COMPLETED,
+      [
+          (RunStatus.FAILED, [(1.0, 1.0, None)]),
+          (
+              RunStatus.COMPLETED,
+              [(1.0, 1.0, None), (0.0, 0.0, None), (1.0, 0.0, "boom")],
+          ),
+          (RunStatus.COMPLETED, [(0.0, 0.0, None), (1.0, 0.0, "err")]),
+      ],
+  )
+  # Run B (COMPLETED): 1 COMPLETED trial with score 1.0 => 1.0
+  run_full = _make_run(
+      RunStatus.COMPLETED,
+      [(RunStatus.COMPLETED, [(1.0, 1.0, None)])],
+  )
+  # Run C (COMPLETED): no weighted assertions => None (nulls_last)
+  run_no_score = _make_run(
+      RunStatus.COMPLETED,
+      [(RunStatus.COMPLETED, [(0.0, 1.0, None)])],
+  )
+  # Run D (CANCELLED): finished trial with 1.0, but run is not COMPLETED =>
+  # table displays "N/A", so must sort NULLS LAST with run_no_score.
+  run_cancelled = _make_run(
+      RunStatus.CANCELLED,
+      [(RunStatus.COMPLETED, [(1.0, 1.0, None)])],
+  )
+  db_session.commit()
+
+  desc_runs = repo.list_all(sort_by="accuracy", sort_dir="desc")
+  asc_runs = repo.list_all(sort_by="accuracy", sort_dir="asc")
+
+  assert [r.id for r in desc_runs] == [
+      run_full.id,
+      run_half.id,
+      run_cancelled.id,
+      run_no_score.id,
+  ]
+  assert [r.id for r in asc_runs] == [
+      run_half.id,
+      run_full.id,
+      run_cancelled.id,
+      run_no_score.id,
+  ]
+  # Verify Python property parity for COMPLETED runs.
+  assert run_half.accuracy == 0.5
+  assert run_full.accuracy == 1.0
+  assert run_no_score.accuracy is None

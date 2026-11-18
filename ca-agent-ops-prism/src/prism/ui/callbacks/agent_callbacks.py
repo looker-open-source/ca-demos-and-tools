@@ -14,6 +14,9 @@
 
 """Callbacks for Monitoring Dashboard Home."""
 
+import urllib.parse
+
+import dash
 from dash import Input
 from dash import Output
 from dash import State
@@ -46,14 +49,68 @@ def toggle_choice_modal(*_args):
 
 
 @typed_callback(
+    Output(AgentIds.Home.SWITCH_ARCHIVED, CP.CHECKED),
+    inputs=[
+        ("url", CP.PATHNAME),
+        ("url", CP.SEARCH),
+    ],
+)
+def sync_agent_filters_to_url(pathname: str, search: str):
+  """Syncs the Show Archived switch with URL search params."""
+  if pathname != "/agents":
+    return dash.no_update
+  if not search:
+    return False
+  params = urllib.parse.parse_qs(search.lstrip("?"))
+  return params.get("archived", ["false"])[0] == "true"
+
+
+@typed_callback(
+    Output("url", CP.SEARCH, allow_duplicate=True),
+    inputs=[(AgentIds.Home.SWITCH_ARCHIVED, CP.CHECKED)],
+    state=[
+        ("url", CP.PATHNAME),
+        ("url", CP.SEARCH),
+    ],
+    prevent_initial_call=True,
+)
+def update_agent_url_from_archived_switch(
+    include_archived: bool,
+    pathname: str,
+    current_search: str,
+):
+  """Updates URL search params when the Show Archived switch changes."""
+  if pathname != "/agents":
+    return dash.no_update
+
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
+  )
+  cur_archived = params.get("archived", ["false"])[0] == "true"
+  if cur_archived == bool(include_archived):
+    return dash.no_update
+
+  if include_archived:
+    params["archived"] = ["true"]
+  else:
+    params.pop("archived", None)
+
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+
+
+@typed_callback(
     Output(AgentIds.Home.CARD_GRID, CP.CHILDREN),
     [
         Input("url", CP.PATHNAME),
         Input(AgentIds.Home.SWITCH_ARCHIVED, CP.CHECKED),
     ],
 )
-def update_agent_list(unused_pathname: str, include_archived: bool):
+def update_agent_list(pathname: str, include_archived: bool):
   """Updates the agent list UI with cards."""
+  if pathname != "/agents":
+    return dash.no_update
   client = get_client()
   agents_client = client.agents
   runs_client = client.runs

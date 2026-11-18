@@ -67,10 +67,20 @@ def _in_filter(status: Any, filter_status: str) -> bool:
   return status == filter_status
 
 
+def _format_accuracy_delta(val: float) -> tuple[str, str, int]:
+  """Returns (formatted_pct, color, sign) aligned to the displayed 0.1%."""
+  formatted = f"{val:+.1%}"
+  if formatted in ("+0.0%", "-0.0%"):
+    return "+0.0%", "gray", 0
+  if val > 0:
+    return formatted, "green", 1
+  return formatted, "red", -1
+
+
 def _render_accuracy_delta_bar(val: float):
   """Renders a horizontal bar for accuracy delta."""
-  color = "green" if val >= 0 else "red"
-  width = abs(val) * 100
+  _, color, sign = _format_accuracy_delta(val)
+  width = 0.0 if sign == 0 else abs(val) * 100
 
   return dmc.Box(
       style={
@@ -89,8 +99,8 @@ def _render_accuracy_delta_bar(val: float):
                   "backgroundColor": f"var(--mantine-color-{color}-6)",
                   "borderRadius": "3px",
                   "position": "absolute",
-                  "left": "0" if val >= 0 else "auto",
-                  "right": "0" if val < 0 else "auto",
+                  "left": "0" if sign >= 0 else "auto",
+                  "right": "0" if sign < 0 else "auto",
               }
           )
       ],
@@ -529,17 +539,17 @@ def update_page_content(
   # Zero is neither direction, and each card used to fold it into one. Two runs
   # of an unchanged agent, which is the commonest comparison there is, read
   # "+0.0% Accuracy Gain" in green over "+0ms Faster" in green.
-  if delta.accuracy_delta > 0:
+  acc_text, accuracy_color, acc_sign = _format_accuracy_delta(
+      delta.accuracy_delta
+  )
+  if acc_sign > 0:
     accuracy_icon = "material-symbols:trending-up"
-    accuracy_color = "green"
     accuracy_caption = "Accuracy Gain"
-  elif delta.accuracy_delta < 0:
+  elif acc_sign < 0:
     accuracy_icon = "material-symbols:trending-down"
-    accuracy_color = "red"
     accuracy_caption = "Degradation"
   else:
     accuracy_icon = "material-symbols:trending-flat"
-    accuracy_color = "gray"
     accuracy_caption = "No change"
 
   if delta.duration_delta_avg > 0:
@@ -555,7 +565,7 @@ def update_page_content(
   metrics = [
       _render_metric_card(
           "Accuracy Delta",
-          f"{delta.accuracy_delta:+.1%}",
+          acc_text,
           accuracy_icon,
           accuracy_color,
           accuracy_caption,
@@ -645,6 +655,7 @@ def update_page_content(
   assertion_delta_elements = []
   for atype, deltas in assertion_deltas.items():
     avg_delta = sum(deltas) / len(deltas)
+    delta_text, delta_color, _ = _format_accuracy_delta(avg_delta)
     style = get_assertion_style(atype)
     assertion_delta_elements.append(
         dmc.Stack(
@@ -670,10 +681,10 @@ def update_page_content(
                             ],
                         ),
                         dmc.Text(
-                            f"{avg_delta:+.1%}",
+                            delta_text,
                             size="sm",
                             fw=700,
-                            c="green" if avg_delta >= 0 else "red",
+                            c=delta_color,
                         ),
                     ],
                 ),

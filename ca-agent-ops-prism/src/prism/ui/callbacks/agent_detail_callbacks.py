@@ -604,7 +604,7 @@ def fetch_remote_config(trigger_data):
             color="red",
         ),
         dmc.Alert("Failed to load.", color="red"),
-        dash.no_update,
+        dmc.Badge("Unavailable", color="red", variant="light"),
         dash.no_update,
         # Edit stays disabled. The instruction reaches the form only through
         # the Store above, which this branch leaves alone, so the textarea
@@ -615,19 +615,19 @@ def fetch_remote_config(trigger_data):
         True,
         False,  # Re-enable duplicate button
         run_eval_disabled,
-        dash.no_update,
+        dmc.Alert("Failed to load.", color="red"),
     )
 
   if not gcp_agent:
     return (
-        "Error: Agent not found on GCP.",
-        "Error: Configuration unavailable.",
-        dash.no_update,
+        dmc.Alert("Error: Agent not found on GCP.", color="red"),
+        dmc.Alert("Error: Configuration unavailable.", color="red"),
+        dmc.Badge("Unavailable", color="red", variant="light"),
         dash.no_update,
         True,  # Edit stays disabled. Same reason as the branch above.
         False,  # Re-enable duplicate button
         dash.no_update,
-        dash.no_update,
+        dmc.Alert("Error: Configuration unavailable.", color="red"),
     )
 
   instruction = gcp_agent.config.system_instruction or "No instruction."

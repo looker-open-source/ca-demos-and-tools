@@ -24,9 +24,12 @@ from __future__ import annotations
 import datetime
 
 from prism.common.schemas.example import Example
+from prism.common.schemas.suite import Suite
 from prism.common.schemas.suite import SuiteDetail
+from prism.common.schemas.suite import SuiteWithStats
 from prism.ui.components import charts
 from prism.ui.components import eval_run_modal
+from prism.ui.components import tables
 import pytest
 
 _NOW = datetime.datetime(2026, 3, 1, tzinfo=datetime.timezone.utc)
@@ -80,3 +83,22 @@ def test_the_profiling_badge_counts_the_bars_it_labels():
 
   assert "2 tools" in rendered
   assert "3 tools" not in rendered
+
+
+def test_test_suite_table_right_aligns_coverage_badge():
+  """The COVERAGE column header is right-aligned, so the badge cell must be too.
+
+  dmc.Tooltip wraps the badge in a block element that ignores text-align on the
+  table cell, leaving the badge flush-left unless wrapped in a flex-end Group.
+  """
+  suite_row = SuiteWithStats(
+      suite=Suite(id=1, name="A suite", created_at=_NOW),
+      question_count=1,
+      run_count=2,
+      assertion_coverage=1.0,
+  )
+  table_paper = tables.render_test_suite_table([suite_row])
+  tbody = table_paper.children.children.children[1]
+  coverage_td = tbody.children[0].children[3]
+  assert coverage_td.children.__class__.__name__ == "Group"
+  assert coverage_td.children.justify == "flex-end"

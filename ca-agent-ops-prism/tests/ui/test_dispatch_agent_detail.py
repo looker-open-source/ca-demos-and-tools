@@ -379,6 +379,27 @@ def test_a_remote_fetch_that_fails_leaves_edit_disabled(
   # the server log, not the page.
   assert "404 on projects" not in rendered
 
+  # The datasource badge and golden queries card must clear their initial
+  # Skeleton placeholders instead of leaving them spinning forever.
+  for output_id in (
+      _DETAIL.INSTRUCTION,
+      _DETAIL.CONTAINER_DATASOURCE,
+      _DETAIL.BADGE_DATASOURCE,
+      _DETAIL.CARD_GOLDEN_QUERIES,
+  ):
+    assert output_id in body
+    assert "Skeleton" not in str(body[output_id][CP.CHILDREN])
+
+  badge = body[_DETAIL.BADGE_DATASOURCE][CP.CHILDREN]["props"]
+  assert badge[CP.CHILDREN] == "Unavailable"
+  assert badge[CP.COLOR] == "red"
+
+  golden = str(body[_DETAIL.CARD_GOLDEN_QUERIES][CP.CHILDREN])
+  if case == "raised":
+    assert "Failed to load." in golden
+  else:
+    assert "Configuration unavailable." in golden
+
   # caplog, not ``callback_errors``. The error is the thing under test here,
   # so the gate that fails on any logged error is the wrong tool.
   if case == "raised":

@@ -14,11 +14,10 @@
 
 """The Trial Detail page, driven through Dash's HTTP dispatch route.
 
-``render_trial_detail`` is fired by the URL and a store, so ``url_only`` keeps
-it out of the sweep in ``test_callback_dispatch.py``, and the path Dash
-registers for the page is ``/evaluations/trials/none``. Nothing below the
-browser tier had ever loaded the page with a real trial id, which is where the
-whole component tree gets built and serialized.
+The path Dash registers for the page is ``/evaluations/trials/none``, so the
+route sweep in ``test_callback_dispatch.py`` stops at the id guard. Loading
+the page with a real trial id is where the whole component tree gets built
+and serialized.
 
 The page has five outputs (breadcrumbs, title, description, actions,
 container) and the response names each one, so these read the slot they care
@@ -98,7 +97,27 @@ def _render(
       {
           "url.pathname": f"/evaluations/trials/{trial_id}",
           "url.search": search,
-          f"{EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL}.data": 0,
+          f"{EvaluationIds.TRIAL_SUG_LOADING_STORE}.data": sug_loading,
+      },
+  )
+
+
+def _render_suggestions(
+    dash_client,
+    pathname: str,
+    sug_loading: bool = False,
+):
+  """Fires ``render_trial_suggestions`` for ``pathname`` over HTTP."""
+  deps = dash_http.dependencies(dash_client)
+  dep = dash_http.find(
+      deps, f"{EvaluationIds.TRIAL_SUGGESTIONS_CONTENT}.children"
+  )
+  return dash_http.fire(
+      dash_client,
+      dep,
+      {
+          f"{EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL}.data": 1.0,
+          "url.pathname": pathname,
           f"{EvaluationIds.TRIAL_SUG_LOADING_STORE}.data": sug_loading,
       },
   )
@@ -828,4 +847,76 @@ def test_changing_a_filter_writes_it_into_the_url_once(
 
   assert again.status_code == 200, again.data[:2000]
   assert dash_http.body(again)["response"] == {}
+  callback_errors.assert_none()
+
+
+def test_suggestion_updates_refresh_content_without_rebuilding_page(
+    dash_client, callback_errors, db_session, seeded
+):
+  """Suggestion updates target only the panel body so the accordion stays open.
+
+  Updating ``trial-sug-update-signal`` used to re-run ``render_trial_detail``,
+  which replaced ``trial-detail-container`` and mounted a fresh collapsed
+  accordion on every generate, poll arrival, accept, or reject.
+  """
+  trial = _trials(db_session, seeded.run_id)[2]
+  db_session.add(
+      SuggestedAssertion(
+          trial_id=trial.id,
+          type=AssertionType.TEXT_CONTAINS,
+          weight=1.0,
+          params={"value": "panel-only-needle", "mode": "contains"},
+      )
+  )
+  db_session.commit()
+  pathname = f"/evaluations/trials/{trial.id}"
+
+  loading_slots = _slots(
+      _render_suggestions(dash_client, pathname, sug_loading=True)
+  )
+  assert list(loading_slots.keys()) == [EvaluationIds.TRIAL_SUGGESTIONS_CONTENT]
+  assert "Skeleton" in str(loading_slots)
+
+  loaded_slots = _slots(
+      _render_suggestions(dash_client, pathname, sug_loading=False)
+  )
+  assert list(loaded_slots.keys()) == [EvaluationIds.TRIAL_SUGGESTIONS_CONTENT]
+  assert "panel-only-needle" in str(loaded_slots)
+
+  callback_errors.assert_none()
+
+
+def test_suggestion_refresh_handles_invalid_path_and_client_error(
+    dash_client, callback_errors, db_session, seeded, monkeypatch
+):
+  """Bad paths return no_update and client errors render a safe red alert."""
+  wrong_route = _render_suggestions(dash_client, "/evaluations")
+  assert wrong_route.status_code == 200
+  assert dash_http.body(wrong_route)["response"] == {}
+
+  bad_id = _render_suggestions(dash_client, "/evaluations/trials/not-an-int")
+  assert bad_id.status_code == 200
+  assert dash_http.body(bad_id)["response"] == {}
+
+  trial = _trials(db_session, seeded.run_id)[2]
+  missing_slots = _slots(
+      _render_suggestions(dash_client, f"/evaluations/trials/{trial.id + 9999}")
+  )
+  assert (
+      missing_slots[EvaluationIds.TRIAL_SUGGESTIONS_CONTENT]["children"]["type"]
+      == "Div"
+  )
+
+  client = mock.MagicMock()
+  client.runs.get_trial.side_effect = RuntimeError("secret-sql-param")
+  monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
+
+  error_slots = _slots(
+      _render_suggestions(dash_client, f"/evaluations/trials/{trial.id}")
+  )
+  rendered = str(error_slots[EvaluationIds.TRIAL_SUGGESTIONS_CONTENT])
+  assert "Could not load suggested assertions" in rendered
+  assert "secret-sql-param" not in rendered
+
+  callback_errors.assert_logged("Failed to load suggestions for trial")
   callback_errors.assert_none()

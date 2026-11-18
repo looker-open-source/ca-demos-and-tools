@@ -831,15 +831,14 @@ def _assertion_modal_header():
   """Renders the assertion modal title row and its delete button."""
   return dmc.Group(
       justify="space-between",
-      px="lg",
-      py="md",
-      style={"borderBottom": "1px solid #f1f5f9"},
+      w="100%",
+      pr="sm",
       children=[
           dmc.Stack(
               gap=2,
               children=[
                   dmc.Text(
-                      "Configure Assertion",
+                      "Add Assertion",
                       id=Ids.ASSERT_MODAL_TITLE_TEXT,
                       fw=700,
                       size="lg",
@@ -874,9 +873,12 @@ def _assertion_modal():
       id=Ids.ASSERT_MODAL,
       size="80%",
       radius="md",
-      title="Manage Assertion",
+      title=_assertion_modal_header(),
+      styles={
+          "header": {"borderBottom": "1px solid #f1f5f9"},
+          "title": {"flex": 1},
+      },
       children=[
-          _assertion_modal_header(),
           dmc.Box(
               p="lg",
               style={"maxHeight": "70vh", "overflowY": "auto"},

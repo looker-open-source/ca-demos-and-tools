@@ -258,3 +258,72 @@ def test_the_instruction_view_switch_swaps_the_two_panes(
   page.locator(f"#{AgentIds.Detail.SWITCH_INSTRUCTION_VIEW}").click()
   expect(markdown).to_be_visible(timeout=30_000)
   expect(raw).to_be_hidden()
+
+
+@pytest.mark.allow_errors
+def test_failed_gda_config_load_clears_all_placeholders(
+    page: Page, base_url: str, seed
+):
+  """When GDA config fails, badge and golden queries clear their skeletons."""
+  agent = seed.agent(
+      name="Unreachable Remote Agent",
+      agent_resource_id="missing-gda-agent",
+  )
+
+  page.goto(f"{base_url}/agents/view/{agent.id}")
+  page.wait_for_load_state("networkidle")
+
+  expect(page.locator(f"#{AgentIds.Detail.INSTRUCTION}")).to_contain_text(
+      "Could not load the agent's configuration from GDA.", timeout=30_000
+  )
+  expect(
+      page.locator(f"#{AgentIds.Detail.CONTAINER_DATASOURCE}")
+  ).to_contain_text("Failed to load.")
+  expect(page.locator(f"#{AgentIds.Detail.BADGE_DATASOURCE}")).to_contain_text(
+      "Unavailable"
+  )
+  expect(
+      page.locator(f"#{AgentIds.Detail.CARD_GOLDEN_QUERIES}")
+  ).to_contain_text("Failed to load.")
+  assert page.locator(".mantine-Skeleton-root").count() == 0
+
+
+def test_archived_query_param_and_switch_stay_in_sync(
+    page: Page, base_url: str, seed, db
+):
+  """`/agents?archived=true` checks the switch and displays archived agents."""
+  active = seed.agent(name="Active Fleet Agent", agent_resource_id="active-1")
+  archived = seed.agent(
+      name="Archived Fleet Agent", agent_resource_id="archived-1"
+  )
+  archived.is_archived = True
+  db.commit()
+
+  switch = page.locator(f"#{AgentIds.Home.SWITCH_ARCHIVED}")
+  grid = page.locator(f"#{AgentIds.Home.CARD_GRID}")
+
+  page.goto(f"{base_url}/agents?archived=true")
+  page.wait_for_load_state("networkidle")
+  expect(switch).to_be_checked(timeout=30_000)
+  expect(grid).to_contain_text(active.name)
+  expect(grid).to_contain_text(archived.name)
+
+  page.goto(f"{base_url}/agents")
+  page.wait_for_load_state("networkidle")
+  expect(switch).not_to_be_checked(timeout=30_000)
+  expect(grid).to_contain_text(active.name)
+  expect(grid).not_to_contain_text(archived.name)
+
+  switch.click()
+  page.wait_for_url("**/agents?archived=true", timeout=30_000)
+  expect(switch).to_be_checked()
+  expect(grid).to_contain_text(archived.name, timeout=30_000)
+
+  switch.click()
+  page.wait_for_url(
+      lambda url: url.endswith("/agents"),
+      timeout=30_000,
+  )
+  expect(switch).not_to_be_checked()
+  expect(grid).not_to_contain_text(archived.name, timeout=30_000)
+  page.wait_for_load_state("networkidle")

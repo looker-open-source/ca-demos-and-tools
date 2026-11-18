@@ -34,6 +34,7 @@ from prism.server.models.example import Example
 
 # Aliased, because pytest tries to collect any imported name starting "Test".
 from prism.server.models.suite import TestSuite as SuiteModel
+from prism.ui.constants import ASSERTS_GUIDE
 from prism.ui.ids import TestSuiteIds
 import pytest
 import sqlalchemy
@@ -80,7 +81,7 @@ def test_create_a_suite_with_a_question_and_an_assertion(
   page.locator(f"#{TestSuiteIds.ASSERT_MODAL_OPEN_BTN}").click()
   # By role, not by id, because dmc.Modal puts the id on a zero-box root wrapper
   # and #assert-modal is never "visible" even with the dialog open.
-  modal = page.get_by_role("dialog", name="Manage Assertion")
+  modal = page.get_by_role("dialog", name="Add Assertion")
   expect(modal).to_be_visible()
 
   select_option(page, TestSuiteIds.TC_ASSERT_TYPE, "Text Contains")
@@ -190,7 +191,7 @@ def test_author_data_check_row_assertion_with_regex_match(
   page.locator(f"#{TestSuiteIds.TC_SAVE_BTN}").click()
 
   page.locator(f"#{TestSuiteIds.ASSERT_MODAL_OPEN_BTN}").click()
-  modal = page.get_by_role("dialog", name="Manage Assertion")
+  modal = page.get_by_role("dialog", name="Add Assertion")
   expect(modal).to_be_visible()
 
   select_option(page, TestSuiteIds.TC_ASSERT_TYPE, "Row Value Match")
@@ -210,3 +211,93 @@ def test_author_data_check_row_assertion_with_regex_match(
   assert assertion.params.get("columns") == {
       r"^region[_\s]code$": r"^EMEA-\d+$"
   }
+
+
+def test_assertion_modal_has_single_header_and_unclipped_type_dropdown(
+    page: Page, base_url: str, seed
+):
+  """Assertion modal shows one header and renders all type options unclipped."""
+  suite = seed.suite(name="Modal Geometry Suite")
+  seed.example(suite, question=_QUESTION)
+
+  page.goto(f"{base_url}/test_suites/edit/{suite.id}")
+  page.wait_for_load_state("networkidle")
+
+  page.locator(f"#{TestSuiteIds.ASSERT_MODAL_OPEN_BTN}").click()
+  modal = page.get_by_role("dialog", name="Add Assertion")
+  expect(modal).to_be_visible()
+
+  # Single header bar: dynamic title lives in the Mantine modal header, with
+  # no duplicate "Manage Assertion" or stacked body header.
+  expect(modal).not_to_contain_text("Manage Assertion")
+  expect(modal.locator(".mantine-Modal-header")).to_contain_text(
+      "Add Assertion"
+  )
+  expect(modal.locator(".mantine-Modal-body")).not_to_contain_text(
+      "Add Assertion"
+  )
+  expect(modal.locator(".mantine-Modal-body")).not_to_contain_text(
+      "Configure Assertion"
+  )
+
+  # Clicking Assertion Type opens all 9 assertion options in a portal above the
+  # modal scroll container without clipping bottom options.
+  page.locator(f"#{TestSuiteIds.TC_ASSERT_TYPE}").click()
+  expected_labels = [entry["label"] for entry in ASSERTS_GUIDE]
+  for label in expected_labels:
+    expect(page.get_by_role("option", name=label, exact=True)).to_be_visible()
+
+  geometry = page.evaluate(
+      """(labels) => {
+        const dialog = document.querySelector('[role="dialog"]');
+        const allOpts = Array.from(
+            document.querySelectorAll('[role="option"]'));
+        const options = allOpts.filter(
+            el => labels.includes(el.textContent.trim()));
+        const lb = options[0] ? options[0].closest('[role="listbox"]') : null;
+        const ddSel = '.mantine-Select-dropdown, .mantine-Combobox-dropdown';
+        const dropdown = lb ? lb.closest(ddSel) : null;
+        const viewport = dropdown
+            ? dropdown.querySelector('.mantine-ScrollArea-viewport')
+            : null;
+        const rect = el => el.getBoundingClientRect().toJSON();
+        return {
+          inDialog: Boolean(dialog && dropdown && dialog.contains(dropdown)),
+          dropdownRect: dropdown ? rect(dropdown) : null,
+          scrollHeight: viewport ? viewport.scrollHeight : null,
+          clientHeight: viewport ? viewport.clientHeight : null,
+          options: options.map(el => ({
+            label: el.textContent.trim(),
+            rect: rect(el),
+          })),
+        };
+      }""",
+      expected_labels,
+  )
+
+  assert geometry["inDialog"] is False, (
+      "Assertion Type dropdown rendered inside the modal dialog instead of a"
+      " portal."
+  )
+  assert geometry["dropdownRect"] is not None
+  assert geometry["scrollHeight"] <= geometry["clientHeight"], (
+      "Assertion Type dropdown clips its options internally: "
+      f"scrollHeight={geometry['scrollHeight']} > "
+      f"clientHeight={geometry['clientHeight']}"
+  )
+  assert len(geometry["options"]) == len(expected_labels)
+  dd = geometry["dropdownRect"]
+  for opt in geometry["options"]:
+    rect = opt["rect"]
+    assert (
+        rect["top"] >= dd["top"] - 1 and rect["bottom"] <= dd["bottom"] + 1
+    ), (
+        f"Option {opt['label']!r} is clipped by dropdown box: "
+        f"option={rect}, dropdown={dd}"
+    )
+
+  # Confirm bottom options (AI Judge) are directly clickable and update input.
+  page.get_by_role("option", name="AI Judge", exact=True).click()
+  expect(page.locator(f"#{TestSuiteIds.TC_ASSERT_TYPE}")).to_have_value(
+      "AI Judge"
+  )

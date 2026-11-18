@@ -188,3 +188,33 @@ def test_no_free_text_field_in_the_editor_is_single_line():
   single_line = [c for c in walked if isinstance(c, dmc.TextInput)]
 
   assert not single_line, [c.id for c in single_line]
+
+
+def test_assertion_type_select_renders_in_portal_unclipped(page_components):
+  """Assertion Type dropdown must portal above the scrolled modal body."""
+  select = _find(page_components, TestSuiteIds.TC_ASSERT_TYPE)
+
+  assert isinstance(select, dmc.Select)
+  assert getattr(select, "comboboxProps", None) == {"withinPortal": True}
+  assert getattr(select, "maxDropdownHeight", 0) >= 350
+
+
+def test_assertion_modal_renders_a_single_header_without_manage_assertion(
+    page_components,
+):
+  """The modal must not stack a custom header below a static Mantine title."""
+  modal = _find(page_components, TestSuiteIds.ASSERT_MODAL)
+
+  assert isinstance(modal, dmc.Modal)
+  assert modal.title != "Manage Assertion"
+
+  title_nodes = list(_walk(modal.title))
+  title_ids = {getattr(c, "id", None) for c in title_nodes}
+  assert TestSuiteIds.ASSERT_MODAL_TITLE_TEXT in title_ids
+  assert TestSuiteIds.ASSERT_MODAL_DELETE_BTN in title_ids
+
+  body_nodes = list(_walk(modal))
+  body_ids = {getattr(c, "id", None) for c in body_nodes}
+  assert TestSuiteIds.ASSERT_MODAL_TITLE_TEXT not in body_ids
+  assert TestSuiteIds.ASSERT_MODAL_DELETE_BTN not in body_ids
+  assert "Manage Assertion" not in str(modal.to_plotly_json())

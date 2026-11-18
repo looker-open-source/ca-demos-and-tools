@@ -172,13 +172,47 @@ class ExecutionService:
     return self.run_repository.get_by_id(run_id)
 
   def list_runs(
-      self, limit: int = 100, offset: int = 0, include_archived: bool = False
+      self,
+      limit: int = 100,
+      offset: int = 0,
+      include_archived: bool = False,
+      agent_id: int | None = None,
+      original_suite_id: int | None = None,
+      status: RunStatus | None = None,
+      schedule_id: int | None = None,
+      sort_by: str | None = None,
+      sort_dir: str = "desc",
   ) -> list[Run]:
     """Lists Runs."""
     return list(
         self.run_repository.list_all(
-            limit=limit, offset=offset, include_archived=include_archived
+            limit=limit,
+            offset=offset,
+            include_archived=include_archived,
+            agent_id=agent_id,
+            original_suite_id=original_suite_id,
+            status=status,
+            schedule_id=schedule_id,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
+    )
+
+  def count_runs(
+      self,
+      include_archived: bool = False,
+      agent_id: int | None = None,
+      original_suite_id: int | None = None,
+      status: RunStatus | None = None,
+      schedule_id: int | None = None,
+  ) -> int:
+    """Counts Runs matching the given filters."""
+    return self.run_repository.count_all(
+        include_archived=include_archived,
+        agent_id=agent_id,
+        original_suite_id=original_suite_id,
+        status=status,
+        schedule_id=schedule_id,
     )
 
   def archive_run(self, run_id: int) -> Run:

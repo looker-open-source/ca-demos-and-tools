@@ -18,7 +18,10 @@ import datetime
 import logging
 from typing import Any, Sequence, TypedDict
 
+from prism.common.schemas.execution import RUN_SORT_DEFAULT_DIR
+from prism.common.schemas.execution import RUN_STATUS_LABELS
 from prism.common.schemas.execution import RunStatus
+from prism.server.models.agent import Agent
 from prism.server.models.assertion import AssertionResult
 from prism.server.models.run import Run
 from prism.server.models.run import Trial
@@ -264,19 +267,18 @@ class RunRepository:
     self.session.refresh(run)
     return run
 
-  def list_all(
+  def _apply_filters(
       self,
-      limit: int = 50,
-      offset: int = 0,
+      stmt: Any,
+      *,
       agent_id: int | None = None,
       original_suite_id: int | None = None,
       status: RunStatus | None = None,
       include_archived: bool = False,
       schedule_id: int | None = None,
-  ) -> Sequence[Run]:
-    """Lists runs newest first, filtered by whichever arguments are set."""
-    stmt = sqlalchemy.select(Run).options(*self.eager_options())
-
+      join_snapshot: bool = False,
+  ) -> Any:
+    """Applies list/count filters (and optional snapshot join)."""
     if not include_archived:
       stmt = stmt.where(Run.is_archived.is_not(True))
 
@@ -286,12 +288,116 @@ class RunRepository:
       stmt = stmt.join(Run.snapshot_suite).where(
           TestSuiteSnapshot.original_suite_id == original_suite_id
       )
+    elif join_snapshot:
+      stmt = stmt.outerjoin(Run.snapshot_suite)
     if status is not None:
       stmt = stmt.where(Run.status == status)
     if schedule_id is not None:
       stmt = stmt.where(Run.schedule_id == schedule_id)
+    return stmt
 
-    stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
+  def count_all(
+      self,
+      agent_id: int | None = None,
+      original_suite_id: int | None = None,
+      status: RunStatus | None = None,
+      include_archived: bool = False,
+      schedule_id: int | None = None,
+  ) -> int:
+    """Counts runs matching the given filters."""
+    stmt = sqlalchemy.select(sqlalchemy.func.count(Run.id))
+    stmt = self._apply_filters(
+        stmt,
+        agent_id=agent_id,
+        original_suite_id=original_suite_id,
+        status=status,
+        include_archived=include_archived,
+        schedule_id=schedule_id,
+    )
+    return int(self.session.scalar(stmt) or 0)
+
+  def list_all(
+      self,
+      limit: int = 50,
+      offset: int = 0,
+      agent_id: int | None = None,
+      original_suite_id: int | None = None,
+      status: RunStatus | None = None,
+      include_archived: bool = False,
+      schedule_id: int | None = None,
+      sort_by: str | None = None,
+      sort_dir: str = "desc",
+  ) -> Sequence[Run]:
+    """Lists runs filtered and ordered by the requested column."""
+    if sort_dir not in ("asc", "desc"):
+      raise ValueError(f"Unsupported sort direction: {sort_dir!r}")
+    if sort_by is not None and sort_by not in RUN_SORT_DEFAULT_DIR:
+      raise ValueError(f"Unsupported sort column: {sort_by!r}")
+
+    stmt = sqlalchemy.select(Run).options(*self.eager_options())
+    stmt = self._apply_filters(
+        stmt,
+        agent_id=agent_id,
+        original_suite_id=original_suite_id,
+        status=status,
+        include_archived=include_archived,
+        schedule_id=schedule_id,
+        join_snapshot=(sort_by == "suite"),
+    )
+
+    def _ordered(expr: Any) -> Any:
+      return expr.asc() if sort_dir == "asc" else expr.desc()
+
+    if sort_by is None:
+      order_clauses = [Run.created_at.desc(), Run.id.desc()]
+    elif sort_by == "id":
+      order_clauses = [_ordered(Run.id)]
+    elif sort_by == "agent":
+      stmt = stmt.outerjoin(Run.agent)
+      order_clauses = [
+          _ordered(sqlalchemy.func.lower(Agent.name)).nulls_last(),
+          Run.id.desc(),
+      ]
+    elif sort_by == "suite":
+      order_clauses = [
+          _ordered(sqlalchemy.func.lower(TestSuiteSnapshot.name)).nulls_last(),
+          Run.id.desc(),
+      ]
+    elif sort_by == "status":
+      status_label = sqlalchemy.case(
+          *[(Run.status == s, label) for s, label in RUN_STATUS_LABELS.items()],
+          else_=sqlalchemy.cast(Run.status, sqlalchemy.String),
+      )
+      order_clauses = [
+          _ordered(sqlalchemy.func.lower(status_label)),
+          Run.id.desc(),
+      ]
+    elif sort_by == "accuracy":
+      # Mirror Run.accuracy (FAILED=0, COMPLETED with non-null score, others
+      # excluded) and only rank COMPLETED runs so non-completed runs ("N/A" /
+      # "Calculating...") sort to the end with NULLs.
+      trial_score_expr = sqlalchemy.case(
+          (Trial.status == RunStatus.FAILED, 0.0),
+          (Trial.status == RunStatus.COMPLETED, Trial.score),
+          else_=None,
+      )
+      accuracy_subq = (
+          sqlalchemy.select(sqlalchemy.func.avg(trial_score_expr))
+          .where(Trial.run_id == Run.id)
+          .correlate(Run)
+          .scalar_subquery()
+      )
+      run_accuracy_expr = sqlalchemy.case(
+          (Run.status == RunStatus.COMPLETED, accuracy_subq),
+          else_=None,
+      )
+      order_clauses = [_ordered(run_accuracy_expr).nulls_last(), Run.id.desc()]
+    elif sort_by == "duration":
+      order_clauses = [_ordered(Run.duration_ms).nulls_last(), Run.id.desc()]
+    else:  # sort_by == "started"
+      order_clauses = [_ordered(Run.started_at).nulls_last(), Run.id.desc()]
+
+    stmt = stmt.order_by(*order_clauses).limit(limit).offset(offset)
     return self.session.scalars(stmt).all()
 
   def get_latest_runs_with_stats(

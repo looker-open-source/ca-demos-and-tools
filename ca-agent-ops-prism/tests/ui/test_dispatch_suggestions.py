@@ -759,7 +759,7 @@ def test_the_suggestion_poll_stops_on_arrival_and_on_the_timeout(
   assert timed_out[f"{Ev.TRIAL_SUG_POLLING_INTERVAL}.disabled"] is True
   assert timed_out[spinner] is False
   assert timed_out[f"{Ev.TRIAL_SUG_LOADING_STORE}.data"] is False
-  # The signal fires on the timeout too. render_trial_detail takes it as an
+  # The signal fires on the timeout too. render_trial_suggestions takes it as an
   # Input, so without it the skeleton the poll put up stayed on the page and
   # the panel read as still working.
   assert timed_out[f"{Ev.TRIAL_SUG_UPDATE_SIGNAL}.data"]

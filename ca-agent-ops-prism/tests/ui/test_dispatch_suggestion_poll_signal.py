@@ -16,10 +16,10 @@
 
 ``poll_suggestion_results`` has four ways out and three of them stop the
 interval. Stopping it is only half of the handshake. The suggestions panel is
-drawn by ``render_trial_detail``, which takes the signal as an Input and the
-loading flag only as State, so a poll that clears the flag without touching the
-signal re-renders nothing. The skeleton stays on screen with the interval now
-disabled and nothing left to turn it off.
+drawn by ``render_trial_suggestions``, which takes the signal as an Input and
+the loading flag only as State, so a poll that clears the flag without touching
+the signal re-renders nothing. The skeleton stays on screen with the interval
+now disabled and nothing left to turn it off.
 
 The arrival branch always signalled, because there was something new to show.
 The timeout and the failure branches did not.
@@ -187,14 +187,21 @@ def test_a_tick_that_is_still_waiting_signals_nothing(
 def test_the_panel_only_redraws_on_the_signal(dash_client):
   """Why the exits have to write it, read off the dependency graph.
 
-  ``render_trial_detail`` has the signal as an Input and the loading store as
-  State. Dash does not fire a callback for a State change, so writing the flag
-  alone changes nothing on screen. If the loading store ever becomes an Input
-  here, this test is the place to reconsider the three signals.
+  ``render_trial_suggestions`` has the signal as an Input and the loading store
+  as State, and targets only the inner content div so the outer accordion keeps
+  its expanded state. Dash does not fire a callback for a State change, so
+  writing the flag alone changes nothing on screen. If the loading store ever
+  becomes an Input here, this test is the place to reconsider the three
+  signals.
   """
   deps = dash_http.dependencies(dash_client)
-  dep = dash_http.find(deps, f"{Ev.TRIAL_DETAIL_CONTAINER}.children")
+  dep = dash_http.find(deps, f"{Ev.TRIAL_SUGGESTIONS_CONTENT}.children")
 
   assert Ev.TRIAL_SUG_UPDATE_SIGNAL in [i["id"] for i in dep["inputs"]]
   assert Ev.TRIAL_SUG_LOADING_STORE in [s["id"] for s in dep["state"]]
   assert Ev.TRIAL_SUG_LOADING_STORE not in [i["id"] for i in dep["inputs"]]
+
+  detail_dep = dash_http.find(deps, f"{Ev.TRIAL_DETAIL_CONTAINER}.children")
+  assert Ev.TRIAL_SUG_UPDATE_SIGNAL not in [
+      i["id"] for i in detail_dep["inputs"]
+  ]

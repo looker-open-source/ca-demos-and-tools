@@ -22,6 +22,7 @@ from typing import Any
 import uuid
 import dash
 import flask
+from prism.common.schemas.execution import RUN_STATUS_LABELS
 from prism.common.schemas.execution import RunStatus
 from prism.ui.constants import NOTIFICATION_CONTAINER
 
@@ -35,16 +36,22 @@ logger = logging.getLogger(__name__)
 # from the run maps too, so a paused run got the same grey badge next to a "--"
 # duration.
 #
-# Labels are title case. The badge renders them uppercase.
+# Labels are title case (shared with server sorting via RUN_STATUS_LABELS).
+# The badge renders them uppercase.
+_RUN_STATUS_COLORS = {
+    RunStatus.PENDING: "gray",
+    RunStatus.RUNNING: "blue",
+    RunStatus.EXECUTING: "blue",
+    RunStatus.EVALUATING: "blue",
+    RunStatus.COMPLETED: "green",
+    RunStatus.FAILED: "red",
+    RunStatus.CANCELLED: "gray",
+    RunStatus.PAUSED: "yellow",
+}
+
 _RUN_STATUS_DISPLAY = {
-    RunStatus.PENDING: ("gray", "Pending"),
-    RunStatus.RUNNING: ("blue", "In Progress"),
-    RunStatus.EXECUTING: ("blue", "Executing"),
-    RunStatus.EVALUATING: ("blue", "Evaluating"),
-    RunStatus.COMPLETED: ("green", "Completed"),
-    RunStatus.FAILED: ("red", "Failed"),
-    RunStatus.CANCELLED: ("gray", "Cancelled"),
-    RunStatus.PAUSED: ("yellow", "Paused"),
+    status: (color, RUN_STATUS_LABELS[status])
+    for status, color in _RUN_STATUS_COLORS.items()
 }
 
 
