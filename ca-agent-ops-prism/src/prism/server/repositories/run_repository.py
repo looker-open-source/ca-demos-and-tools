@@ -66,6 +66,7 @@ class RunRepository:
     return [
         orm.joinedload(Run.snapshot_suite),
         orm.joinedload(Run.agent),
+        orm.joinedload(Run.schedule),
         orm.selectinload(Run.trials)
         .selectinload(Trial.assertion_results)
         .joinedload(AssertionResult.assertion_snapshot),
@@ -81,6 +82,7 @@ class RunRepository:
       generate_suggestions: bool = False,
       concurrency: int = 2,
       example_snapshot_ids: Sequence[int] = (),
+      schedule_id: int | None = None,
   ) -> Run:
     """Creates a new Run and one PENDING trial per example snapshot.
 
@@ -109,6 +111,7 @@ class RunRepository:
     run = Run(
         test_suite_snapshot_id=test_suite_snapshot_id,
         agent_id=agent_id,
+        schedule_id=schedule_id,
         agent_context_snapshot=agent_context_snapshot,
         status=RunStatus.PENDING,
         created_at=now,
@@ -269,6 +272,7 @@ class RunRepository:
       original_suite_id: int | None = None,
       status: RunStatus | None = None,
       include_archived: bool = False,
+      schedule_id: int | None = None,
   ) -> Sequence[Run]:
     """Lists runs newest first, filtered by whichever arguments are set."""
     stmt = sqlalchemy.select(Run).options(*self.eager_options())
@@ -284,6 +288,8 @@ class RunRepository:
       )
     if status is not None:
       stmt = stmt.where(Run.status == status)
+    if schedule_id is not None:
+      stmt = stmt.where(Run.schedule_id == schedule_id)
 
     stmt = stmt.order_by(Run.created_at.desc()).limit(limit).offset(offset)
     return self.session.scalars(stmt).all()

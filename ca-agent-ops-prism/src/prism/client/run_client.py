@@ -198,6 +198,7 @@ class RunsClient:
       original_suite_id: int | None = None,
       status: execution_schemas.RunStatus | None = None,
       include_archived: bool = False,
+      schedule_id: int | None = None,
       limit: int = 50,
       offset: int = 0,
       repo: RunRepository = Depends(dependencies.get_run_repository),
@@ -214,6 +215,7 @@ class RunsClient:
         original_suite_id=original_suite_id,
         status=status,
         include_archived=include_archived,
+        schedule_id=schedule_id,
         limit=limit,
         offset=offset,
     )

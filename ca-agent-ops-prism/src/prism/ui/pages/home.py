@@ -23,7 +23,7 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.pages.home_ids import HomeIds
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Welcome back",
       description=(

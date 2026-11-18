@@ -17,6 +17,7 @@
 from typing import Any
 
 from dash import html
+from dash_iconify import DashIconify
 import dash_mantine_components as dmc
 from prism.common.schemas.execution import RunHistoryPoint
 from prism.common.schemas.execution import RunSchema
@@ -39,6 +40,39 @@ def _render_archived_badge(is_archived: bool) -> dmc.Badge | None:
       color="gray",
       size="xs",
       radius="md",
+      style={"flexShrink": 0},
+      styles={"label": {"overflow": "visible"}},
+  )
+
+
+def _render_scheduled_badge(run: RunSchema) -> dmc.Tooltip | None:
+  """Renders a clickable Scheduled badge when a run came from a schedule."""
+  schedule_id = getattr(run, "schedule_id", None)
+  if schedule_id is None:
+    return None
+  schedule_name = (
+      getattr(run, "schedule_name", None) or f"Schedule #{schedule_id}"
+  )
+  filter_href = f"/evaluations?schedule_id={schedule_id}"
+  return dmc.Tooltip(
+      label=f"Triggered by schedule: {schedule_name}",
+      withArrow=True,
+      children=dmc.Anchor(
+          dmc.Badge(
+              "Scheduled",
+              variant="light",
+              color="indigo",
+              size="xs",
+              radius="md",
+              leftSection=DashIconify(
+                  icon="material-symbols:schedule", width=11
+              ),
+              style={"flexShrink": 0},
+              styles={"label": {"overflow": "visible"}},
+          ),
+          href=filter_href,
+          underline=False,
+      ),
   )
 
 
@@ -131,16 +165,18 @@ def render_run_table(
             html.Td(
                 dmc.Group(
                     gap="xs",
+                    wrap="nowrap",
                     children=[
                         dmc.Text(
                             f"#{run.id}", size="sm", c="dimmed", ff="monospace"
                         ),
+                        _render_scheduled_badge(run),
                         _render_archived_badge(
                             getattr(run, "is_archived", False)
                         ),
                     ],
                 ),
-                style={"padding": "16px 24px"},
+                style={"padding": "16px 24px", "whiteSpace": "nowrap"},
             ),
             # Agent
             html.Td(
@@ -155,7 +191,7 @@ def render_run_table(
             # Status
             html.Td(
                 badges.render_status_badge(status_label, status_color),
-                style={"padding": "16px 24px"},
+                style={"padding": "16px 24px", "whiteSpace": "nowrap"},
             ),
             # Accuracy
             html.Td(score_content, style={"padding": "16px 24px"}),
@@ -206,7 +242,7 @@ def render_run_table(
                         "letterSpacing": "0.05em",
                         "padding": "16px 24px",
                         "textAlign": "left",
-                        "width": "120px",
+                        "width": "180px",
                         "whiteSpace": "nowrap",
                     },
                 ),

@@ -291,7 +291,7 @@ def _create_form():
   )
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Onboard New Agent",
       description="Configure your agent's identity and data connections.",

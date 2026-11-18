@@ -95,6 +95,7 @@ class ExecutionService:
       test_suite_id: int,
       generate_suggestions: bool = False,
       concurrency: int = 2,
+      schedule_id: int | None = None,
   ) -> Run:
     """Creates a new Run by snapshotting the suite and creating trials.
 
@@ -103,6 +104,7 @@ class ExecutionService:
       test_suite_id: The ID of the Test Suite to run.
       generate_suggestions: Whether to generate suggested assertions.
       concurrency: Number of parallel trials for this run.
+      schedule_id: Optional Evaluation Schedule ID that triggered this run.
 
     Returns:
       The newly created Run (in PENDING status).
@@ -162,6 +164,7 @@ class ExecutionService:
         generate_suggestions=generate_suggestions,
         concurrency=concurrency,
         example_snapshot_ids=[e.id for e in snapshot.examples],
+        schedule_id=schedule_id,
     )
 
   def get_run(self, run_id: int) -> Run | None:

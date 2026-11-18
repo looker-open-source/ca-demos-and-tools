@@ -72,42 +72,111 @@ def render_run_list(pathname: str, search: str):
   agent_id = parsed_qs.get("agent_id", [None])[0]
   suite_id = parsed_qs.get("suite_id", [None])[0]
   status = parsed_qs.get("status", [None])[0]
+  schedule_id_raw = parsed_qs.get("schedule_id", [None])[0]
 
   agent_id = int(agent_id) if agent_id else None
   suite_id = int(suite_id) if suite_id else None
   status_enum = RunStatus(status) if status else None
+  schedule_id = (
+      int(schedule_id_raw)
+      if schedule_id_raw and str(schedule_id_raw).isdigit()
+      else None
+  )
 
   client = get_client()
   include_archived = parsed_qs.get("archived", ["false"])[0] == "true"
-  runs = client.runs.list_runs(
-      agent_id=agent_id,
-      original_suite_id=suite_id,
-      status=status_enum,
-      include_archived=include_archived,
-      limit=_RUN_LIST_LIMIT + 1,
-  )
+  list_kwargs: dict[str, Any] = {
+      "agent_id": agent_id,
+      "original_suite_id": suite_id,
+      "status": status_enum,
+      "include_archived": include_archived,
+      "limit": _RUN_LIST_LIMIT + 1,
+  }
+  if schedule_id is not None:
+    list_kwargs["schedule_id"] = schedule_id
+  runs = client.runs.list_runs(**list_kwargs)
+
+  filter_banner = None
+  if schedule_id is not None:
+    schedule_obj = client.schedules.get_schedule(schedule_id)
+    schedule_title = (
+        schedule_obj.name if schedule_obj else f"Schedule #{schedule_id}"
+    )
+    filter_banner = dmc.Group(
+        id=EvaluationIds.SCHEDULE_FILTER_BANNER,
+        justify="space-between",
+        px="lg",
+        py="sm",
+        style={
+            "backgroundColor": "var(--mantine-color-indigo-0)",
+            "borderBottom": "1px solid var(--mantine-color-indigo-2)",
+        },
+        children=[
+            dmc.Group(
+                gap="xs",
+                children=[
+                    DashIconify(
+                        icon="material-symbols:schedule",
+                        width=16,
+                        color="var(--mantine-color-indigo-7)",
+                    ),
+                    dmc.Text(
+                        f"Filtered to runs from schedule: {schedule_title}",
+                        size="sm",
+                        fw=500,
+                        c="indigo.9",
+                    ),
+                ],
+            ),
+            dmc.Group(
+                gap="md",
+                children=[
+                    dmc.Anchor(
+                        "View Schedule",
+                        href=f"/schedules/view/{schedule_id}",
+                        size="xs",
+                        fw=600,
+                    ),
+                    dmc.Anchor(
+                        "Clear schedule filter",
+                        href="/evaluations",
+                        size="xs",
+                        fw=600,
+                    ),
+                ],
+            ),
+        ],
+    )
 
   if not runs:
-    return dmc.Text("No evaluations found.", c="dimmed", ta="center", py="xl")
+    empty_msg = dmc.Text(
+        "No evaluations found.", c="dimmed", ta="center", py="xl"
+    )
+    return html.Div([filter_banner, empty_msg]) if filter_banner else empty_msg
 
   truncated = len(runs) > _RUN_LIST_LIMIT
   table = tables.render_run_table(runs[:_RUN_LIST_LIMIT], table_id=None)
-  if not truncated:
+  if not truncated and not filter_banner:
     return table
 
-  # Say so. The list used to stop at 50 with nothing on the page admitting it,
-  # so the 51st run read as a run that did not exist.
-  return html.Div([
-      table,
-      dmc.Text(
-          f"Showing the {_RUN_LIST_LIMIT} most recent runs. Filter by agent,"
-          " test suite or status to reach older ones.",
-          c="dimmed",
-          size="sm",
-          ta="center",
-          py="md",
-      ),
-  ])
+  parts: list[Any] = []
+  if filter_banner:
+    parts.append(filter_banner)
+  parts.append(table)
+  if truncated:
+    # Say so. The list used to stop at 50 with nothing on the page admitting it,
+    # so the 51st run read as a run that did not exist.
+    parts.append(
+        dmc.Text(
+            f"Showing the {_RUN_LIST_LIMIT} most recent runs. Filter by agent,"
+            " test suite or status to reach older ones.",
+            c="dimmed",
+            size="sm",
+            ta="center",
+            py="md",
+        )
+    )
+  return html.Div(parts)
 
 
 @typed_callback(
@@ -822,6 +891,32 @@ def render_run_detail_components(
         ),
     )
 
+  if run.schedule_id is not None:
+    sched_label = run.schedule_name or f"Schedule #{run.schedule_id}"
+    sched_href = f"/schedules/view/{run.schedule_id}"
+    sched_badge = dmc.Tooltip(
+        label=f"Triggered by schedule: {sched_label}",
+        withArrow=True,
+        children=dmc.Anchor(
+            dmc.Badge(
+                f"Schedule: {sched_label}",
+                color="indigo",
+                variant="light",
+                size="md",
+                radius="md",
+                leftSection=DashIconify(
+                    icon="material-symbols:schedule", width=14
+                ),
+            ),
+            id=EvaluationIds.RUN_SCHEDULE_BADGE,
+            href=sched_href,
+            underline=False,
+        ),
+    )
+    header_badges: Any = dmc.Group(gap="xs", children=[sched_badge, bq_badge])
+  else:
+    header_badges = bq_badge
+
   show_sync_bq = {"display": "none"}
   if (
       bq_status.get("enabled")
@@ -837,7 +932,7 @@ def render_run_detail_components(
       trials_update,
       badge_label,
       badge_color,
-      bq_badge,
+      header_badges,
       show_pause,
       show_resume,
       show_cancel,

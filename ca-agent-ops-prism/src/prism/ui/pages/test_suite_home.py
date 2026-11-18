@@ -22,7 +22,7 @@ from prism.ui.components.page_layout import render_page
 from prism.ui.ids import TestSuiteHomeIds as Ids
 
 
-def layout():
+def layout(**_kwargs):
   return render_page(
       title="Test Suites",
       description=(

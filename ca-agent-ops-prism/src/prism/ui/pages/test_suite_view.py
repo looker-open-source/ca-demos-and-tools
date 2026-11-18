@@ -63,7 +63,7 @@ def _meta_item(
   )
 
 
-def layout(suite_id: str | None = None):
+def layout(suite_id: str | None = None, **_kwargs):
   # Whatever the path holds arrives here as a string, so the id has to be
   # checked and not only tested for presence. int() on a non-numeric one raised
   # straight out of the router and answered 500. Dash reaches this with "none",
@@ -166,6 +166,8 @@ def layout(suite_id: str | None = None):
       ],
   )
 
+  schedule_href = f"/schedules?create=1&prefill_suite_id={suite_id_int}"
+
   return render_page(
       title=suite.name,
       description=(
@@ -215,6 +217,21 @@ def layout(suite_id: str | None = None):
               leftSection=DashIconify(icon="material-symbols:edit", width=20),
               variant="default",
               radius="md",
+          ),
+          dmc.Anchor(
+              dmc.Button(
+                  "Schedule",
+                  leftSection=DashIconify(
+                      icon="material-symbols:calendar-clock", width=20
+                  ),
+                  variant="default",
+                  radius="md",
+              ),
+              href=schedule_href,
+              underline=False,
+              style={"display": "none"}
+              if getattr(suite, "is_archived", False)
+              else {"display": "block"},
           ),
           dmc.Button(
               "Run Evaluation",
@@ -302,7 +319,6 @@ def layout(suite_id: str | None = None):
           html.Div(id=Ids.SAVE_NEW_BTN, style={"display": "none"}),
           html.Div(id=Ids.MODAL_BULK_ADD),
           html.Div(id=Ids.MODAL_DELETE),
-          dash.dcc.Store(id=Ids.STORE_SELECTED_INDEX, data=None),
           render_config_edit_modal(Ids.MODAL_CONFIG_SAVE_BTN),
           render_duplicate_modal(),
           render_run_eval_modal(),

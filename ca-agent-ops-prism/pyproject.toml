@@ -59,6 +59,10 @@ dependencies = [
     "gunicorn<27",
 ]
 
+[project.urls]
+Repository = "https://github.com/GoogleCloudPlatform/conversational-analytics-prism"
+Issues = "https://github.com/GoogleCloudPlatform/conversational-analytics-prism/issues"
+
 [dependency-groups]
 dev = [
     "pytest>=7.0.0",

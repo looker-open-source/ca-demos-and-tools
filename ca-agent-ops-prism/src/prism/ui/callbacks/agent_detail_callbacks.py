@@ -180,6 +180,8 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
       ],
   )
 
+  schedule_href = f"/schedules?create=1&prefill_agent_id={agent_id}"
+
   header_actions = [
       dmc.Button(
           "Duplicate Agent",
@@ -222,6 +224,21 @@ def update_agent_details(pathname: str, refresh_trigger: Any):
           style={"display": "block"}
           if agent.is_archived
           else {"display": "none"},
+      ),
+      dmc.Anchor(
+          dmc.Button(
+              "Schedule",
+              variant="default",
+              radius="md",
+              leftSection=DashIconify(
+                  icon="material-symbols:calendar-clock", width=20
+              ),
+          ),
+          href=schedule_href,
+          underline=False,
+          style={"display": "none"}
+          if agent.is_archived
+          else {"display": "block"},
       ),
       dmc.Button(
           "Run Evaluation",

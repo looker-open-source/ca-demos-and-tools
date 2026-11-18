@@ -45,10 +45,8 @@ build/
 tests/cassettes/
 tests/e2e/cassettes/
 
-# The prompt templates are source, not scratch. The repo this is published
-# into ignores *.txt at its root, which silently dropped two of the three on
-# the way out. Re-include them here, and check they are tracked after any
-# export.
+# The prompt templates are source, not scratch. Re-include them explicitly so a
+# global gitignore rule for *.txt cannot silently drop them.
 !src/prism/server/services/prompts/*.txt
 
 # Editors

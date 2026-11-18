@@ -100,6 +100,11 @@ def render_header():
                               link_id=ShellIds.NAV_EVALUATIONS,
                           ),
                           _header_link(
+                              "Schedules",
+                              "/schedules",
+                              link_id=ShellIds.NAV_SCHEDULES,
+                          ),
+                          _header_link(
                               "Compare",
                               "/compare",
                               link_id=ShellIds.NAV_COMPARISON,

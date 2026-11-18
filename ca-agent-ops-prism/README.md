@@ -16,13 +16,18 @@ limitations under the License.
 
 # Prism
 
-**This is not an officially supported Google product. This project is not
-eligible for the
-[Google Open Source Software Vulnerability Rewards Program](https://bughunters.google.com/open-source-security).**
+> [!WARNING]
+> **Prism has moved to [`GoogleCloudPlatform/conversational-analytics-prism`](https://github.com/GoogleCloudPlatform/conversational-analytics-prism).**
+> This `ca-agent-ops-prism/` directory is deprecated and mirrored temporarily so existing links keep working. Use [`GoogleCloudPlatform/conversational-analytics-prism`](https://github.com/GoogleCloudPlatform/conversational-analytics-prism) for new clones, issues, and pull requests.
 
-This directory holds all of Prism, a platform for monitoring and evaluating AI
-agents: the database and services, the Dash UI, and the background worker pool
-that executes evaluations.
+**This is not an officially supported Google product. Eligibility for the
+[Google Open Source Software Vulnerability Rewards Program](https://bughunters.google.com/open-source-security)
+is determined by the
+[Google Open Source Software Vulnerability Reward Program Rules](https://bughunters.google.com/about/rules/open-source/google-open-source-software-vulnerability-reward-program-rules).**
+
+Prism is a platform for monitoring and evaluating AI agents: the database and
+services, the Dash UI, and the background worker pool that executes
+evaluations.
 
 ## Project Overview
 
@@ -715,16 +720,14 @@ case-sensitively, so this matters only if you were relying on the stored casing.
 
 ## Contributing
 
-See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) at the root of the repository
-this directory lives in. It covers the Contributor License Agreement and the
-review process.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the Contributor License Agreement
+and the review process, and [`SECURITY.md`](SECURITY.md) for reporting security
+issues.
 
 ## License
 
 Apache License 2.0. The full text is in the `LICENSE` file, and every source
-file carries the header. Two sets of files do not. The three prompt templates
-under `src/prism/server/services/prompts/` are plain text with no comment
+file carries the header except the three prompt templates under
+`src/prism/server/services/prompts/`. They are plain text with no comment
 syntax, and each one is read whole and sent to the model as the prompt, so a
 header in them would be read as part of the instructions.
-`src/prism/ui/assets/style.css` carries the SPDX short form,
-`SPDX-License-Identifier: Apache-2.0`, in place of the full header.

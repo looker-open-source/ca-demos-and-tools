@@ -23,6 +23,7 @@ from prism.server.models.example import Example
 from prism.server.models.playground import PlaygroundTrace
 from prism.server.models.run import Run
 from prism.server.models.run import Trial
+from prism.server.models.schedule import EvalSchedule
 from prism.server.models.snapshot import ExampleSnapshot
 from prism.server.models.snapshot import TestSuiteSnapshot
 from prism.server.models.suite import TestSuite
@@ -32,6 +33,7 @@ __all__ = [
     "Assertion",
     "AssertionResult",
     "AssertionSnapshot",
+    "EvalSchedule",
     "Example",
     "ExampleSnapshot",
     "PlaygroundTrace",
