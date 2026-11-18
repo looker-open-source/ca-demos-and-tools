@@ -271,7 +271,6 @@ def test_a_suggestion_without_an_id_is_dropped_not_renumbered(
       {
           "url.pathname": f"/evaluations/trials/{trial.id}",
           "url.search": "",
-          f"{EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL}.data": 0,
           f"{EvaluationIds.TRIAL_SUG_LOADING_STORE}.data": False,
       },
   )
@@ -394,3 +393,84 @@ def test_the_agent_card_paints_only_colours_mantine_knows(datasource, badge):
 
   assert badge in str(card)
   assert not _unresolvable_colors(card)
+
+
+def test_assertion_performance_chart_uses_canonical_labels_and_keeps_unknowns():
+  """AI Judge and Response Duration use style labels; unknowns stay separate."""
+  created = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+  trials = [
+      Trial.model_construct(
+          id=1,
+          run_id=1,
+          example_snapshot_id=1,
+          status=RunStatus.COMPLETED,
+          created_at=created,
+          assertion_results=[
+              type(
+                  "_Res",
+                  (),
+                  {
+                      "error_message": None,
+                      "passed": True,
+                      "assertion": type("_A", (), {"type": "ai-judge"})(),
+                  },
+              )(),
+              type(
+                  "_Res",
+                  (),
+                  {
+                      "error_message": None,
+                      "passed": False,
+                      "assertion": type(
+                          "_A", (), {"type": "duration-max-ms"}
+                      )(),
+                  },
+              )(),
+              type(
+                  "_Res",
+                  (),
+                  {
+                      "error_message": None,
+                      "passed": True,
+                      "assertion": type("_A", (), {"type": "custom-alpha"})(),
+                  },
+              )(),
+              type(
+                  "_Res",
+                  (),
+                  {
+                      "error_message": None,
+                      "passed": False,
+                      "assertion": type("_A", (), {"type": "custom-beta"})(),
+                  },
+              )(),
+          ],
+      )
+  ]
+
+  paper = evaluation_callbacks.render_assertion_performance(trials)
+  assert paper is not None
+  serialized = _serialized(paper)
+  bar_charts = []
+  stack = [serialized]
+  while stack:
+    node = stack.pop()
+    if isinstance(node, list):
+      stack.extend(node)
+    elif isinstance(node, dict):
+      if node.get("type") == "BarChart":
+        bar_charts.append(node)
+      stack.extend(node.values())
+
+  assert len(bar_charts) == 1
+  by_type = {row["type"]: row for row in bar_charts[0]["props"]["data"]}
+  assert set(by_type) == {
+      "AI Judge",
+      "Response Duration",
+      "Custom Alpha",
+      "Custom Beta",
+  }
+  assert by_type["AI Judge"]["pass_rate"] == 100.0
+  assert by_type["Response Duration"]["pass_rate"] == 0.0
+  assert by_type["Custom Alpha"]["pass_rate"] == 100.0
+  assert by_type["Custom Beta"]["pass_rate"] == 0.0

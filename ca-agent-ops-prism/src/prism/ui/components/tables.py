@@ -28,6 +28,7 @@ from prism.common.schemas.suite import SuiteWithStats
 from prism.ui import utils
 from prism.ui.components import badges
 from prism.ui.components import links
+from prism.ui.ids import EvaluationIds
 
 
 def _render_archived_badge(is_archived: bool) -> dmc.Badge | None:
@@ -76,11 +77,90 @@ def _render_scheduled_badge(run: RunSchema) -> dmc.Tooltip | None:
   )
 
 
+_RUN_TABLE_COLUMNS: tuple[tuple[str | None, str, str, dict[str, Any]], ...] = (
+    ("id", "RUN ID", "Run ID", {"width": "180px", "whiteSpace": "nowrap"}),
+    ("agent", "AGENT", "Agent", {}),
+    ("suite", "TEST SUITE", "Test Suite", {}),
+    ("status", "STATUS", "Status", {}),
+    ("accuracy", "ACCURACY", "Accuracy", {}),
+    ("duration", "DURATION", "Duration", {}),
+    ("started", "STARTED", "Started", {}),
+    (None, "ACTION", "Action", {"textAlign": "right"}),
+)
+
+
+def _render_run_table_header(
+    col_key: str | None,
+    label: str,
+    accessible_label: str,
+    extra_style: dict[str, Any],
+    *,
+    sortable: bool,
+    sort_by: str | None,
+    sort_dir: str,
+) -> html.Th:
+  """Renders a run table header cell, optionally as a clickable sort button."""
+  th_style: dict[str, Any] = {
+      "fontSize": "11px",
+      "fontWeight": 600,
+      "color": "var(--mantine-color-gray-5)",
+      "letterSpacing": "0.05em",
+      "padding": "16px 24px",
+      "textAlign": "left",
+      **extra_style,
+  }
+  if not sortable or col_key is None:
+    return html.Th(label, style=th_style)
+
+  is_active = col_key == sort_by
+  if is_active:
+    aria_sort = "ascending" if sort_dir == "asc" else "descending"
+    indicator = "▲" if sort_dir == "asc" else "▼"
+    btn_color = "var(--mantine-color-blue-7)"
+    btn_weight = 700
+  else:
+    aria_sort = "none"
+    indicator = None
+    btn_color = "var(--mantine-color-gray-6)"
+    btn_weight = 600
+
+  btn_children: list[Any] = [html.Span(label)]
+  if indicator is not None:
+    btn_children.append(
+        html.Span(
+            indicator,
+            style={"fontSize": "10px", "lineHeight": 1},
+            **{"aria-hidden": "true"},
+        )
+    )
+
+  button = dmc.UnstyledButton(
+      id={"type": EvaluationIds.BTN_SORT_COLUMN, "index": col_key},
+      **{"aria-label": f"Sort by {accessible_label}"},
+      style={
+          "display": "inline-flex",
+          "alignItems": "center",
+          "gap": "4px",
+          "cursor": "pointer",
+          "fontSize": "11px",
+          "fontWeight": btn_weight,
+          "color": btn_color,
+          "letterSpacing": "0.05em",
+          "textTransform": "uppercase",
+      },
+      children=btn_children,
+  )
+  return html.Th(button, style=th_style, **{"aria-sort": aria_sort})
+
+
 def render_run_table(
     runs: list[RunSchema],
     agent_names: dict[int, str] | None = None,
     suite_names: dict[int, str] | None = None,
     table_id: str | None = None,
+    sortable: bool = False,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
 ) -> dmc.Paper:
   """Renders a stylistic table of evaluation runs.
 
@@ -89,6 +169,9 @@ def render_run_table(
     agent_names: Map of agent_id to agent_name.
     suite_names: Map of suite_id to suite_name.
     table_id: Optional ID for the container.
+    sortable: Whether column headers render sort controls.
+    sort_by: Active sort column key, if any.
+    sort_dir: Active sort direction ("asc" or "desc").
 
   Returns:
     A dmc.Paper component wrapping the table.
@@ -233,96 +316,18 @@ def render_run_table(
     table_head = html.Thead(
         html.Tr(
             [
-                html.Th(
-                    "RUN ID",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                        "width": "180px",
-                        "whiteSpace": "nowrap",
-                    },
-                ),
-                html.Th(
-                    "AGENT",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "TEST SUITE",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "STATUS",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "ACCURACY",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "DURATION",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "STARTED",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "left",
-                    },
-                ),
-                html.Th(
-                    "ACTION",
-                    style={
-                        "fontSize": "11px",
-                        "fontWeight": 600,
-                        "color": "var(--mantine-color-gray-5)",
-                        "letterSpacing": "0.05em",
-                        "padding": "16px 24px",
-                        "textAlign": "right",
-                    },
-                ),
+                _render_run_table_header(
+                    col_key,
+                    label,
+                    accessible_label,
+                    extra_style,
+                    sortable=sortable,
+                    sort_by=sort_by,
+                    sort_dir=sort_dir,
+                )
+                for col_key, label, accessible_label, extra_style in (
+                    _RUN_TABLE_COLUMNS
+                )
             ],
             style={
                 "backgroundColor": "var(--mantine-color-gray-0)",
@@ -597,7 +602,12 @@ def render_test_suite_table(
             ),
             # Coverage
             html.Td(
-                badges.render_coverage_badge(coverage_label, coverage_color),
+                dmc.Group(
+                    badges.render_coverage_badge(
+                        coverage_label, coverage_color
+                    ),
+                    justify="flex-end",
+                ),
                 style={"textAlign": "right", "padding": "16px 24px"},
             ),
             # Runs

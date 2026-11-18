@@ -201,9 +201,11 @@ class RunsClient:
       schedule_id: int | None = None,
       limit: int = 50,
       offset: int = 0,
+      sort_by: str | None = None,
+      sort_dir: str = "desc",
       repo: RunRepository = Depends(dependencies.get_run_repository),
   ) -> Sequence[execution_schemas.RunSchema]:
-    """Lists evaluation runs, most recent first.
+    """Lists evaluation runs, ordered by the requested column or recency.
 
     limit and offset are named here because the repository has always taken
     them. Without them the injector dropped the keyword on the floor, so a
@@ -218,8 +220,29 @@ class RunsClient:
         schedule_id=schedule_id,
         limit=limit,
         offset=offset,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return [_map_run(m) for m in models]
+
+  @inject
+  def count_runs(
+      self,
+      agent_id: int | None = None,
+      original_suite_id: int | None = None,
+      status: execution_schemas.RunStatus | None = None,
+      include_archived: bool = False,
+      schedule_id: int | None = None,
+      repo: RunRepository = Depends(dependencies.get_run_repository),
+  ) -> int:
+    """Counts evaluation runs matching the given filters."""
+    return repo.count_all(
+        agent_id=agent_id,
+        original_suite_id=original_suite_id,
+        status=status,
+        include_archived=include_archived,
+        schedule_id=schedule_id,
+    )
 
   @inject
   def get_latest_runs_with_stats(

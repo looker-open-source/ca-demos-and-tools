@@ -24,6 +24,11 @@ class EvaluationIds:
   FILTER_AGENT = "evaluations-filter-agent"
   FILTER_SUITE = "evaluations-filter-suite"
   FILTER_STATUS = "evaluations-filter-status"
+  BTN_SORT_COLUMN = "evaluations-sort-column-btn"
+  BTN_PAGE_NAV = "evaluations-page-nav-btn"
+  SELECT_PAGE_SIZE = "evaluations-page-size-select"
+  PAGINATION_SUMMARY = "evaluations-pagination-summary"
+  PAGINATION_INDICATOR = "evaluations-pagination-indicator"
 
   # Detail Page
   RUN_DETAIL_STATS = "evaluations-run-detail-stats"

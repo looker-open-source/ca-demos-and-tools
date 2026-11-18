@@ -15,6 +15,7 @@
 """Callbacks for Evaluation pages."""
 
 import logging
+import math
 import time
 from typing import Any
 import urllib.parse
@@ -25,6 +26,7 @@ import dash_mantine_components as dmc
 import flask
 from prism.client import get_client
 from prism.common.schemas import agent as agent_schemas
+from prism.common.schemas.execution import RUN_SORT_DEFAULT_DIR
 from prism.common.schemas.execution import RunStatus
 from prism.common.schemas.execution import Trial
 from prism.ui.components import assertion_components
@@ -50,10 +52,174 @@ from prism.ui.utils import typed_callback
 
 logger = logging.getLogger(__name__)
 
-# How many runs /evaluations shows. There is no pager, so past this the older
-# runs are only reachable through the filters. One row more than this is
-# fetched, which is how the page knows whether to say it is truncated.
-_RUN_LIST_LIMIT = 50
+_RUN_LIST_PAGE_SIZE = 25
+_RUN_LIST_PAGE_SIZE_OPTIONS = (10, 25, 50, 100)
+_MAX_PG_INT32 = 2_147_483_647
+
+
+def _parse_optional_int(value: str | None) -> int | None:
+  """Parses a positive 32-bit ASCII integer, returning None on invalid input."""
+  if not value or not value.isascii():
+    return None
+  try:
+    parsed = int(value)
+  except ValueError:
+    return None
+  if parsed < 1 or parsed > _MAX_PG_INT32:
+    return None
+  return parsed
+
+
+def _parse_eval_search(search: str | None) -> dict[str, Any]:
+  """Parses and normalizes /evaluations URL search params."""
+  raw = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
+
+  agent_id = _parse_optional_int(raw.get("agent_id", [None])[0])
+  suite_id = _parse_optional_int(raw.get("suite_id", [None])[0])
+  status_raw = raw.get("status", [None])[0]
+  try:
+    status_enum = RunStatus(status_raw) if status_raw else None
+  except ValueError:
+    status_enum = None
+  schedule_id = _parse_optional_int(raw.get("schedule_id", [None])[0])
+  include_archived = raw.get("archived", ["false"])[0] == "true"
+
+  sort_raw = raw.get("sort", [None])[0]
+  if sort_raw in RUN_SORT_DEFAULT_DIR:
+    sort_by = sort_raw
+    dir_raw = raw.get("dir", [None])[0]
+    sort_dir = (
+        dir_raw if dir_raw in ("asc", "desc") else RUN_SORT_DEFAULT_DIR[sort_by]
+    )
+  else:
+    sort_by = None
+    sort_dir = "desc"
+
+  page_int = _parse_optional_int(raw.get("page", [None])[0])
+  page = page_int if page_int is not None and page_int >= 1 else 1
+
+  page_size_raw = _parse_optional_int(raw.get("page_size", [None])[0])
+  page_size = (
+      page_size_raw
+      if page_size_raw in _RUN_LIST_PAGE_SIZE_OPTIONS
+      else _RUN_LIST_PAGE_SIZE
+  )
+
+  return {
+      "agent_id": agent_id,
+      "suite_id": suite_id,
+      "status": status_enum,
+      "schedule_id": schedule_id,
+      "include_archived": include_archived,
+      "sort_by": sort_by,
+      "sort_dir": sort_dir,
+      "page": page,
+      "page_size": page_size,
+  }
+
+
+def _build_eval_search(params: dict[str, list[str]]) -> str:
+  """Serializes query params back to a URL search string."""
+  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+
+
+def _render_pagination_footer(
+    page: int,
+    total_pages: int,
+    total_count: int,
+    shown_count: int,
+    page_size: int = _RUN_LIST_PAGE_SIZE,
+) -> dmc.Group:
+  """Renders the pagination footer attached to the bottom of the runs table."""
+  offset = (page - 1) * page_size
+  start_row = offset + 1
+  end_row = offset + shown_count
+  run_word = "run" if total_count == 1 else "runs"
+  return dmc.Group(
+      justify="space-between",
+      align="center",
+      px="lg",
+      py="sm",
+      style={
+          "borderTop": "1px solid var(--mantine-color-gray-2)",
+          "backgroundColor": "var(--mantine-color-gray-0)",
+      },
+      children=[
+          dmc.Group(
+              gap="md",
+              align="center",
+              children=[
+                  dmc.Text(
+                      f"Showing {start_row}–{end_row} of {total_count}"
+                      f" {run_word}",
+                      id=EvaluationIds.PAGINATION_SUMMARY,
+                      size="sm",
+                      c="dimmed",
+                  ),
+                  dmc.Group(
+                      gap="xs",
+                      align="center",
+                      children=[
+                          dmc.Text("Rows per page", size="sm", c="dimmed"),
+                          dmc.Select(
+                              id={
+                                  "type": EvaluationIds.SELECT_PAGE_SIZE,
+                                  "index": "footer",
+                              },
+                              data=[
+                                  {"label": str(n), "value": str(n)}
+                                  for n in _RUN_LIST_PAGE_SIZE_OPTIONS
+                              ],
+                              value=str(page_size),
+                              allowDeselect=False,
+                              size="xs",
+                              w=76,
+                              **{"aria-label": "Rows per page"},
+                          ),
+                      ],
+                  ),
+              ],
+          ),
+          dmc.Group(
+              gap="sm",
+              align="center",
+              children=[
+                  dmc.Button(
+                      "Previous",
+                      id={
+                          "type": EvaluationIds.BTN_PAGE_NAV,
+                          "index": "prev",
+                      },
+                      variant="default",
+                      size="xs",
+                      radius="md",
+                      disabled=(page <= 1),
+                      leftSection=DashIconify(icon="bi:chevron-left", width=12),
+                  ),
+                  dmc.Text(
+                      f"Page {page} of {total_pages}",
+                      id=EvaluationIds.PAGINATION_INDICATOR,
+                      size="sm",
+                      fw=500,
+                  ),
+                  dmc.Button(
+                      "Next",
+                      id={
+                          "type": EvaluationIds.BTN_PAGE_NAV,
+                          "index": "next",
+                      },
+                      variant="default",
+                      size="xs",
+                      radius="md",
+                      disabled=(page >= total_pages),
+                      rightSection=DashIconify(
+                          icon="bi:chevron-right", width=12
+                      ),
+                  ),
+              ],
+          ),
+      ],
+  )
 
 
 @typed_callback(
@@ -64,36 +230,44 @@ _RUN_LIST_LIMIT = 50
     ],
 )
 def render_run_list(pathname: str, search: str):
-  """Renders the evaluations list, filtered by URL search parameters."""
+  """Renders the paginated, sorted evaluations list from URL search params."""
   if pathname != "/evaluations":
     return dash.no_update
 
-  parsed_qs = urllib.parse.parse_qs(search.lstrip("?")) if search else {}
-  agent_id = parsed_qs.get("agent_id", [None])[0]
-  suite_id = parsed_qs.get("suite_id", [None])[0]
-  status = parsed_qs.get("status", [None])[0]
-  schedule_id_raw = parsed_qs.get("schedule_id", [None])[0]
-
-  agent_id = int(agent_id) if agent_id else None
-  suite_id = int(suite_id) if suite_id else None
-  status_enum = RunStatus(status) if status else None
-  schedule_id = (
-      int(schedule_id_raw)
-      if schedule_id_raw and str(schedule_id_raw).isdigit()
-      else None
-  )
+  parsed = _parse_eval_search(search)
+  agent_id = parsed["agent_id"]
+  suite_id = parsed["suite_id"]
+  status_enum = parsed["status"]
+  schedule_id = parsed["schedule_id"]
+  include_archived = parsed["include_archived"]
+  sort_by = parsed["sort_by"]
+  sort_dir = parsed["sort_dir"]
+  page_size = parsed["page_size"]
 
   client = get_client()
-  include_archived = parsed_qs.get("archived", ["false"])[0] == "true"
-  list_kwargs: dict[str, Any] = {
+  filter_kwargs: dict[str, Any] = {
       "agent_id": agent_id,
       "original_suite_id": suite_id,
       "status": status_enum,
       "include_archived": include_archived,
-      "limit": _RUN_LIST_LIMIT + 1,
   }
   if schedule_id is not None:
-    list_kwargs["schedule_id"] = schedule_id
+    filter_kwargs["schedule_id"] = schedule_id
+
+  total_count = client.runs.count_runs(**filter_kwargs)
+  total_pages = max(1, math.ceil(total_count / page_size))
+  page = min(parsed["page"], total_pages)
+  offset = (page - 1) * page_size
+
+  list_kwargs: dict[str, Any] = {
+      **filter_kwargs,
+      "limit": page_size,
+      "offset": offset,
+  }
+  if sort_by is not None:
+    list_kwargs["sort_by"] = sort_by
+    list_kwargs["sort_dir"] = sort_dir
+
   runs = client.runs.list_runs(**list_kwargs)
 
   filter_banner = None
@@ -154,28 +328,25 @@ def render_run_list(pathname: str, search: str):
     )
     return html.Div([filter_banner, empty_msg]) if filter_banner else empty_msg
 
-  truncated = len(runs) > _RUN_LIST_LIMIT
-  table = tables.render_run_table(runs[:_RUN_LIST_LIMIT], table_id=None)
-  if not truncated and not filter_banner:
-    return table
-
+  table = tables.render_run_table(
+      list(runs),
+      table_id=None,
+      sortable=True,
+      sort_by=sort_by,
+      sort_dir=sort_dir,
+  )
+  footer = _render_pagination_footer(
+      page=page,
+      total_pages=total_pages,
+      total_count=total_count,
+      shown_count=len(runs),
+      page_size=page_size,
+  )
   parts: list[Any] = []
   if filter_banner:
     parts.append(filter_banner)
   parts.append(table)
-  if truncated:
-    # Say so. The list used to stop at 50 with nothing on the page admitting it,
-    # so the 51st run read as a run that did not exist.
-    parts.append(
-        dmc.Text(
-            f"Showing the {_RUN_LIST_LIMIT} most recent runs. Filter by agent,"
-            " test suite or status to reach older ones.",
-            c="dimmed",
-            size="sm",
-            ta="center",
-            py="md",
-        )
-    )
+  parts.append(footer)
   return html.Div(parts)
 
 
@@ -195,29 +366,46 @@ def update_eval_url_from_filters(
     status: str | None,
     current_search: str,
 ):
-  """Update URL search params from UI filters."""
+  """Update URL search params from UI filters, resetting to page 1."""
   params = (
       urllib.parse.parse_qs(current_search.lstrip("?"))
       if current_search
       else {}
   )
+  cur_agent = params.get("agent_id", [None])[0] or None
+  cur_suite = params.get("suite_id", [None])[0] or None
+  cur_status = params.get("status", [None])[0] or None
+  next_agent = str(agent_id) if agent_id else None
+  next_suite = str(suite_id) if suite_id else None
+  next_status = str(status) if status else None
 
-  if agent_id:
-    params["agent_id"] = [agent_id]
+  # sync_eval_filters_to_url writes filter values whenever url.search changes
+  # (e.g. pagination or browser Back/Forward). Skip rewriting url.search when
+  # the parsed values already match, so page and sort params stay intact.
+  if (
+      cur_agent == next_agent
+      and cur_suite == next_suite
+      and cur_status == next_status
+  ):
+    return dash.no_update
+
+  if next_agent:
+    params["agent_id"] = [next_agent]
   else:
     params.pop("agent_id", None)
 
-  if suite_id:
-    params["suite_id"] = [suite_id]
+  if next_suite:
+    params["suite_id"] = [next_suite]
   else:
     params.pop("suite_id", None)
 
-  if status:
-    params["status"] = [status]
+  if next_status:
+    params["status"] = [next_status]
   else:
     params.pop("status", None)
 
-  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+  params.pop("page", None)
+  return _build_eval_search(params)
 
 
 @typed_callback(
@@ -237,13 +425,156 @@ def update_eval_url_from_archived_switch(
       if current_search
       else {}
   )
+  cur_archived = params.get("archived", ["false"])[0] == "true"
+  next_archived = bool(include_archived)
+  if cur_archived == next_archived:
+    return dash.no_update
 
-  if include_archived:
+  if next_archived:
     params["archived"] = ["true"]
   else:
     params.pop("archived", None)
 
-  return f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""
+  params.pop("page", None)
+  return _build_eval_search(params)
+
+
+@typed_callback(
+    dash.Output("url", "search", allow_duplicate=True),
+    inputs=[
+        dash.Input(
+            {"type": EvaluationIds.BTN_SORT_COLUMN, "index": dash.ALL},
+            CP.N_CLICKS,
+        ),
+    ],
+    state=[("url", CP.SEARCH)],
+    prevent_initial_call=True,
+)
+def update_eval_url_from_sort(n_clicks_all, current_search: str):
+  """Updates sort/dir query params on header click and resets to page 1."""
+  del n_clicks_all
+  ctx = dash.callback_context
+  if not any(t.get("value") for t in ctx.triggered):
+    return dash.no_update
+
+  t_id: Any = getattr(ctx, "triggered_id", None)
+  if not isinstance(t_id, dict):
+    return dash.no_update
+  clicked_col = t_id.get("index")
+  if clicked_col not in RUN_SORT_DEFAULT_DIR:
+    return dash.no_update
+
+  parsed = _parse_eval_search(current_search)
+  if parsed["sort_by"] == clicked_col:
+    next_dir = "asc" if parsed["sort_dir"] == "desc" else "desc"
+  else:
+    next_dir = RUN_SORT_DEFAULT_DIR[clicked_col]
+
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
+  )
+  params["sort"] = [clicked_col]
+  params["dir"] = [next_dir]
+  params.pop("page", None)
+  return _build_eval_search(params)
+
+
+@typed_callback(
+    dash.Output("url", "search", allow_duplicate=True),
+    inputs=[
+        dash.Input(
+            {"type": EvaluationIds.BTN_PAGE_NAV, "index": dash.ALL},
+            CP.N_CLICKS,
+        ),
+    ],
+    state=[("url", CP.SEARCH)],
+    prevent_initial_call=True,
+)
+def update_eval_url_from_page(n_clicks_all, current_search: str):
+  """Updates the ?page= query param when Previous or Next is clicked."""
+  del n_clicks_all
+  ctx = dash.callback_context
+  if not any(t.get("value") for t in ctx.triggered):
+    return dash.no_update
+
+  t_id: Any = getattr(ctx, "triggered_id", None)
+  if not isinstance(t_id, dict):
+    return dash.no_update
+  direction = t_id.get("index")
+  if direction not in ("prev", "next"):
+    return dash.no_update
+
+  parsed = _parse_eval_search(current_search)
+  client = get_client()
+  filter_kwargs: dict[str, Any] = {
+      "agent_id": parsed["agent_id"],
+      "original_suite_id": parsed["suite_id"],
+      "status": parsed["status"],
+      "include_archived": parsed["include_archived"],
+  }
+  if parsed["schedule_id"] is not None:
+    filter_kwargs["schedule_id"] = parsed["schedule_id"]
+  total_count = client.runs.count_runs(**filter_kwargs)
+  total_pages = max(1, math.ceil(total_count / parsed["page_size"]))
+  current_page = min(parsed["page"], total_pages)
+
+  if direction == "prev":
+    next_page = max(1, current_page - 1)
+  else:
+    next_page = min(total_pages, current_page + 1)
+
+  if next_page == current_page and parsed["page"] == current_page:
+    return dash.no_update
+
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
+  )
+  if next_page <= 1:
+    params.pop("page", None)
+  else:
+    params["page"] = [str(next_page)]
+  return _build_eval_search(params)
+
+
+@typed_callback(
+    dash.Output("url", "search", allow_duplicate=True),
+    inputs=[
+        dash.Input(
+            {"type": EvaluationIds.SELECT_PAGE_SIZE, "index": dash.ALL},
+            CP.VALUE,
+        ),
+    ],
+    state=[("url", CP.SEARCH)],
+    prevent_initial_call=True,
+)
+def update_eval_url_from_page_size(values_all, current_search: str):
+  """Updates the ?page_size= query param and resets to page 1."""
+  if not values_all:
+    return dash.no_update
+
+  next_size = _parse_optional_int(values_all[0])
+  if next_size not in _RUN_LIST_PAGE_SIZE_OPTIONS:
+    return dash.no_update
+
+  cur_size = _parse_eval_search(current_search)["page_size"]
+  if next_size == cur_size:
+    return dash.no_update
+
+  params = (
+      urllib.parse.parse_qs(current_search.lstrip("?"))
+      if current_search
+      else {}
+  )
+  if next_size == _RUN_LIST_PAGE_SIZE:
+    params.pop("page_size", None)
+  else:
+    params["page_size"] = [str(next_size)]
+  params.pop("page", None)
+  return _build_eval_search(params)
 
 
 @typed_callback(
@@ -493,34 +824,24 @@ def filter_challenger_runs(
 
 def render_assertion_performance(trials: list[Trial]) -> dmc.Paper | None:
   """Renders a horizontal bar chart of pass rates by assertion type."""
-  # Map assertion type to [passed_count, total_count]
+  # Key by raw assertion type so distinct unknown types never collapse into a
+  # single fallback bar.
   counts: dict[str, list[int]] = {}
-
-  name_map = {
-      "data-check-row": "Data Check Row",
-      "data-check-row-count": "Data Check Row Count",
-      "query-contains": "Query Contains",
-      "text-contains": "Text Contains",
-      "chart-check-type": "Chart Check Type",
-      "duration-max-ms": "Duration Max Ms",
-      "looker-query-match": "Looker Query Match",
-  }
 
   for t in trials:
     for ar in t.assertion_results:
       if ar.error_message:
         continue
       type_val = ar.assertion.type
-      type_name = name_map.get(type_val, type_val.replace("-", " ").title())
-
-      if type_name not in counts:
-        counts[type_name] = [0, 0]
-      counts[type_name][1] += 1
+      if type_val not in counts:
+        counts[type_val] = [0, 0]
+      counts[type_val][1] += 1
       if ar.passed:
-        counts[type_name][0] += 1
+        counts[type_val][0] += 1
 
   chart_data = []
-  for type_name, vals in counts.items():
+  for type_val, vals in counts.items():
+    type_name = assertion_components.get_assertion_label(type_val)
     pass_rate = (vals[0] / vals[1] * 100) if vals[1] > 0 else 0
     chart_data.append({
         "type": type_name,
@@ -1284,6 +1605,57 @@ def _trial_error(message: str) -> list[Any]:
   return [dash.no_update] * 4 + [dmc.Alert(message, color="red")]
 
 
+def _render_trial_suggestions_content(trial, sug_loading: bool = False):
+  """Builds the body of the Suggested Assertions panel for a trial."""
+  if trial.status == RunStatus.FAILED:
+    return html.Div()
+
+  if sug_loading:
+    return assertion_components.render_suggestion_skeleton()
+
+  suggestion_cards = []
+  if trial.suggested_asserts:
+    for i, sa in enumerate(trial.suggested_asserts):
+      try:
+        item = sa.model_dump()
+        sug_id = item.get("id")
+        if sug_id is None:
+          # The card writes this into its buttons' index, and
+          # curate_trial_suggestion hands that index to curate_suggestion as
+          # a row id. The suite page draws the same card with a list
+          # position, so falling back to one here meant accepting the third
+          # suggestion curated whichever row holds id 2.
+          logger.error(
+              "Suggestion %d of %d has no id and cannot be curated",
+              i,
+              len(trial.suggested_asserts),
+          )
+          continue
+        card = assertion_components.render_suggested_assertion_card(
+            item, sug_id, ids_class=EvaluationIds
+        )
+        suggestion_cards.append(card)
+      except Exception as e:  # pylint: disable=broad-exception-caught
+        # Position and exception class only. The value being rendered is a
+        # suggested assertion's model_dump, whose params hold text the model
+        # lifted out of the agent's answer over the customer's data, and a
+        # pydantic ValidationError formats input_value={...} into its
+        # message. This log goes wherever the server's stdout goes.
+        logger.error(
+            "Failed to render suggestion card %d of %d: %s",
+            i,
+            len(trial.suggested_asserts),
+            type(e).__name__,
+        )
+
+  if suggestion_cards:
+    return dmc.SimpleGrid(cols=2, spacing="lg", children=suggestion_cards)
+
+  return assertion_components.render_empty_suggestions(
+      {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
+  )
+
+
 @typed_callback(
     [
         (EvaluationIds.TRIAL_BREADCRUMBS_CONTAINER, CP.CHILDREN),
@@ -1295,14 +1667,12 @@ def _trial_error(message: str) -> list[Any]:
     inputs=[
         ("url", CP.PATHNAME),
         ("url", CP.SEARCH),
-        (EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL, CP.DATA),
     ],
     state=[(EvaluationIds.TRIAL_SUG_LOADING_STORE, CP.DATA)],
 )
 def render_trial_detail(
     pathname: str,
     search: str,
-    unused_update_signal: Any = None,
     sug_loading: bool = False,
 ):
   """Renders the Trial Detail page."""
@@ -1668,58 +2038,12 @@ def render_trial_detail(
         mb="md",
     )
 
-  accordion_style = {}
-  if trial.status == RunStatus.FAILED:
-    accordion_style = {"display": "none"}
-    suggestions_content_div = html.Div()
-  else:
-    suggestion_cards = []
-    if trial.suggested_asserts:
-      for i, sa in enumerate(trial.suggested_asserts):
-        try:
-          item = sa.model_dump()
-          sug_id = item.get("id")
-          if sug_id is None:
-            # The card writes this into its buttons' index, and
-            # curate_trial_suggestion hands that index to curate_suggestion as
-            # a row id. The suite page draws the same card with a list
-            # position, so falling back to one here meant accepting the third
-            # suggestion curated whichever row holds id 2.
-            logger.error(
-                "Suggestion %d of %d has no id and cannot be curated",
-                i,
-                len(trial.suggested_asserts),
-            )
-            continue
-          card = assertion_components.render_suggested_assertion_card(
-              item, sug_id, ids_class=EvaluationIds
-          )
-          suggestion_cards.append(card)
-        except Exception as e:  # pylint: disable=broad-exception-caught
-          # Position and exception class only. The value being rendered is a
-          # suggested assertion's model_dump, whose params hold text the model
-          # lifted out of the agent's answer over the customer's data, and a
-          # pydantic ValidationError formats input_value={...} into its
-          # message. This log goes wherever the server's stdout goes.
-          logger.error(
-              "Failed to render suggestion card %d of %d: %s",
-              i,
-              len(trial.suggested_asserts),
-              type(e).__name__,
-          )
-
-    if sug_loading:
-      suggestions_content_div = (
-          assertion_components.render_suggestion_skeleton()
-      )
-    elif suggestion_cards:
-      suggestions_content_div = dmc.SimpleGrid(
-          cols=2, spacing="lg", children=suggestion_cards
-      )
-    else:
-      suggestions_content_div = assertion_components.render_empty_suggestions(
-          {"type": EvaluationIds.SUGGEST_BTN_TYPE, "index": "empty"}
-      )
+  accordion_style = (
+      {"display": "none"} if trial.status == RunStatus.FAILED else {}
+  )
+  suggestions_content_div = _render_trial_suggestions_content(
+      trial, sug_loading=sug_loading
+  )
   suggestions_accordion = dmc.Accordion(
       id=EvaluationIds.TRIAL_SUG_ACCORDION,
       mb="lg",
@@ -1908,6 +2232,48 @@ def sync_assertion_filter_to_url(cat_val, type_val, stat_val, current_search):
   params["assertion_type"] = [new_type]
   params["assertion_status"] = [new_stat]
   return "?" + urllib.parse.urlencode(params, doseq=True)
+
+
+@typed_callback(
+    (EvaluationIds.TRIAL_SUGGESTIONS_CONTENT, CP.CHILDREN),
+    inputs=[(EvaluationIds.TRIAL_SUG_UPDATE_SIGNAL, CP.DATA)],
+    state=[
+        ("url", CP.PATHNAME),
+        (EvaluationIds.TRIAL_SUG_LOADING_STORE, CP.DATA),
+    ],
+    prevent_initial_call=True,
+)
+def render_trial_suggestions(
+    unused_update_signal: Any,
+    pathname: str,
+    sug_loading: bool = False,
+):
+  """Refreshes the Suggested Assertions panel in place."""
+  if not pathname or not pathname.startswith("/evaluations/trials/"):
+    return dash.no_update
+
+  try:
+    trial_id = id_from_pathname(pathname)
+  except (ValueError, IndexError):
+    return dash.no_update
+
+  if sug_loading:
+    return assertion_components.render_suggestion_skeleton()
+
+  try:
+    trial = get_client().runs.get_trial(trial_id)
+  except Exception as e:  # pylint: disable=broad-exception-caught
+    logger.error("Failed to load suggestions for trial %s: %s", trial_id, e)
+    return dmc.Alert(
+        "Could not load suggested assertions. The details are in the server"
+        " log.",
+        color="red",
+    )
+
+  if not trial:
+    return html.Div()
+
+  return _render_trial_suggestions_content(trial, sug_loading=False)
 
 
 @typed_callback(
@@ -2124,8 +2490,8 @@ def poll_suggestion_results(
   except Exception as e:  # pylint: disable=broad-exception-caught
     logger.error("Polling failed for trial %s: %s", trial_id, e)
     # Stop polling on error to avoid infinite loop of crashes. The signal
-    # still goes out. It is the only Input render_trial_detail has here, and
-    # the loading store it reads alongside is State, so leaving the signal
+    # still goes out. It is the only Input render_trial_suggestions has here,
+    # and the loading store it reads alongside is State, so leaving the signal
     # alone cleared the flag without re-rendering and the skeleton stayed on
     # screen with the interval now disabled.
     return time.time(), [False] * len(btn_ids), False, True

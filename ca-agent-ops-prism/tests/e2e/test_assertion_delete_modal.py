@@ -14,7 +14,7 @@
 
 """Deleting an assertion hands off between two modals.
 
-The Delete button lives in the Manage Assertion modal's header. Clicking it
+The Delete button lives in the assertion modal's header. Clicking it
 runs ``open_delete_modal``, which opens the Confirm Deletion modal and closes
 the assertion modal in the same response. Confirming then runs
 ``confirm_delete_item``, which has to pick the assertion branch over the test
@@ -63,7 +63,7 @@ def test_deleting_an_assertion_from_its_editor_removes_it(
 
   # By role, not by id: dmc.Modal puts the id on a zero-box root wrapper that
   # is never "visible" even with the dialog open.
-  assertion_modal = page.get_by_role("dialog", name="Manage Assertion")
+  assertion_modal = page.get_by_role("dialog", name="Edit Assertion")
   confirm_modal = page.get_by_role("dialog", name="Confirm Deletion")
   expect(assertion_modal).to_be_visible()
 

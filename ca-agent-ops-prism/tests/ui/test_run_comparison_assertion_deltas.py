@@ -29,6 +29,7 @@ only thing left that says which live check a result came from.
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any, Iterator
 
 from prism.common.schemas.assertion import DataCheckRowCount
@@ -44,6 +45,7 @@ from prism.server.models.snapshot import TestSuiteSnapshot
 from prism.server.repositories.example_repository import ExampleRepository
 from prism.server.repositories.suite_repository import SuiteRepository
 from prism.server.services.snapshot_service import SnapshotService
+from prism.ui.callbacks import run_comparison_callbacks
 from prism.ui.ids import ComparisonIds
 from sqlalchemy import orm
 from tests.ui import dash_http
@@ -272,3 +274,59 @@ def test_an_assertion_the_baseline_never_ran_stays_out_of_the_average(
 
   callback_errors.assert_none()
   assert _panel(body) == {"Text Contains": "+50.0%"}
+
+
+def test_zero_and_rounding_to_zero_deltas_render_gray_not_green(
+    dash_client, callback_errors, db_session
+):
+  """Zero and sub-0.05% deltas must render gray across text, bar, and card."""
+  agent = _seed_agent(db_session)
+  example = _seed_example(db_session, "Zero Delta Suite")
+  a1 = _add_assertion(
+      db_session, example, TextContains(type="text-contains", value="orders")
+  )
+  a2 = _add_assertion(
+      db_session,
+      example,
+      DataCheckRowCount(type="data-check-row-count", value=3),
+  )
+
+  suite_id = example.test_suite_id
+  base = _seed_run(
+      db_session,
+      agent,
+      _snapshot(db_session, suite_id),
+      {a1.id: 1.0, a2.id: 0.5},
+  )
+  challenger = _seed_run(
+      db_session,
+      agent,
+      _snapshot(db_session, suite_id),
+      {a1.id: 1.0, a2.id: 0.5},
+      created_at=_T0 + datetime.timedelta(hours=1),
+  )
+
+  body = _compare_page(dash_client, base, challenger)
+  callback_errors.assert_none()
+
+  stacks = [
+      stack
+      for stack in _walk(body[ComparisonIds.ASSERTION_DELTA_CHART]["children"])
+      if stack["type"] == "Stack"
+  ]
+  assert len(stacks) == 2
+  for stack in stacks:
+    texts = [c for c in _walk(stack) if c["type"] == "Text"]
+    assert texts[1]["props"]["children"] == "+0.0%"
+    assert texts[1]["props"]["c"] == "gray"
+    # The bar inside the track also gets gray-6 instead of green-6.
+    assert "var(--mantine-color-gray-6)" in json.dumps(stack)
+
+  # Helper boundary checks: float noise, sub-0.05% +/-, and 0.06%.
+  fmt = run_comparison_callbacks._format_accuracy_delta  # pylint: disable=protected-access
+  assert fmt(0.0) == ("+0.0%", "gray", 0)
+  assert fmt(0.1 + 0.2 - 0.3) == ("+0.0%", "gray", 0)
+  assert fmt(0.0004) == ("+0.0%", "gray", 0)
+  assert fmt(-0.0004) == ("+0.0%", "gray", 0)
+  assert fmt(0.0006) == ("+0.1%", "green", 1)
+  assert fmt(-0.0006) == ("-0.1%", "red", -1)

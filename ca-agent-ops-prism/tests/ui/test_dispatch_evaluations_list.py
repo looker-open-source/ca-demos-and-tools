@@ -31,6 +31,7 @@ import json
 import re
 from typing import Any
 from unittest import mock
+import urllib.parse
 from prism.common.schemas.agent import AgentConfig
 from prism.common.schemas.execution import RunSchema
 from prism.common.schemas.execution import RunStatus
@@ -478,6 +479,7 @@ def test_the_accuracy_cell_reads_by_status_and_bands_the_bar(
   """
   client = mock.Mock()
   client.runs.list_runs.return_value = _ACCURACY_ROWS
+  client.runs.count_runs.return_value = len(_ACCURACY_ROWS)
   monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
 
   rows = _list_runs(dash_client, "")
@@ -546,6 +548,7 @@ def test_the_duration_cell_says_what_a_run_with_no_duration_is_doing(
   """
   client = mock.Mock()
   client.runs.list_runs.return_value = _DURATION_ROWS
+  client.runs.count_runs.return_value = len(_DURATION_ROWS)
   monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
 
   rows = _list_runs(dash_client, "")
@@ -560,44 +563,367 @@ def test_the_duration_cell_says_what_a_run_with_no_duration_is_doing(
   }
 
 
-def test_the_list_admits_it_stopped_at_fifty(
+def _find_by_id(node: Any, target_id: Any) -> dict[str, Any] | None:
+  """Returns the first serialized component whose ``props.id`` matches."""
+  stack = [node]
+  while stack:
+    cur = stack.pop()
+    if isinstance(cur, list):
+      stack.extend(cur)
+    elif isinstance(cur, dict):
+      props = cur.get("props")
+      if isinstance(props, dict) and props.get("id") == target_id:
+        return cur
+      stack.extend(cur.values())
+  return None
+
+
+def test_pagination_shows_page_size_25_and_handles_boundaries(
     dash_client, callback_errors, monkeypatch
 ):
-  """Past the cap the page has to say the list is cut, or the rest vanish.
+  """Server-side pagination uses page size 25, counts, and disables edges."""
+  deps = dash_http.dependencies(dash_client)
+  list_dep = dash_http.find(
+      deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children"
+  )
 
-  ``render_run_list`` asks for one row more than it draws and uses the extra
-  only to decide whether to say so. Without the notice the 51st run reads as a
-  run that does not exist, and the filters are the only way to reach it.
-  """
   client = mock.Mock()
+  monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
+
+  for total, expected_pages in ((25, 1), (26, 2), (50, 2), (51, 3)):
+    client.runs.count_runs.return_value = total
+    client.runs.list_runs.return_value = [
+        _run_schema(i, RunStatus.COMPLETED, 1.0)
+        for i in range(1, min(25, total) + 1)
+    ]
+    body = dash_http.body(
+        dash_http.fire_url(dash_client, list_dep, "/evaluations", "")
+    )["response"]
+    callback_errors.assert_none()
+    assert client.runs.list_runs.call_args.kwargs["limit"] == 25
+    assert client.runs.list_runs.call_args.kwargs["offset"] == 0
+    container = body[EvaluationIds.RUN_LIST_CONTAINER]["children"]
+    summary = _find_by_id(container, EvaluationIds.PAGINATION_SUMMARY)
+    indicator = _find_by_id(container, EvaluationIds.PAGINATION_INDICATOR)
+    prev_btn = _find_by_id(
+        container, {"type": EvaluationIds.BTN_PAGE_NAV, "index": "prev"}
+    )
+    next_btn = _find_by_id(
+        container, {"type": EvaluationIds.BTN_PAGE_NAV, "index": "next"}
+    )
+    assert summary["props"]["children"] == f"Showing 1–25 of {total} runs"
+    assert indicator["props"]["children"] == f"Page 1 of {expected_pages}"
+    assert prev_btn["props"]["disabled"] is True
+    assert next_btn["props"]["disabled"] is (expected_pages == 1)
+
+  # Page 2 of 51 requests offset=25 and enables both buttons.
+  client.runs.count_runs.return_value = 51
   client.runs.list_runs.return_value = [
-      _run_schema(i, RunStatus.COMPLETED, 1.0) for i in range(1, 52)
+      _run_schema(i, RunStatus.COMPLETED, 1.0) for i in range(26, 51)
+  ]
+  page2 = dash_http.body(
+      dash_http.fire_url(dash_client, list_dep, "/evaluations", "?page=2")
+  )["response"][EvaluationIds.RUN_LIST_CONTAINER]["children"]
+  assert client.runs.list_runs.call_args.kwargs["offset"] == 25
+  assert (
+      _find_by_id(page2, EvaluationIds.PAGINATION_SUMMARY)["props"]["children"]
+      == "Showing 26–50 of 51 runs"
+  )
+  assert (
+      _find_by_id(page2, EvaluationIds.PAGINATION_INDICATOR)["props"][
+          "children"
+      ]
+      == "Page 2 of 3"
+  )
+  assert (
+      _find_by_id(page2, {"type": EvaluationIds.BTN_PAGE_NAV, "index": "prev"})[
+          "props"
+      ]["disabled"]
+      is False
+  )
+  assert (
+      _find_by_id(page2, {"type": EvaluationIds.BTN_PAGE_NAV, "index": "next"})[
+          "props"
+      ]["disabled"]
+      is False
+  )
+
+
+def test_out_of_range_page_clamps_and_previous_steps_from_clamped_page(
+    dash_client, callback_errors, monkeypatch
+):
+  """?page=99 with 3 pages renders Page 3 of 3, and Previous goes to page 2."""
+  deps = dash_http.dependencies(dash_client)
+  list_dep = dash_http.find(
+      deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children"
+  )
+  page_dep = next(
+      d
+      for d in deps
+      if any(
+          EvaluationIds.BTN_PAGE_NAV in dash_http.address(i)
+          for i in d["inputs"]
+      )
+  )
+  pattern = page_dep["inputs"][0]
+
+  client = mock.Mock()
+  client.runs.count_runs.return_value = 51
+  client.runs.list_runs.return_value = [
+      _run_schema(51, RunStatus.COMPLETED, 1.0)
   ]
   monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
 
-  rows = _list_runs(dash_client, "")
+  container = dash_http.body(
+      dash_http.fire_url(dash_client, list_dep, "/evaluations", "?page=99")
+  )["response"][EvaluationIds.RUN_LIST_CONTAINER]["children"]
+  callback_errors.assert_none()
+  assert client.runs.list_runs.call_args.kwargs["offset"] == 50
+  assert (
+      _find_by_id(container, EvaluationIds.PAGINATION_INDICATOR)["props"][
+          "children"
+      ]
+      == "Page 3 of 3"
+  )
+  assert (
+      _find_by_id(
+          container, {"type": EvaluationIds.BTN_PAGE_NAV, "index": "next"}
+      )["props"]["disabled"]
+      is True
+  )
+
+  # Clicking Previous from ?page=99 lands on page 2, not 98.
+  resp = dash_http.fire(
+      dash_client,
+      page_dep,
+      {
+          dash_http.address(pattern): [("prev", 1), ("next", None)],
+          "url.search": "?page=99&sort=agent&dir=asc",
+      },
+      changed=[dash_http.pattern_address(pattern, "prev")],
+  )
+  assert resp.status_code == 200
+  search = dash_http.body(resp)["response"]["url"]["search"]
+  assert "page=2" in search
+  assert "sort=agent" in search
+  assert "dir=asc" in search
+
+  # Remounting the pattern-matched buttons (n_clicks=None) must be a no-op.
+  noop = dash_http.fire(
+      dash_client,
+      page_dep,
+      {
+          dash_http.address(pattern): [("prev", None), ("next", None)],
+          "url.search": "?page=2",
+      },
+      changed=[dash_http.pattern_address(pattern, "prev")],
+  )
+  assert dash_http.body(noop)["response"] == {}
+
+
+def test_empty_state_with_zero_runs_omits_pagination_footer(
+    dash_client, callback_errors, monkeypatch
+):
+  """Zero runs shows 'No evaluations found.' without a Page 1 of 1 footer."""
+  deps = dash_http.dependencies(dash_client)
+  list_dep = dash_http.find(
+      deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children"
+  )
+
+  client = mock.Mock()
+  client.runs.count_runs.return_value = 0
+  client.runs.list_runs.return_value = []
+  monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
+
+  body = dash_http.body(
+      dash_http.fire_url(dash_client, list_dep, "/evaluations", "")
+  )["response"]
+  callback_errors.assert_none()
+  rendered = json.dumps(body[EvaluationIds.RUN_LIST_CONTAINER]["children"])
+  assert "No evaluations found." in rendered
+  assert EvaluationIds.PAGINATION_INDICATOR not in rendered
+
+
+def test_column_sort_buttons_update_url_toggle_and_reset_page(
+    dash_client, callback_errors, monkeypatch
+):
+  """Sorting writes sort+dir, resets page, toggles dir, and guards mount."""
+  deps = dash_http.dependencies(dash_client)
+  list_dep = dash_http.find(
+      deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children"
+  )
+  sort_dep = next(
+      d
+      for d in deps
+      if any(
+          EvaluationIds.BTN_SORT_COLUMN in dash_http.address(i)
+          for i in d["inputs"]
+      )
+  )
+  pattern = sort_dep["inputs"][0]
+
+  # Mount guard: n_clicks=None returns no_update (empty response).
+  mount = dash_http.fire(
+      dash_client,
+      sort_dep,
+      {
+          dash_http.address(pattern): [("agent", None), ("id", None)],
+          "url.search": "?page=2",
+      },
+      changed=[dash_http.pattern_address(pattern, "agent")],
+  )
+  assert dash_http.body(mount)["response"] == {}
+
+  # Inactive column click (agent) -> asc and resets ?page=2.
+  first = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          sort_dep,
+          {
+              dash_http.address(pattern): [("agent", 1), ("id", None)],
+              "url.search": "?page=2&archived=true",
+          },
+          changed=[dash_http.pattern_address(pattern, "agent")],
+      )
+  )["response"]["url"]["search"]
+  assert "sort=agent" in first
+  assert "dir=asc" in first
+  assert "archived=true" in first
+  assert "page=" not in first
+
+  # Active column click toggles asc -> desc.
+  second = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          sort_dep,
+          {
+              dash_http.address(pattern): [("agent", 1), ("id", None)],
+              "url.search": first,
+          },
+          changed=[dash_http.pattern_address(pattern, "agent")],
+      )
+  )["response"]["url"]["search"]
+  assert "sort=agent" in second
+  assert "dir=desc" in second
+
+  # Table renders aria-sort and offline text indicator on the active header.
+  client = mock.Mock()
+  client.runs.count_runs.return_value = 1
+  client.runs.list_runs.return_value = [
+      _run_schema(1, RunStatus.COMPLETED, 0.9)
+  ]
+  monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
+
+  rendered = dash_http.body(
+      dash_http.fire_url(dash_client, list_dep, "/evaluations", second)
+  )["response"][EvaluationIds.RUN_LIST_CONTAINER]["children"]
+  callback_errors.assert_none()
+  assert client.runs.list_runs.call_args.kwargs["sort_by"] == "agent"
+  assert client.runs.list_runs.call_args.kwargs["sort_dir"] == "desc"
+  ths = _components(rendered, "Th")
+  agent_th = next(th for th in ths if "AGENT" in json.dumps(th))
+  assert agent_th["props"]["aria-sort"] == "descending"
+  assert "▼" in json.dumps(agent_th, ensure_ascii=False)
+  assert "DashIconify" not in json.dumps(ths)
+  status_th = next(th for th in ths if "STATUS" in json.dumps(th))
+  assert status_th["props"]["aria-sort"] == "none"
+  assert "⇅" not in json.dumps(ths, ensure_ascii=False)
+
+
+def test_filter_and_archived_changes_reset_page_and_keep_back_forward(
+    dash_client, callback_errors, seeded
+):
+  """Filter/archived changes reset page; sync re-fires return no_update."""
+  deps = dash_http.dependencies(dash_client)
+  filters = _by_input(deps, f"{EvaluationIds.FILTER_AGENT}.value")
+  switch = _by_input(deps, f"{EvaluationIds.SWITCH_ARCHIVED}.checked")
+
+  # Changing agent filter pops page=3 while keeping sort.
+  changed_agent = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          filters,
+          {
+              f"{EvaluationIds.FILTER_AGENT}.value": str(seeded.agent_id),
+              "url.search": "?page=3&sort=agent&dir=asc",
+          },
+          changed=[f"{EvaluationIds.FILTER_AGENT}.value"],
+      )
+  )["response"]["url"]["search"]
+  assert f"agent_id={seeded.agent_id}" in changed_agent
+  assert "sort=agent" in changed_agent
+  assert "page=" not in changed_agent
+
+  # Turning archived on pops page=2.
+  changed_arch = dash_http.body(
+      dash_http.fire(
+          dash_client,
+          switch,
+          {
+              f"{EvaluationIds.SWITCH_ARCHIVED}.checked": True,
+              "url.search": "?page=2&sort=id&dir=asc",
+          },
+          changed=[f"{EvaluationIds.SWITCH_ARCHIVED}.checked"],
+      )
+  )["response"]["url"]["search"]
+  assert "archived=true" in changed_arch
+  assert "sort=id" in changed_arch
+  assert "page=" not in changed_arch
+
+  # Re-firing with parsed values that already match current_search (regardless
+  # of param order) must return no_update so Back/Forward preserves page & sort.
+  for search in (
+      f"?page=3&agent_id={seeded.agent_id}",
+      f"?agent_id={seeded.agent_id}&page=3",
+  ):
+    noop_filter = dash_http.fire(
+        dash_client,
+        filters,
+        {
+            f"{EvaluationIds.FILTER_AGENT}.value": str(seeded.agent_id),
+            "url.search": search,
+        },
+        changed=[f"{EvaluationIds.FILTER_AGENT}.value"],
+    )
+    assert dash_http.body(noop_filter)["response"] == {}
+
+  noop_switch = dash_http.fire(
+      dash_client,
+      switch,
+      {
+          f"{EvaluationIds.SWITCH_ARCHIVED}.checked": True,
+          "url.search": "?page=3&archived=true",
+      },
+      changed=[f"{EvaluationIds.SWITCH_ARCHIVED}.checked"],
+  )
+  assert dash_http.body(noop_switch)["response"] == {}
   callback_errors.assert_none()
 
-  assert client.runs.list_runs.call_args.kwargs["limit"] == 51
-  assert len(rows) == 50
-  assert 51 not in rows
 
-  deps = dash_http.dependencies(dash_client)
-  dep = dash_http.find(deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children")
-  rendered = json.dumps(
-      dash_http.body(dash_http.fire_url(dash_client, dep, "/evaluations", ""))
-  )
-  assert "Showing the 50 most recent runs" in rendered
+def test_pagination_union_across_all_pages_under_tie_heavy_sort(
+    dash_client, callback_errors, db_session, seeded
+):
+  """All runs with identical status appear exactly once across pages 1 and 2."""
+  del seeded
+  agent = db_session.query(Run).first().agent
+  snapshot = db_session.query(Run).first().snapshot_suite
+  run_repo = RunRepository(db_session)
+  expected_ids = {db_session.query(Run).first().id}
+  db_session.query(Run).first().status = RunStatus.COMPLETED
+  for _ in range(29):
+    r = run_repo.create(snapshot.id, agent.id)
+    r.status = RunStatus.COMPLETED
+    expected_ids.add(r.id)
+  db_session.commit()
 
-  # One row short of the cap is the whole list, and saying otherwise there
-  # would send people filtering for runs that are already on screen.
-  client.runs.list_runs.return_value = [
-      _run_schema(i, RunStatus.COMPLETED, 1.0) for i in range(1, 51)
-  ]
-  exact = json.dumps(
-      dash_http.body(dash_http.fire_url(dash_client, dep, "/evaluations", ""))
-  )
-  assert "Showing the 50 most recent runs" not in exact
+  p1 = _list_runs(dash_client, "?sort=status&dir=asc")
+  p2 = _list_runs(dash_client, "?sort=status&dir=asc&page=2")
+  callback_errors.assert_none()
+
+  assert len(p1) == 25
+  assert len(p2) == 5
+  assert set(p1).isdisjoint(set(p2))
+  assert set(p1) | set(p2) == expected_ids
 
 
 def test_the_status_filter_offers_every_status_a_run_can_reach(
@@ -792,3 +1118,164 @@ def test_swap_and_compare_send_the_two_runs_in_the_order_on_screen(
       f"&challenger_run_id={seeded.run_id}"
   )
   assert body[EvaluationIds.MODAL_COMPARE_RUNS]["opened"] is False
+
+
+def test_malformed_and_unicode_digit_query_params_fall_back_safely(
+    dash_client, callback_errors, seeded
+):
+  """Unicode digits like U+00B2 and negative/bogus params do not crash."""
+  for bad_search in (
+      "?page=\u00b2&agent_id=\u00b2&suite_id=\u00b2&schedule_id=\u00b2",
+      "?page=-3&sort=bogus&dir=sideways&status=NOT_A_STATUS&page_size=999",
+      (
+          "?page=99999999999999&agent_id=99999999999999"
+          "&suite_id=99999999999999&schedule_id=99999999999999"
+          "&page_size=\u00b2"
+      ),
+  ):
+    rows = _list_runs(dash_client, bad_search)
+    callback_errors.assert_none(f"on {bad_search}")
+    assert seeded.run_id in rows
+
+
+def test_page_size_query_param_and_selector_update_url(
+    dash_client, callback_errors, monkeypatch
+):
+  """?page_size= controls limit/offset/total_pages and selector rewrites URL."""
+  deps = dash_http.dependencies(dash_client)
+  list_dep = dash_http.find(
+      deps, f"{EvaluationIds.RUN_LIST_CONTAINER}.children"
+  )
+  page_dep = next(
+      d
+      for d in deps
+      if any(
+          EvaluationIds.BTN_PAGE_NAV in dash_http.address(i)
+          for i in d["inputs"]
+      )
+  )
+  page_pattern = page_dep["inputs"][0]
+  size_dep = next(
+      d
+      for d in deps
+      if any(
+          EvaluationIds.SELECT_PAGE_SIZE in dash_http.address(i)
+          for i in d["inputs"]
+      )
+  )
+  size_pattern = size_dep["inputs"][0]
+
+  client = mock.Mock()
+  client.runs.count_runs.return_value = 30
+  client.runs.list_runs.return_value = [
+      _run_schema(i, RunStatus.COMPLETED, 1.0) for i in range(1, 11)
+  ]
+  monkeypatch.setattr(evaluation_callbacks, "get_client", lambda: client)
+
+  # ?page_size=10&page=2 queries limit=10, offset=10 and renders Page 2 of 3.
+  container = dash_http.body(
+      dash_http.fire_url(
+          dash_client, list_dep, "/evaluations", "?page_size=10&page=2"
+      )
+  )["response"][EvaluationIds.RUN_LIST_CONTAINER]["children"]
+  callback_errors.assert_none()
+  assert client.runs.list_runs.call_args.kwargs["limit"] == 10
+  assert client.runs.list_runs.call_args.kwargs["offset"] == 10
+  assert (
+      _find_by_id(container, EvaluationIds.PAGINATION_SUMMARY)["props"][
+          "children"
+      ]
+      == "Showing 11–20 of 30 runs"
+  )
+  assert (
+      _find_by_id(container, EvaluationIds.PAGINATION_INDICATOR)["props"][
+          "children"
+      ]
+      == "Page 2 of 3"
+  )
+  assert (
+      _find_by_id(
+          container,
+          {"type": EvaluationIds.SELECT_PAGE_SIZE, "index": "footer"},
+      )["props"]["value"]
+      == "10"
+  )
+
+  # Next from ?page_size=10&page=2 advances to page=3 (uses page_size=10, not 25).
+  nav_resp = dash_http.fire(
+      dash_client,
+      page_dep,
+      {
+          dash_http.address(page_pattern): [("prev", None), ("next", 1)],
+          "url.search": "?page_size=10&page=2",
+      },
+      changed=[
+          json.dumps(
+              {"index": "next", "type": EvaluationIds.BTN_PAGE_NAV},
+              separators=(",", ":"),
+          )
+          + ".n_clicks"
+      ],
+  )
+  callback_errors.assert_none()
+  nav_qs = urllib.parse.parse_qs(
+      dash_http.body(nav_resp)["response"]["url"]["search"].lstrip("?")
+  )
+  assert nav_qs == {"page_size": ["10"], "page": ["3"]}
+
+  # Changing selector to 10 preserves filters/sort and resets page.
+  changed_key = (
+      json.dumps(
+          {"index": "footer", "type": EvaluationIds.SELECT_PAGE_SIZE},
+          separators=(",", ":"),
+      )
+      + ".value"
+  )
+  resp = dash_http.fire(
+      dash_client,
+      size_dep,
+      {
+          dash_http.address(size_pattern): [("footer", "10")],
+          "url.search": "?agent_id=7&sort=agent&dir=asc&page=2",
+      },
+      changed=[changed_key],
+  )
+  callback_errors.assert_none()
+  qs = urllib.parse.parse_qs(
+      dash_http.body(resp)["response"]["url"]["search"].lstrip("?")
+  )
+  assert qs == {
+      "agent_id": ["7"],
+      "sort": ["agent"],
+      "dir": ["asc"],
+      "page_size": ["10"],
+  }
+
+  # Changing selector back to default 25 omits page_size and resets page.
+  resp_default = dash_http.fire(
+      dash_client,
+      size_dep,
+      {
+          dash_http.address(size_pattern): [("footer", "25")],
+          "url.search": "?page_size=10&page=2&sort=agent&dir=asc",
+      },
+      changed=[changed_key],
+  )
+  callback_errors.assert_none()
+  qs_default = urllib.parse.parse_qs(
+      dash_http.body(resp_default)["response"]["url"]["search"].lstrip("?")
+  )
+  assert qs_default == {"sort": ["agent"], "dir": ["asc"]}
+
+  # No-op when value already matches current URL page_size.
+  resp_noop = dash_http.fire(
+      dash_client,
+      size_dep,
+      {
+          dash_http.address(size_pattern): [("footer", "10")],
+          "url.search": "?page_size=10&page=2",
+      },
+      changed=[changed_key],
+  )
+  callback_errors.assert_none()
+  assert dash_http.body(resp_noop)["response"] == {}

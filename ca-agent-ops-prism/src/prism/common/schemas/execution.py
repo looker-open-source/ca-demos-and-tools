@@ -54,6 +54,29 @@ class RunStatus(str, enum.Enum):
   PAUSED = "PAUSED"
 
 
+RUN_STATUS_LABELS: dict[RunStatus, str] = {
+    RunStatus.PENDING: "Pending",
+    RunStatus.RUNNING: "In Progress",
+    RunStatus.EXECUTING: "Executing",
+    RunStatus.EVALUATING: "Evaluating",
+    RunStatus.COMPLETED: "Completed",
+    RunStatus.FAILED: "Failed",
+    RunStatus.CANCELLED: "Cancelled",
+    RunStatus.PAUSED: "Paused",
+}
+
+# Default sort direction when a column header is first clicked on /evaluations.
+RUN_SORT_DEFAULT_DIR: dict[str, str] = {
+    "id": "asc",
+    "agent": "asc",
+    "suite": "asc",
+    "status": "asc",
+    "accuracy": "desc",
+    "duration": "desc",
+    "started": "desc",
+}
+
+
 class RunSchema(pydantic.BaseModel):
   """Schema for a Test Run."""
 

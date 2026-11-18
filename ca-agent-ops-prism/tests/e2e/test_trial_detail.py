@@ -36,7 +36,11 @@ from tests.e2e import traces
 pytestmark = pytest.mark.e2e
 
 
-def _completed_trial(seed, passed: bool = True):
+def _completed_trial(
+    seed,
+    passed: bool = True,
+    trace: list[dict[str, object]] | None = None,
+):
   """A finished trial with one assertion, passing or failing per ``passed``."""
   agent = seed.agent()
   suite = seed.suite()
@@ -48,7 +52,7 @@ def _completed_trial(seed, passed: bool = True):
   snapshot = seed.snapshot(suite)
   run = seed.run(agent, snapshot, status=RunStatus.COMPLETED)
   trial = run.trials[0]
-  seed.finish_trial(trial, passed=passed)
+  seed.finish_trial(trial, trace=trace, passed=passed)
   return trial
 
 
@@ -176,3 +180,70 @@ def test_agent_trace_renders_matched_verified_query(
   container = page.locator(f"#{EvaluationIds.AGENT_TRACE_CONTAINER}")
   expect(container).to_contain_text("Matched Verified Query")
   expect(container).to_contain_text("SELECT COUNT(*) FROM verified_orders")
+
+
+def test_curating_suggestions_keeps_accordion_expanded(
+    page: Page, base_url: str, seed
+):
+  """Accepting or rejecting a suggestion leaves the accordion open."""
+  trial = _completed_trial(seed)
+  seed.suggest_assertion(trial, params={"value": "keep-open-first"})
+  seed.suggest_assertion(trial, params={"value": "keep-open-second"})
+
+  page.goto(f"{base_url}/evaluations/trials/{trial.id}")
+  page.wait_for_load_state("networkidle")
+
+  accordion = page.locator(f"#{EvaluationIds.TRIAL_SUG_ACCORDION}")
+  control = accordion.get_by_role("button", name="Suggested Assertions")
+  control.click()
+
+  content = page.locator(f"#{EvaluationIds.TRIAL_SUGGESTIONS_CONTENT}")
+  expect(content.get_by_text("keep-open-first")).to_be_visible()
+  expect(content.get_by_text("keep-open-second")).to_be_visible()
+
+  content.get_by_role("button", name="Accept").first.click()
+  expect(content.get_by_text("keep-open-first")).to_be_hidden(timeout=15_000)
+  expect(content.get_by_text("keep-open-second")).to_be_visible()
+  expect(control).to_have_attribute("aria-expanded", "true")
+
+  content.get_by_role("button", name="Reject").first.click()
+  expect(content.get_by_text("No suggested assertions.")).to_be_visible(
+      timeout=15_000
+  )
+  expect(
+      content.get_by_role("button", name="Suggest Assertions")
+  ).to_be_visible()
+  expect(control).to_have_attribute("aria-expanded", "true")
+
+
+def test_generating_suggestions_keeps_accordion_expanded(
+    page: Page, base_url: str, seed
+):
+  """Generating suggestions leaves the accordion open until cards arrive."""
+  # Empty trace keeps the background generator from calling GenAI or racing
+  # with the seeded suggestion row below.
+  trial = _completed_trial(seed, trace=[])
+
+  page.goto(f"{base_url}/evaluations/trials/{trial.id}")
+  page.wait_for_load_state("networkidle")
+
+  accordion = page.locator(f"#{EvaluationIds.TRIAL_SUG_ACCORDION}")
+  control = accordion.get_by_role("button", name="Suggested Assertions")
+  control.click()
+
+  content = page.locator(f"#{EvaluationIds.TRIAL_SUGGESTIONS_CONTENT}")
+  generate_btn = content.get_by_role("button", name="Suggest Assertions")
+  expect(generate_btn).to_be_visible()
+
+  generate_btn.click()
+  # Skeletons replace the empty state inside the open panel while polling runs.
+  expect(generate_btn).to_be_hidden(timeout=15_000)
+  expect(content.locator(".mantine-Skeleton-root").first).to_be_visible(
+      timeout=15_000
+  )
+  expect(control).to_have_attribute("aria-expanded", "true")
+
+  # Simulate the background generator finishing so the 3s poll picks it up.
+  seed.suggest_assertion(trial, params={"value": "polled-suggestion"})
+  expect(content.get_by_text("polled-suggestion")).to_be_visible(timeout=15_000)
+  expect(control).to_have_attribute("aria-expanded", "true")

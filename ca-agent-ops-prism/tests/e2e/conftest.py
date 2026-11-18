@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import json
 import os
 import pathlib
 import shutil
@@ -44,6 +45,7 @@ import sys
 import time
 from typing import Any, Iterator
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import alembic.command
@@ -689,6 +691,47 @@ def browser_context_args(
       "viewport": {"width": 1440, "height": 1000},
       "accept_downloads": True,
   }
+
+
+_ICONIFY_ROUTE_PATTERNS = (
+    "**://api.iconify.design/**",
+    "**://api.simplesvg.com/**",
+    "**://api.unisvg.com/**",
+)
+
+
+def _fulfill_iconify(route) -> None:
+  """Fulfills Iconify JSON requests so icon-only links work offline."""
+  parsed = urllib.parse.urlparse(route.request.url)
+  params = urllib.parse.parse_qs(parsed.query)
+  icons_param = params.get("icons", [""])[0]
+  if parsed.path.endswith(".json") and icons_param:
+    prefix = parsed.path.rsplit("/", 1)[-1].removesuffix(".json")
+    icons = {
+        name: {"body": '<path fill="currentColor" d="M4 3l6 5-6 5z"/>'}
+        for name in icons_param.split(",")
+        if name
+    }
+    route.fulfill(
+        status=200,
+        content_type="application/json",
+        body=json.dumps({
+            "prefix": prefix,
+            "icons": icons,
+            "width": 16,
+            "height": 16,
+        }),
+    )
+    return
+  route.fulfill(status=200, content_type="application/json", body="{}")
+
+
+@pytest.fixture
+def context(context):
+  """Stubs external Iconify CDN requests so offline E2E runs never hang."""
+  for pattern in _ICONIFY_ROUTE_PATTERNS:
+    context.route(pattern, _fulfill_iconify)
+  return context
 
 
 def _is_noise(text: str) -> bool:

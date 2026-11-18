@@ -25,6 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from prism.common.schemas.assertion import AssertionType
+from prism.server.models.agent import Agent
 from prism.server.models.assertion import AssertionResult
 from prism.server.models.assertion import AssertionSnapshot
 from prism.server.models.run import Run
@@ -137,3 +138,187 @@ def test_a_scored_run_still_reports_its_accuracy(
   callback_errors.assert_none()
 
   assert "100.0%" in cell
+
+
+def test_archived_query_param_syncs_switch_and_guards_other_routes(
+    dash_client, callback_errors
+):
+  """`/agents?archived=true` checks the switch; other routes are untouched."""
+  deps = dash_http.dependencies(dash_client)
+  sync_dep = dash_http.find(
+      deps, f"{AgentIds.Home.SWITCH_ARCHIVED}.checked", triggered_by="url"
+  )
+
+  checked_resp = dash_http.fire_url(
+      dash_client, sync_dep, "/agents", "?archived=true"
+  )
+  assert checked_resp.status_code == 200
+  assert (
+      dash_http.body(checked_resp)["response"][AgentIds.Home.SWITCH_ARCHIVED][
+          "checked"
+      ]
+      is True
+  )
+
+  default_resp = dash_http.fire_url(dash_client, sync_dep, "/agents", "")
+  assert default_resp.status_code == 200
+  assert (
+      dash_http.body(default_resp)["response"][AgentIds.Home.SWITCH_ARCHIVED][
+          "checked"
+      ]
+      is False
+  )
+
+  other_resp = dash_http.fire_url(
+      dash_client, sync_dep, "/test_suites", "?archived=true"
+  )
+  assert other_resp.status_code == 200
+  assert dash_http.body(other_resp).get("response", {}) == {}
+
+  callback_errors.assert_none()
+
+
+def test_toggling_archived_switch_syncs_url_search_without_loops(
+    dash_client, callback_errors
+):
+  """Toggling Show Archived updates url.search, preserves params, and stops."""
+  deps = dash_http.dependencies(dash_client)
+  write_dep = dash_http.find(
+      deps, "url.search", triggered_by=AgentIds.Home.SWITCH_ARCHIVED
+  )
+
+  on_resp = dash_http.fire(
+      dash_client,
+      write_dep,
+      {
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": True,
+          "url.pathname": "/agents",
+          "url.search": "?foo=bar",
+      },
+  )
+  assert on_resp.status_code == 200
+  assert (
+      dash_http.body(on_resp)["response"]["url"]["search"]
+      == "?foo=bar&archived=true"
+  )
+
+  settled_on = dash_http.fire(
+      dash_client,
+      write_dep,
+      {
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": True,
+          "url.pathname": "/agents",
+          "url.search": "?foo=bar&archived=true",
+      },
+  )
+  assert settled_on.status_code == 200
+  assert dash_http.body(settled_on).get("response", {}) == {}
+
+  off_resp = dash_http.fire(
+      dash_client,
+      write_dep,
+      {
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": False,
+          "url.pathname": "/agents",
+          "url.search": "?foo=bar&archived=true",
+      },
+  )
+  assert off_resp.status_code == 200
+  assert dash_http.body(off_resp)["response"]["url"]["search"] == "?foo=bar"
+
+  settled_off = dash_http.fire(
+      dash_client,
+      write_dep,
+      {
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": False,
+          "url.pathname": "/agents",
+          "url.search": "",
+      },
+  )
+  assert settled_off.status_code == 200
+  assert dash_http.body(settled_off).get("response", {}) == {}
+
+  for no_op_search in ("?archived=false", "?foo=a%20b"):
+    no_op = dash_http.fire(
+        dash_client,
+        write_dep,
+        {
+            f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": False,
+            "url.pathname": "/agents",
+            "url.search": no_op_search,
+        },
+    )
+    assert no_op.status_code == 200
+    assert dash_http.body(no_op).get("response", {}) == {}
+
+  wrong_route = dash_http.fire(
+      dash_client,
+      write_dep,
+      {
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": True,
+          "url.pathname": "/test_suites",
+          "url.search": "",
+      },
+  )
+  assert wrong_route.status_code == 200
+  assert dash_http.body(wrong_route).get("response", {}) == {}
+
+  callback_errors.assert_none()
+
+
+def test_agent_list_respects_archived_flag_and_route_guard(
+    dash_client, callback_errors, db_session, seeded
+):
+  """Archived agents render only when include_archived is True on /agents."""
+  archived = Agent(
+      name="Archived Fleet Agent",
+      project_id="proj",
+      location="global",
+      agent_resource_id="archived-fleet-agent",
+      datasource_config={"type": "bigquery", "tables": ["proj.ds.tbl"]},
+      is_archived=True,
+  )
+  db_session.add(archived)
+  db_session.commit()
+
+  deps = dash_http.dependencies(dash_client)
+  dep = dash_http.find(deps, f"{AgentIds.Home.CARD_GRID}.children")
+
+  active_only = dash_http.fire(
+      dash_client,
+      dep,
+      {
+          "url.pathname": "/agents",
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": False,
+      },
+  )
+  assert active_only.status_code == 200
+  active_text = str(dash_http.body(active_only))
+  assert seeded.agent_name in active_text
+  assert "Archived Fleet Agent" not in active_text
+
+  with_archived = dash_http.fire(
+      dash_client,
+      dep,
+      {
+          "url.pathname": "/agents",
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": True,
+      },
+  )
+  assert with_archived.status_code == 200
+  all_text = str(dash_http.body(with_archived))
+  assert seeded.agent_name in all_text
+  assert "Archived Fleet Agent" in all_text
+
+  other_route = dash_http.fire(
+      dash_client,
+      dep,
+      {
+          "url.pathname": "/test_suites",
+          f"{AgentIds.Home.SWITCH_ARCHIVED}.checked": True,
+      },
+  )
+  assert other_route.status_code == 200
+  assert dash_http.body(other_route).get("response", {}) == {}
+
+  callback_errors.assert_none()
