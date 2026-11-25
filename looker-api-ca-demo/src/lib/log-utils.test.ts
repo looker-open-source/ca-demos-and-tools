@@ -28,25 +28,23 @@ vi.mock('fs', () => ({
 }));
 
 describe('log-utils', () => {
-  const OLD_ENV = process.env;
-
   beforeEach(() => {
-    process.env = { ...OLD_ENV };
+    vi.unstubAllEnvs();
     vi.clearAllMocks();
   });
 
   afterAll(() => {
-    process.env = OLD_ENV;
+    vi.unstubAllEnvs();
   });
 
   it('should not dump logs if not in development mode', () => {
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     dumpDevLog('conv123', 'test', { foo: 'bar' });
     expect(fs.appendFileSync).not.toHaveBeenCalled();
   });
 
   it('should dump logs in development mode using append', () => {
-    process.env.NODE_ENV = 'development';
+    vi.stubEnv('NODE_ENV', 'development');
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readdirSync).mockReturnValue([]);
     
@@ -59,7 +57,7 @@ describe('log-utils', () => {
   });
 
   it('should create log directory if it does not exist', () => {
-    process.env.NODE_ENV = 'development';
+    vi.stubEnv('NODE_ENV', 'development');
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fs.readdirSync).mockReturnValue([]);
 

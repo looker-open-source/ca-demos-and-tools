@@ -89,7 +89,13 @@ describe('useDevLogStore', () => {
 
   it('should clear all logs', () => {
     const { addLog, clearLogs } = useDevLogStore.getState();
-    addLog({ id: '1', path: '/api/test', status: 'pending' });
+    addLog({
+      id: '1',
+      path: '/api/test',
+      method: 'GET',
+      status: 'pending',
+      startTime: Date.now(),
+    });
     clearLogs();
     
     expect(useDevLogStore.getState().logs).toHaveLength(0);

@@ -1,4 +1,6 @@
-# Initial Concept\n\nA demo reference app to showcase new APIs for the Looker SDK integration with Google Conversational Analytics API (Gemini Data Analytics API) with backend server and frontend. Typescript Node and React for simplicity.
+# Initial Concept
+
+A demo reference app to showcase new APIs for the Looker SDK integration with Google Conversational Analytics API (Gemini Data Analytics API) with backend server and frontend. Typescript Node and React for simplicity.
 
 # Product Guide: Looker SDK & Gemini Data Analytics Demo
 

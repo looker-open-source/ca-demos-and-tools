@@ -15,17 +15,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from './route';
 import { getLookerConversationMessages } from '@/lib/looker-conversation';
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/looker-conversation');
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((data, init) => ({
-      json: async () => data,
-      status: init?.status || 200,
-    })),
-  },
-}));
 
 describe('Conversation Messages API Route', () => {
   const conversationId = 'conv-123';
@@ -42,10 +34,11 @@ describe('Conversation Messages API Route', () => {
     const mockMessages = [{ type: 'user', message: { userMessage: { text: 'hello' } } }];
     (getLookerConversationMessages as any).mockResolvedValue(mockMessages);
 
-    const response = await GET({} as Request, mockParams);
+    const req = new NextRequest(`http://localhost/api/conversations/${conversationId}/messages`);
+    const response = await GET(req, mockParams);
     const data = await response.json();
 
     expect(data).toEqual(mockMessages);
-    expect(getLookerConversationMessages).toHaveBeenCalledWith(conversationId);
+    expect(getLookerConversationMessages).toHaveBeenCalledWith(conversationId, undefined);
   });
 });

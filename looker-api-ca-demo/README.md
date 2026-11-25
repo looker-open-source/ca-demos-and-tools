@@ -61,7 +61,8 @@ src/
 ├── lib/              # Core Logic (Looker SDK interaction, Utilities)
 ├── store/            # State Management (Zustand)
 └── test/             # Global Test Configuration
-conductor/            # Spec-driven development framework artifacts
+docs/                 # Living project context (docs/context/) & feature specs (docs/specs/)
+.agents/              # Antigravity rules & workflows (.agents/rules/, .agents/skills/)
 ```
 
 ---
@@ -106,11 +107,13 @@ The application supports two modes of authentication, managed via a global singl
 If you want to use User OAuth mode, you must register the application in your Looker instance.
 
 **Option 1: Using the provided script**
+
 ```bash
 ./scripts/register-oauth.sh https://your-instance.looker.com YOUR_ADMIN_API_TOKEN
 ```
 
 **Option 2: Using the Looker API Explorer**
+
 1. Navigate to your Looker instance's API Explorer.
 2. Use the `register_oauth_client_app` method (API 4.0).
 3. Set `client_guid` to `ca-looker-sdk-demo`.

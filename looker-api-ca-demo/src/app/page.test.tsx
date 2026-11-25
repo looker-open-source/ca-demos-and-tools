@@ -62,6 +62,12 @@ describe('Home Page', () => {
       logout: vi.fn(),
       checkAuth: vi.fn(),
       isInitialized: true,
+      authConfig: {
+        authMode: 'env',
+        baseUrl: '',
+        lookerUrl: '',
+        oauthClientId: '',
+      },
     });
     (useRouter as any).mockReturnValue({
       push: vi.fn(),

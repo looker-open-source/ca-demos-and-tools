@@ -15,17 +15,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from './route';
 import { searchLookerConversations } from '@/lib/looker-conversation';
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/looker-conversation');
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((data, init) => ({
-      json: async () => data,
-      status: init?.status || 200,
-    })),
-  },
-}));
 
 describe('Conversations Search API Route', () => {
   beforeEach(() => {
@@ -41,21 +33,19 @@ describe('Conversations Search API Route', () => {
     
     (searchLookerConversations as any).mockResolvedValue(mockConversations);
 
-    const mockRequest = {
-      url: `http://localhost/api/conversations/search?agent_id=${agentId}`,
-    } as any;
+    const mockRequest = new NextRequest(
+      `http://localhost/api/conversations/search?agent_id=${agentId}`
+    );
 
     const response = await GET(mockRequest);
     const data = await response.json();
 
     expect(data).toEqual(mockConversations);
-    expect(searchLookerConversations).toHaveBeenCalledWith({ agent_id: agentId });
+    expect(searchLookerConversations).toHaveBeenCalledWith({ agent_id: agentId }, undefined);
   });
 
   it('should return 400 if agent_id is missing', async () => {
-    const mockRequest = {
-      url: `http://localhost/api/conversations/search`,
-    } as any;
+    const mockRequest = new NextRequest('http://localhost/api/conversations/search');
 
     const response = await GET(mockRequest);
     expect(response.status).toBe(400);
@@ -65,9 +55,9 @@ describe('Conversations Search API Route', () => {
 
   it('should return 500 if configuration is missing', async () => {
     delete process.env.NEXT_PUBLIC_LOOKER_BASE_URL;
-    const mockRequest = {
-      url: `http://localhost/api/conversations/search?agent_id=agent-1`,
-    } as any;
+    const mockRequest = new NextRequest(
+      'http://localhost/api/conversations/search?agent_id=agent-1'
+    );
 
     const response = await GET(mockRequest);
     expect(response.status).toBe(500);
@@ -77,9 +67,9 @@ describe('Conversations Search API Route', () => {
 
   it('should return 500 if Looker API fails', async () => {
     (searchLookerConversations as any).mockRejectedValue(new Error('API failed'));
-    const mockRequest = {
-      url: `http://localhost/api/conversations/search?agent_id=agent-1`,
-    } as any;
+    const mockRequest = new NextRequest(
+      'http://localhost/api/conversations/search?agent_id=agent-1'
+    );
 
     const response = await GET(mockRequest);
     expect(response.status).toBe(500);

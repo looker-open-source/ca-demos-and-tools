@@ -13,9 +13,10 @@
 // limitations under the License.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import VegaChart from './VegaChart';
 import embed from 'vega-embed';
+import { VEGA_LITE_V6_SCHEMA } from '@/lib/vega-utils';
 
 // Mock vega-embed
 vi.mock('vega-embed', () => ({
@@ -28,6 +29,10 @@ vi.mock('vega-embed', () => ({
 }));
 
 describe('VegaChart', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('should render a container and call vega-embed', async () => {
     const mockSpec = {
       $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
@@ -50,5 +55,39 @@ describe('VegaChart', () => {
     // Verify themed spec was passed (e.g., background transparent)
     const passedSpec = (embed as any).mock.calls[0][1];
     expect(passedSpec.config.background).toBe('transparent');
+    expect(passedSpec.$schema).toBe(VEGA_LITE_V6_SCHEMA);
+  });
+
+  it('should upgrade v4.17.0 Vega-Lite specs to v6 without mutating the input spec', () => {
+    const mockSpec = {
+      $schema: 'https://vega.github.io/schema/vega-lite/v4.17.0.json',
+      data: { values: [{ a: 'A', b: 28 }] },
+      mark: 'bar',
+    };
+
+    render(<VegaChart spec={mockSpec} />);
+
+    const passedSpec = (embed as any).mock.calls[0][1];
+    expect(passedSpec.$schema).toBe(VEGA_LITE_V6_SCHEMA);
+    expect(mockSpec.$schema).toBe('https://vega.github.io/schema/vega-lite/v4.17.0.json');
+  });
+
+  it('should render an error fallback when vega-embed rejects', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    (embed as any).mockRejectedValueOnce(new Error('Invalid Vega-Lite spec'));
+
+    render(
+      <VegaChart
+        spec={{
+          $schema: 'https://vega.github.io/schema/vega-lite/v4.17.0.json',
+          mark: 'bar',
+        }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/unable to render chart/i);
+    });
+    consoleSpy.mockRestore();
   });
 });

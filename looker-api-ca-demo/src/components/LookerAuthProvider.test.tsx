@@ -29,6 +29,11 @@ vi.mock('@looker/sdk-rtl', () => {
       isAuthenticated: mockIsAuthenticated,
       login: mockLogin,
       logout: mockLogout,
+      activeToken: {
+        accessToken: '',
+        setToken: vi.fn(),
+        reset: vi.fn(),
+      },
     };
   });
   const BrowserServices = vi.fn(function() {
@@ -75,18 +80,28 @@ const TestComponent = () => {
 };
 
 describe('LookerAuthProvider', () => {
+  const oauthConfig = {
+    authMode: 'oauth',
+    baseUrl: 'https://test.looker.com',
+    oauthClientId: 'test-client-id',
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.NEXT_PUBLIC_LOOKER_AUTH_MODE = 'oauth';
+    process.env.NEXT_PUBLIC_LOOKER_BASE_URL = 'https://test.looker.com';
     process.env.NEXT_PUBLIC_LOOKER_OAUTH_CLIENT_ID = 'test-client-id';
   });
 
   afterEach(() => {
+    delete process.env.NEXT_PUBLIC_LOOKER_AUTH_MODE;
+    delete process.env.NEXT_PUBLIC_LOOKER_BASE_URL;
     delete process.env.NEXT_PUBLIC_LOOKER_OAUTH_CLIENT_ID;
   });
 
   it('should provide authentication status', () => {
     render(
-      <LookerAuthProvider>
+      <LookerAuthProvider initialConfig={oauthConfig}>
         <TestComponent />
       </LookerAuthProvider>
     );
@@ -96,7 +111,7 @@ describe('LookerAuthProvider', () => {
 
   it('should call login on the sdk when login is called', async () => {
     render(
-      <LookerAuthProvider>
+      <LookerAuthProvider initialConfig={oauthConfig}>
         <TestComponent />
       </LookerAuthProvider>
     );
@@ -109,7 +124,7 @@ describe('LookerAuthProvider', () => {
 
   it('should call logout on the sdk when logout is called', async () => {
     render(
-      <LookerAuthProvider>
+      <LookerAuthProvider initialConfig={oauthConfig}>
         <TestComponent />
       </LookerAuthProvider>
     );
