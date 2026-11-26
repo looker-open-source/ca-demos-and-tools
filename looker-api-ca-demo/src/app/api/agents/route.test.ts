@@ -15,17 +15,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GET } from './route';
 import { listLookerAgents } from '@/lib/looker-agent';
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/looker-agent');
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((data, init) => ({
-      json: async () => data,
-      status: init?.status || 200,
-    })),
-  },
-}));
 
 describe('Agents API Route', () => {
   beforeEach(() => {
@@ -40,7 +32,8 @@ describe('Agents API Route', () => {
     process.env.NEXT_PUBLIC_DEFAULT_AGENT_ID = 'test-agent-id';
     (listLookerAgents as any).mockResolvedValue(mockAgents);
 
-    const response = await GET();
+    const req = new NextRequest('http://localhost/api/agents');
+    const response = await GET(req);
     const data = await response.json();
 
     expect(data).toEqual({
@@ -48,13 +41,14 @@ describe('Agents API Route', () => {
       defaultAgentId: 'test-agent-id',
       lookerBaseUrl: 'https://test.looker.com'
     });
-    expect(listLookerAgents).toHaveBeenCalled();
+    expect(listLookerAgents).toHaveBeenCalledWith(undefined);
   });
 
   it('should return 500 if configuration is missing', async () => {
     delete process.env.NEXT_PUBLIC_LOOKER_BASE_URL;
 
-    const response = await GET();
+    const req = new NextRequest('http://localhost/api/agents');
+    const response = await GET(req);
     expect(response.status).toBe(500);
     const data = await response.json();
     expect(data.error).toBe('Looker configuration missing');
@@ -63,7 +57,8 @@ describe('Agents API Route', () => {
   it('should return 500 if Looker API fails', async () => {
     (listLookerAgents as any).mockRejectedValue(new Error('API failed'));
 
-    const response = await GET();
+    const req = new NextRequest('http://localhost/api/agents');
+    const response = await GET(req);
     expect(response.status).toBe(500);
     const data = await response.json();
     expect(data.error).toBe('API failed');

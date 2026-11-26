@@ -21,6 +21,20 @@ vi.mock('@/store/useChatStore', () => ({
   useChatStore: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
+}));
+
+vi.mock('@/components/LookerAuthProvider', () => ({
+  useLookerAuth: vi.fn(() => ({
+    isAuthenticated: true,
+    logout: vi.fn(),
+    checkAuth: vi.fn(),
+    isInitialized: true,
+    authConfig: { authMode: 'env', baseUrl: '', lookerUrl: '', oauthClientId: '' },
+  })),
+}));
+
 describe('Home Page - Agent Caching', () => {
   let mockStore: any;
 
@@ -68,7 +82,7 @@ describe('Home Page - Agent Caching', () => {
 
     // Initial fetch
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledWith('/api/agents');
+      expect(global.fetch).toHaveBeenCalledWith('/api/agents', expect.any(Object));
     });
     expect(global.fetch).toHaveBeenCalledTimes(1);
 

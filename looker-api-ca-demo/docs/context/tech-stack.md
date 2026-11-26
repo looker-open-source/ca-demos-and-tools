@@ -3,7 +3,7 @@
 ## Core Technologies
 - **Language**: **TypeScript** - Used across the entire stack for type safety and robust integration.
 - **Framework**: **Next.js (React)** - Utilizing **React Server Components (RSC)** for server-side logic and API interactions.
-- **SDK**: **Looker SDK (26.4+)** - Official `@looker/sdk-node` package used for all backend interactions with the Looker API.
+- **SDK**: **Looker SDK (26.4+)** - Official `@looker/sdk-node` and `@looker/sdk` packages used for all backend/type interactions with the Looker API.
 - **Authentication**: **Looker OAuth 2.0 (PKCE)** - Utilizing `@looker/sdk-rtl` for secure, browser-based user authentication, with **proactive token refresh** via a custom backend proxy endpoint (`/api/token/refresh`).
 - **State Management**: **Zustand** - For centralized management of message history, authentication state (token monitoring), and UI state.
 - **Styling**: **Tailwind CSS** - Used for rapid development, featuring a high-contrast dark theme with neon-cyan accents for an "AI-First" aesthetic.

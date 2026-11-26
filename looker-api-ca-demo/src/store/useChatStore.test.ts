@@ -136,7 +136,10 @@ describe('useChatStore', () => {
       await useChatStore.getState().fetchConversations('agent-1');
 
       expect(useChatStore.getState().conversations).toEqual(mockConversations);
-      expect(global.fetch).toHaveBeenCalledWith('/api/conversations/search?agent_id=agent-1');
+      expect(global.fetch).toHaveBeenCalledWith(
+        '/api/conversations/search?agent_id=agent-1',
+        expect.any(Object)
+      );
     });
 
     it('should select a conversation and load messages', async () => {

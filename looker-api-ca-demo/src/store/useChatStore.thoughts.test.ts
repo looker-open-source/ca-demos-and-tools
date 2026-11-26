@@ -29,13 +29,11 @@ describe('useChatStore - Thought Messages', () => {
     const { addMessage } = useChatStore.getState();
 
     // Add first thought
-    // @ts-ignore
     addMessage({ type: 'system', text: 'Reviewing schemas...', isThought: true });
     expect(useChatStore.getState().messages).toHaveLength(1);
     expect(useChatStore.getState().messages[0].text).toBe('Reviewing schemas...');
 
     // Add second thought - should be appended
-    // @ts-ignore
     addMessage({ type: 'system', text: 'Fetching data...', isThought: true });
     expect(useChatStore.getState().messages).toHaveLength(2);
     expect(useChatStore.getState().messages[1].text).toBe('Fetching data...');

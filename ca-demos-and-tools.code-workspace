@@ -23,6 +23,9 @@
       "path": "looker-api-ca-demo",
     },
     {
+      "path": "ca-slack-demo",
+    },
+    {
       "path": ".",
       "name": "root",
     },

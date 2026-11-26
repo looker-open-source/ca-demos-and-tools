@@ -71,8 +71,8 @@ describe('ChatWindow', () => {
   it('should apply overflow-x-auto class to message containers to handle long words', () => {
     const messages = [{ type: 'user', text: 'https://gcplmaster.dev.looker.com/explore/airports/airport_locations_with_a_very_long_url_that_should_not_break_the_layout' }];
     render(<ChatWindow messages={messages} />);
-    const messageContainer = screen.getByText(/https:\/\/gcplmaster/);
-    expect(messageContainer.className).toContain('overflow-x-auto');
+    const messageElement = screen.getByText(/https:\/\/gcplmaster/);
+    expect(messageElement.closest('.overflow-x-auto')).not.toBeNull();
   });
 
   it('should render Stop button when isStreaming is true and call onStop when clicked', () => {

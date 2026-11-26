@@ -21,6 +21,20 @@ vi.mock('@/store/useChatStore', () => ({
   useChatStore: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
+}));
+
+vi.mock('@/components/LookerAuthProvider', () => ({
+  useLookerAuth: vi.fn(() => ({
+    isAuthenticated: true,
+    logout: vi.fn(),
+    checkAuth: vi.fn(),
+    isInitialized: true,
+    authConfig: { authMode: 'env', baseUrl: '', lookerUrl: '', oauthClientId: '' },
+  })),
+}));
+
 describe('Home Page - Initial Load Disabling', () => {
   let mockStore: any;
 

@@ -34,20 +34,25 @@ export default function Home() {
   const isSilentAbortRef = React.useRef(false);
   const workspaceScrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const { isAuthenticated, logout, isInitialized, authConfig } = useLookerAuth();
+  const { isAuthenticated, logout, isInitialized, authConfig } =
+    useLookerAuth();
 
   const isOAuthMode = useMemo(() => {
     // Explicitly check for 'env' mode
-    if (authConfig.authMode === 'env') return false;
-    
+    if (authConfig.authMode === "env") return false;
+
     // Default to OAuth if mode is 'oauth' OR if a valid client ID is present
-    return authConfig.authMode === 'oauth' || (!!authConfig.oauthClientId && authConfig.oauthClientId !== 'your-client-id');
+    return (
+      authConfig.authMode === "oauth" ||
+      (!!authConfig.oauthClientId &&
+        authConfig.oauthClientId !== "your-client-id")
+    );
   }, [authConfig]);
 
   // Redirect to login if in OAuth mode and not authenticated
   useEffect(() => {
     if (isInitialized && isOAuthMode && !isAuthenticated) {
-      router.push('/login');
+      router.push("/login");
     }
   }, [isInitialized, isOAuthMode, isAuthenticated, router]);
 
@@ -345,7 +350,7 @@ export default function Home() {
 
   const handleLogout = async () => {
     await logout();
-    router.push('/login');
+    router.push("/login");
   };
 
   // If in OAuth mode and not authenticated, or if agents are still loading, show overlay
@@ -362,7 +367,7 @@ export default function Home() {
       <header className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-3xl font-black italic tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-600">
-            LOOKER CONVERSATIONAL ANALYTICS API
+            CONVERSATIONAL ANALYTICS - POWERED BY LOOKER
           </h1>
           <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest mt-1">
             Reference Implementation

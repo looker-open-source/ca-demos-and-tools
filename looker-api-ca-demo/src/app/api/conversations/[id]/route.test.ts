@@ -19,17 +19,9 @@ import {
   deleteLookerConversation,
   patchLookerConversation,
 } from '@/lib/looker-conversation';
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/looker-conversation');
-vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((data, init) => ({
-      json: async () => data,
-      status: init?.status || 200,
-    })),
-  },
-}));
 
 describe('Conversation ID API Route', () => {
   const conversationId = 'conv-123';
@@ -47,11 +39,12 @@ describe('Conversation ID API Route', () => {
       const mockConversation = { id: conversationId, name: 'Test' };
       (getLookerConversation as any).mockResolvedValue(mockConversation);
 
-      const response = await GET({} as Request, mockParams);
+      const req = new NextRequest(`http://localhost/api/conversations/${conversationId}`);
+      const response = await GET(req, mockParams);
       const data = await response.json();
 
       expect(data).toEqual(mockConversation);
-      expect(getLookerConversation).toHaveBeenCalledWith(conversationId);
+      expect(getLookerConversation).toHaveBeenCalledWith(conversationId, undefined);
     });
   });
 
@@ -59,11 +52,14 @@ describe('Conversation ID API Route', () => {
     it('should delete a conversation', async () => {
       (deleteLookerConversation as any).mockResolvedValue(undefined);
 
-      const response = await DELETE({} as Request, mockParams);
+      const req = new NextRequest(`http://localhost/api/conversations/${conversationId}`, {
+        method: 'DELETE',
+      });
+      const response = await DELETE(req, mockParams);
       const data = await response.json();
 
       expect(data).toEqual({ success: true });
-      expect(deleteLookerConversation).toHaveBeenCalledWith(conversationId);
+      expect(deleteLookerConversation).toHaveBeenCalledWith(conversationId, undefined);
     });
   });
 
@@ -73,9 +69,10 @@ describe('Conversation ID API Route', () => {
       const mockUpdatedConversation = { id: conversationId, name: newName };
       (patchLookerConversation as any).mockResolvedValue(mockUpdatedConversation);
 
-      const mockRequest = {
-        json: async () => ({ name: newName }),
-      } as any;
+      const mockRequest = new NextRequest(`http://localhost/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name: newName }),
+      });
 
       const response = await PATCH(mockRequest, mockParams);
       const data = await response.json();
@@ -83,14 +80,16 @@ describe('Conversation ID API Route', () => {
       expect(data).toEqual(mockUpdatedConversation);
       expect(patchLookerConversation).toHaveBeenCalledWith(
         conversationId,
-        { name: newName }
+        { name: newName },
+        undefined
       );
     });
 
     it('should return 400 if name is missing', async () => {
-      const mockRequest = {
-        json: async () => ({}),
-      } as any;
+      const mockRequest = new NextRequest(`http://localhost/api/conversations/${conversationId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({}),
+      });
 
       const response = await PATCH(mockRequest, mockParams);
       expect(response.status).toBe(400);

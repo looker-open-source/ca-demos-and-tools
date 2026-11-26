@@ -14,26 +14,37 @@
 
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import embed from 'vega-embed';
+import { normalizeVegaLiteSpec } from '@/lib/vega-utils';
 import { WorkspaceComponentWrapper } from './WorkspaceComponentWrapper';
 
 interface VegaChartProps {
-  spec: any;
+  spec: Record<string, unknown>;
   title?: string;
 }
 
 const VegaChart: React.FC<VegaChartProps> = ({ spec, title }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [renderError, setRenderError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Apply high-contrast dark theme defaults to the spec
+    let isCancelled = false;
+    let embeddedView: { finalize: () => void } | null = null;
+
+    const normalizedSpec = normalizeVegaLiteSpec(spec);
+    const existingConfig =
+      typeof normalizedSpec.config === 'object' && normalizedSpec.config !== null
+        ? (normalizedSpec.config as Record<string, unknown>)
+        : {};
+
+    // Apply high-contrast dark theme defaults to the normalized spec
     const themedSpec = {
-      ...spec,
+      ...normalizedSpec,
       config: {
-        ...spec.config,
+        ...existingConfig,
         background: 'transparent',
         axis: {
           domainColor: '#555',
@@ -55,39 +66,59 @@ const VegaChart: React.FC<VegaChartProps> = ({ spec, title }) => {
       },
       width: 'container',
       height: 300,
-      autosize: { type: 'fit', contains: 'padding' }
+      autosize: { type: 'fit', contains: 'padding' },
     };
 
-    let resultPromise: any;
-    
     const renderChart = async () => {
-        try {
-            resultPromise = embed(containerRef.current!, themedSpec, {
-                actions: false,
-            });
-        } catch (error) {
-            console.error('Vega rendering error:', error);
+      try {
+        const result = await embed(containerRef.current!, themedSpec as any, {
+          actions: false,
+        });
+        if (isCancelled) {
+          result?.view?.finalize();
+          return;
         }
+        embeddedView = result?.view ?? null;
+        setRenderError(null);
+      } catch (error) {
+        if (!isCancelled) {
+          console.error('Vega rendering error:', error);
+          setRenderError(
+            error instanceof Error ? error.message : 'Unknown visualization error'
+          );
+        }
+      }
     };
 
-    renderChart();
+    void renderChart();
 
     return () => {
-      if (resultPromise) {
-        resultPromise.then((res: any) => res.view.finalize());
-      }
+      isCancelled = true;
+      embeddedView?.finalize();
     };
   }, [spec]);
 
   return (
     <WorkspaceComponentWrapper title={title} testId="vega-chart">
-        <div 
-            ref={containerRef}
-            data-testid="vega-chart-container"
-            className="vega-chart-container w-full h-[350px] bg-zinc-950 border border-zinc-900 rounded-lg p-4 overflow-hidden"
+      {renderError && (
+        <div
+          role="alert"
+          className="w-full p-4 bg-zinc-950 border border-red-900/60 rounded-lg text-sm text-red-400 font-mono"
         >
-        {/* Vega will inject the canvas/svg here */}
+          Unable to render chart: {renderError}
         </div>
+      )}
+      <div
+        ref={containerRef}
+        data-testid="vega-chart-container"
+        className={
+          renderError
+            ? 'hidden'
+            : 'vega-chart-container w-full h-[350px] bg-zinc-950 border border-zinc-900 rounded-lg p-4 overflow-hidden'
+        }
+      >
+        {/* Vega will inject the canvas/svg here */}
+      </div>
     </WorkspaceComponentWrapper>
   );
 };
